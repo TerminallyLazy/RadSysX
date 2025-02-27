@@ -1,9 +1,12 @@
 from typing import Literal
 from typing_extensions import TypedDict
 
+from fastapi import FastAPI
+from langserve import add_routes
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState, END
 from langgraph.types import Command
+import re
 
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START, END
@@ -63,7 +66,7 @@ def supervisor_node(state: State) -> Command[Literal["pharmacist", "researcher",
     if goto == "FINISH":
         goto = END
 
-    return Command(goto=goto, update={"next": goto})
+    return Command(goto=goto if goto != "FINISH" else END, update={"next": goto})
 
 
 pharamcist_agent = create_react_agent(
@@ -126,16 +129,29 @@ with open("graph_image.png", "wb") as f:
     f.write(graph_image)
 
 
-for s in graph.stream(
-    {
-        "messages": [
-            (
-                "user",
-                "What are some current trends in medical imaging?",
-            )
-        ]
-    },
-    subgraphs=True,
-):
-    print(s)
-    print("----")
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"message": "Welcome to the RadSys API"}
+
+add_routes(app, graph, path="/graph")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+# for s in graph.stream(
+#     {
+#         "messages": [
+#             (
+#                 "user",
+#                 "What are some current trends in medical imaging?",
+#             )
+#         ]
+#     },
+#     subgraphs=True,
+# ):
+#     print(s)
+#     print("----")
