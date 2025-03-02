@@ -26,6 +26,7 @@ interface DicomViewerProps {
   onToggleExpand?: () => void;
   onImageLoaded?: (success: boolean) => void;
   activeTool?: Tool; // Add activeTool prop
+  suppressErrors?: boolean; // Add suppressErrors prop
 }
 
 const cleanImageId = (imageId: string): string => {
@@ -42,13 +43,15 @@ export function DicomViewer({
   onActivate,
   onToggleExpand,
   onImageLoaded,
-  activeTool = null
+  activeTool = null,
+  suppressErrors = false
 }: DicomViewerProps) {
   const elementRef = useRef<HTMLDivElement>(null);
   const [isEnabled, setIsEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [currentTool, setCurrentTool] = useState<Tool>(null);
+  const [didAttemptLoading, setDidAttemptLoading] = useState(false);
 
   // Initialize cornerstone on mount
   useEffect(() => {
@@ -98,6 +101,15 @@ export function DicomViewer({
   useEffect(() => {
     if (!elementRef.current) return;
 
+    // If we're suppressing errors (non-axial 2D content), don't initialize cornerstone 
+    if (suppressErrors) {
+      console.log('DicomViewer: Skipping cornerstone initialization for suppressed view');
+      if (onImageLoaded) {
+        onImageLoaded(false);
+      }
+      return;
+    }
+
     try {
       // Enable the element for cornerstone
       enableElement(elementRef.current);
@@ -129,19 +141,28 @@ export function DicomViewer({
         onImageLoaded(false);
       }
     }
-  }, [activeTool, onImageLoaded]);
+  }, [activeTool, onImageLoaded, suppressErrors]);
 
   useEffect(() => {
     if (!elementRef.current || !isEnabled || !imageId) {
       if (!imageId) {
         console.log('DicomViewer: No imageId provided');
       }
+      setDidAttemptLoading(false);
+      return;
+    }
+
+    // Skip loading attempt if suppressErrors is true (for 2D images in non-axial views)
+    if (suppressErrors) {
+      console.log('DicomViewer: Suppressing image loading attempt for non-axial 2D content');
+      setDidAttemptLoading(false);
       return;
     }
 
     const loadAndDisplayImage = async () => {
       setLoading(true);
       setError(null);
+      setDidAttemptLoading(true);
       
       try {
         console.log('DicomViewer: Attempting to load image with ID:', imageId);
@@ -255,7 +276,7 @@ export function DicomViewer({
     };
 
     loadAndDisplayImage();
-  }, [imageId, isEnabled, onImageLoaded]);
+  }, [imageId, isEnabled, onImageLoaded, suppressErrors]);
 
   return (
     <div 
@@ -282,7 +303,7 @@ export function DicomViewer({
       
       <div 
         ref={elementRef}
-        className="w-full h-full dicom-viewport relative"
+        className={`w-full h-full dicom-viewport relative ${suppressErrors ? 'cornerstone-error-suppressed' : ''}`}
         style={{ minHeight: '400px' }}
       >
         {loading && (
@@ -294,7 +315,7 @@ export function DicomViewer({
           </div>
         )}
         
-        {error && !loading && (
+        {error && !loading && !suppressErrors && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
             <div className="flex flex-col items-center p-4 max-w-[80%] text-center">
               <AlertCircle className="h-8 w-8 text-red-500 mb-2" />
@@ -304,7 +325,7 @@ export function DicomViewer({
           </div>
         )}
 
-        {!imageId && !loading && !error && (
+        {!imageId && !loading && !error && !suppressErrors && !didAttemptLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20 text-white">
             <div className="flex flex-col items-center p-4 max-w-[80%] text-center">
               <p className="font-medium">No image selected</p>
@@ -314,6 +335,16 @@ export function DicomViewer({
         )}
       </div>
       <div className="viewport-gradient" />
+      
+      {suppressErrors && (
+        <style jsx>{`
+          .cornerstone-error-suppressed .cornerstone-canvas-error,
+          .cornerstone-error-suppressed .cornerstone-errored,
+          .cornerstone-error-suppressed [class*='error'] {
+            display: none !important;
+          }
+        `}</style>
+      )}
     </div>
   );
 } 

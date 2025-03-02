@@ -68,9 +68,11 @@ import {
   initializeCornerstone, 
   loadAndCacheImage
 } from '@/lib/utils/cornerstoneInit';
+import { canLoadAsVolume } from '@/lib/utils/cornerstone3DInit';
 import { ViewportManager } from '@/components/ViewportManager';
 import { LoadedImage } from '@/lib/types';
 import NovionAgent from "@/components/novionAgents";
+import { ViewportManager3D } from '@/components/ViewportManager3D';
 // Add type declarations for the Web Speech API
 
 type ViewportLayout = "1x1" | "2x2" | "3x3";
@@ -166,7 +168,7 @@ declare global {
 
 // Viewport types
 type setViewportState = "1x1" | "2x2" | "3x3";
-type ViewportType = "AXIAL" | "SAGITTAL" | "CORONAL";
+type ViewportType = "AXIAL" | "SAGITTAL" | "CORONAL" | "SERIES";
 
 // Tool types
 type Tool =
@@ -219,6 +221,7 @@ interface ViewportState {
   theme: 'light' | 'dark';
   loadedImages?: LoadedImage[];
   currentImageIndex: number;
+  useVolumeViewer?: boolean;
 }
 
 interface ViewportGridProps {
@@ -230,6 +233,8 @@ interface ViewportGridProps {
   loadedImages?: LoadedImage[];
   currentImageIndex: number;
   activeTool: Tool;
+  onToolChange?: (tool: Tool) => void;
+  useVolumeViewer: boolean;
 }
 
 interface ViewportPanelProps {
@@ -616,7 +621,9 @@ function ViewportGrid({
   onViewportExpand,
   loadedImages,
   currentImageIndex,
-  activeTool
+  activeTool,
+  onToolChange,
+  useVolumeViewer
 }: ViewportGridProps) {
   const gridConfig = {
     "1x1": "grid-cols-1",
@@ -624,61 +631,118 @@ function ViewportGrid({
     "3x3": "grid-cols-3",
   };
 
+  // FIXED: More rigorous conditions for determining if we have a true DICOM series
+  // that needs the Series Player
+  const hasDicomSeries = useMemo(() => {
+    // If no images loaded, no series
+    if (!loadedImages || loadedImages.length === 0) return false;
+    
+    // DICOMDIR files are always considered a series
+    const hasDicomdir = loadedImages.some(img => 
+      img.file.name.toUpperCase() === 'DICOMDIR' || 
+      img.file.name.toUpperCase().endsWith('.DICOMDIR')
+    );
+    if (hasDicomdir) return true;
+    
+    // Must have at least 3 DICOM files for a proper series
+    const dicomCount = loadedImages.filter(img => 
+      img.format === 'dicom' || img.file.name.toLowerCase().endsWith('.dcm')
+    ).length;
+    
+    // Check if we have a proper DICOM series with enough slices
+    return dicomCount >= 3;
+  }, [loadedImages]);
+
+  // Flag to determine when to use 3D viewer
+  const [use3DViewer, setUse3DViewer] = useState(false);
+  
+  // Check if we should use 3D viewer based on loaded images
+  useEffect(() => {
+    // FIXED: Only use 3D viewer if we have multiple DICOM images that form a proper volume
+    // Single-slice DICOM files should use the standard 2D viewer to avoid infinite recursion
+    if (hasDicomSeries && loadedImages && loadedImages.length >= 3 && useVolumeViewer) {
+      console.log('Using 3D viewer for multi-slice DICOM series');
+      setUse3DViewer(true);
+    } else {
+      console.log('Using 2D viewer - not enough slices for proper volume rendering or not suitable for volume loading');
+      setUse3DViewer(false);
+    }
+  }, [hasDicomSeries, loadedImages, useVolumeViewer]);
+
+  // Generate viewports based on layout and active viewports
+  const viewports = useMemo(() => {
+    let viewportList: ViewportType[] = [];
+    
+    // Different viewport configurations based on layout
+    if (layout === "1x1") {
+      viewportList = ["AXIAL"];
+    } else if (layout === "2x2") {
+      viewportList = ["AXIAL", "SAGITTAL", "CORONAL", "SERIES"];
+    } else if (layout === "3x3") {
+      // Default 3x3 layout - customize as needed
+      viewportList = ["AXIAL", "SAGITTAL", "CORONAL", "SERIES"];
+    }
+    
+    // If we have an expanded viewport, only show that one
+    if (expandedViewport) {
+      viewportList = [expandedViewport];
+    }
+    
+    return viewportList;
+  }, [layout, expandedViewport]);
+
+  // Function to convert ViewportType to a type accepted by ViewportManager3D
+  function getValidViewportType(type: ViewportType): 'AXIAL' | 'SAGITTAL' | 'CORONAL' | 'SERIES' {
+    // If the type is 'SERIES' or one of the valid projection types, return it directly
+    if (type === 'AXIAL' || type === 'SAGITTAL' || type === 'CORONAL' || type === 'SERIES') {
+      return type;
+    }
+    // Otherwise (like for '3D'), return 'AXIAL' as a fallback
+    return 'AXIAL';
+  }
+
   return (
-    <div className="p-4 h-full relative bg-white dark:bg-[#0f131c]">
-      <div className={cn(
-        "grid gap-4 h-full",
-        expandedViewport ? "invisible" : gridConfig[layout]
-      )}>
-        <ViewportPanel
-          type="AXIAL"
-          isActive={activeViewport === "AXIAL"}
-          isExpanded={expandedViewport === "AXIAL"}
-          onActivate={() => onViewportChange("AXIAL")}
-          onToggleExpand={() => onViewportExpand("AXIAL")}
-          loadedImages={loadedImages}
-          currentImageIndex={currentImageIndex}
-          activeTool={activeTool}
-        />
-        {(layout === "2x2" || layout === "3x3") && (
-          <>
+    <div className={`grid gap-1 ${gridConfig[layout]} w-full h-full`}>
+      {viewports.map((viewport) => (
+        <div key={viewport} className="relative min-h-60 w-full h-full">
+          {use3DViewer && loadedImages && loadedImages.length >= 3 && useVolumeViewer ? (
+            // Only render ViewportManager3D for supported viewport types AND when we have enough images AND when volume loading is appropriate
+            (viewport === 'AXIAL' || viewport === 'SAGITTAL' || viewport === 'CORONAL') ? (
+              <ViewportManager3D
+                viewportType={getValidViewportType(viewport)}
+                imageIds={loadedImages?.map(img => img.imageId) || []}
+                className="w-full h-full"
+                activeTool={activeTool}
+                showTools={true}
+                onToolChange={onToolChange}
+              />
+            ) : (
+              // For unsupported types like "SERIES", fall back to ViewportPanel
+              <ViewportPanel
+                type={viewport}
+                isActive={activeViewport === viewport}
+                isExpanded={expandedViewport === viewport}
+                onActivate={() => onViewportChange(viewport)}
+                onToggleExpand={() => onViewportExpand(viewport)}
+                loadedImages={loadedImages}
+                currentImageIndex={currentImageIndex}
+                activeTool={activeTool}
+              />
+            )
+          ) : (
             <ViewportPanel
-              type="SAGITTAL"
-              isActive={activeViewport === "SAGITTAL"}
-              isExpanded={expandedViewport === "SAGITTAL"}
-              onActivate={() => onViewportChange("SAGITTAL")}
-              onToggleExpand={() => onViewportExpand("SAGITTAL")}
+              type={viewport}
+              isActive={activeViewport === viewport}
+              isExpanded={expandedViewport === viewport}
+              onActivate={() => onViewportChange(viewport)}
+              onToggleExpand={() => onViewportExpand(viewport)}
               loadedImages={loadedImages}
               currentImageIndex={currentImageIndex}
               activeTool={activeTool}
             />
-            <ViewportPanel
-              type="CORONAL"
-              isActive={activeViewport === "CORONAL"}
-              isExpanded={expandedViewport === "CORONAL"}
-              onActivate={() => onViewportChange("CORONAL")}
-              onToggleExpand={() => onViewportExpand("CORONAL")}
-              loadedImages={loadedImages}
-              currentImageIndex={currentImageIndex}
-              activeTool={activeTool}
-            />
-          </>
-        )}
-      </div>
-      {expandedViewport && (
-        <div className="absolute inset-0 p-1">
-          <ViewportPanel
-            type={expandedViewport}
-            isActive={true}
-            isExpanded={true}
-            onActivate={() => {}}
-            onToggleExpand={() => onViewportExpand(expandedViewport)}
-            loadedImages={loadedImages}
-            currentImageIndex={currentImageIndex}
-            activeTool={activeTool}
-          />
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -718,6 +782,15 @@ function ViewportPanel({
     onActivate();
   }, [onActivate]);
 
+  // Convert ViewportType to a type that ViewportManager accepts
+  const getValidViewportType = (): 'AXIAL' | 'SAGITTAL' | 'CORONAL' => {
+    // Map SERIES to AXIAL, or keep the original type if it's already valid
+    if (type === 'SERIES') {
+      return 'AXIAL';
+    }
+    return type as 'AXIAL' | 'SAGITTAL' | 'CORONAL';
+  };
+
   return (
     <div 
       className={cn(
@@ -741,7 +814,7 @@ function ViewportPanel({
       }}
     >
       <ViewportManager
-        viewportType={type}
+        viewportType={getValidViewportType()}
         isActive={isActive}
         isExpanded={isExpanded}
         onActivate={onActivate}
@@ -868,12 +941,28 @@ function RightPanel({ isExpanded, onExpandedChange, viewportState, setViewportSt
         console.log('First image ID:', newLoadedImages[0]?.imageId);
       }
 
+      // IMPROVEMENT: Check if the series can actually be loaded as a volume
+      const imageIds = newLoadedImages.map(img => img.imageId);
+      let isVolume = false;
+      
+      if (newLoadedImages.length >= 3) {
+        try {
+          isVolume = await canLoadAsVolume(imageIds);
+          console.log(`Series volume check result: ${isVolume ? 'Can load as volume' : 'Cannot load as volume'}`);
+        } catch (error) {
+          console.error('Error checking if series can load as volume:', error);
+          isVolume = false;
+        }
+      }
+
       // Update both loadedImages and currentImageIndex in a single update
       setViewportState((prev) => {
         const newState = {
           ...prev,
           loadedImages: newLoadedImages,
-          currentImageIndex: 0
+          currentImageIndex: 0,
+          // Force use of 2D viewer for non-volumes regardless of number of images
+          useVolumeViewer: isVolume
         };
         
         console.log('New viewport state to be set:', {
@@ -881,7 +970,8 @@ function RightPanel({ isExpanded, onExpandedChange, viewportState, setViewportSt
           firstImageId: newLoadedImages[0]?.imageId,
           currentImageIndex: 0,
           hasDicomdir: hasDicomdir,
-          hasMultipleDicomFiles: hasMultipleDicomFiles
+          hasMultipleDicomFiles: hasMultipleDicomFiles,
+          isVolume: isVolume
         });
         
         return newState;
@@ -1334,6 +1424,7 @@ function App() {
   const [expandedViewport, setExpandedViewport] = useState<ViewportType | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>(null);
   const [isNovionModalOpen, setIsNovionModalOpen] = useState(false);
+  const [useVolumeViewer, setUseVolumeViewer] = useState(false);
 
   const DEFAULT_PANEL_WIDTH = 320;
   const COLLAPSED_PANEL_WIDTH = 48;
@@ -1423,6 +1514,8 @@ function App() {
               loadedImages={loadedImages}
               currentImageIndex={currentImageIndex}
               activeTool={activeTool}
+              onToolChange={setActiveTool}
+              useVolumeViewer={useVolumeViewer}
             />
           </div>
         </div>
@@ -1444,6 +1537,7 @@ function App() {
             currentImageIndex,
             loadedImages,
             expandedViewport: expandedViewport as ViewportType | null,
+            useVolumeViewer: useVolumeViewer
           }}
           setViewportState={(newState: ViewportState | ((prevState: ViewportState) => ViewportState)) => {
             if (typeof newState === 'function') {
@@ -1456,6 +1550,7 @@ function App() {
                 currentImageIndex,
                 loadedImages,
                 expandedViewport: expandedViewport as ViewportType | null,
+                useVolumeViewer: useVolumeViewer
               });
               setActiveViewport(updatedState.activeViewport);
               setLayout(updatedState.layout);
@@ -1469,6 +1564,9 @@ function App() {
               }
               if ('currentImageIndex' in updatedState) {
                 setCurrentImageIndex(updatedState.currentImageIndex);
+              }
+              if ('useVolumeViewer' in updatedState) {
+                setUseVolumeViewer(updatedState.useVolumeViewer || false);
               }
             } else {
               setActiveViewport(newState.activeViewport ?? activeViewport);

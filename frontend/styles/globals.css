@@ -461,4 +461,27 @@
     background-color: hsl(224 30% 10%);
     border-color: hsl(224 35% 14%);
   }
+
+  /* Cornerstone error suppression */
+  .cornerstone-error-suppressed .cornerstone-canvas-error,
+  .cornerstone-error-suppressed .cornerstone-errored,
+  .cornerstone-error-suppressed [class*='error'],
+  .cornerstone-error-suppressed div[style*='color: rgb(211, 34, 20)'],
+  .cornerstone-error-suppressed div:contains('Failed to load image') {
+    display: none !important;
+  }
+
+  /* Hide generic cornerstone errors in viewports showing 2D message */
+  .dicom-viewport + div[style*='background-color: rgb(211, 34, 20)'],
+  .dicom-viewport div[style*='color: rgb(211, 34, 20)'],
+  .dicom-viewport div[style*='background-color: rgb(211, 34, 20)'] {
+    display: none !important;
+  }
+
+  /* Hide failed to load text in the 2D viewport error message */
+  [style*='background-color: rgb(244, 67, 54)'],
+  div[style*='background-color: rgb(244, 67, 54)'],
+  div[style*='background-color: rgb(211, 34, 20)'] {
+    display: none !important;
+  }
 }

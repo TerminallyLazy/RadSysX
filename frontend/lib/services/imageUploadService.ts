@@ -350,6 +350,8 @@ async function readDicomMetadata(file: File): Promise<any> {
       const metadata = {
         modality: dataSet.string('x00080060'),
         studyDate: dataSet.string('x00080020'),
+        studyInstanceUID: dataSet.string('x0020000d'),
+        seriesInstanceUID: dataSet.string('x0020000e'),
         seriesNumber: dataSet.string('x00200011'),
         instanceNumber: dataSet.string('x00200013'),
         dimensions: {
