@@ -4,30 +4,50 @@ from pprint import pprint
 from langchain.tools import tool
 
 @tool("Search_PubMed_and_return_PMIDs")
-def search_pubmed(query, retmax=10):
+def search_pubmed(query, retmax=20):
     """
     Description: Search PubMed for the given query and return a list of PMIDs.
     -Input: Query (str)
     -Output: PMIDs (list)
     """
-    esearch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-    params = {
-        "db": "pubmed",
-        "term": query,
-        "retmax": retmax,
-        "retmode": "json"
-    }
-    response = requests.get(esearch_url, params=params)
-    response.raise_for_status()  # Raise an error for bad responses
-    data = response.json()
-    return data["esearchresult"]["idlist"]
+    try:
+        esearch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+        params = {
+            "db": "pubmed",
+            "term": query,
+            "retmax": retmax,
+            "retmode": "json"
+        }
+        response = requests.get(esearch_url, params=params)
+        response.raise_for_status()  # Raise an error for bad responses
+        data = response.json()
+        return data["esearchresult"]["idlist"]
+    except Exception as e:
+        print(f"Error in search_pubmed: {str(e)}")
+        return []
 
 @tool("Retrieve_details_for_PMIDs_with_ESummary")
-def fetch_pubmed_details(query, retmax=10):
+def fetch_pubmed_details(query, retmax=20):
     """
     Description: Retrieve details for a list of PMIDs using the ESummary endpoint.
+    - Input: query (str or list) - Either a search query or a list of PMIDs
+    - Output: Summary data for PubMed articles
     """
-    pmids = search_pubmed(query, retmax)
+    # Handle different input formats
+    # If query is a list, assume it's a list of PMIDs
+    if isinstance(query, list):
+        pmids = query
+    # If query is a string, assume it's a search query
+    elif isinstance(query, str):
+        # Use invoke instead of direct call
+        try:
+            pmids = search_pubmed.invoke({"query": query, "retmax": retmax})
+        except AttributeError:
+            # Fallback for backward compatibility
+            pmids = search_pubmed(query, retmax)
+    else:
+        return {"result": {"uids": []}, "error": "Invalid query format. Expected string or list."}
+    
     if not pmids:
         return {"result": {"uids": []}}
 
@@ -37,28 +57,40 @@ def fetch_pubmed_details(query, retmax=10):
         "id": ",".join(pmids),
         "retmode": "json"
     }
-    response = requests.get(esummary_url, params=params)
-    response.raise_for_status()
-    summary_data = response.json()
+    
+    try:
+        response = requests.get(esummary_url, params=params)
+        response.raise_for_status()
+        summary_data = response.json()
 
-    efetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-    params = {
-        "db": "pubmed",
-        "id": ",".join(pmids),
-        "retmode": "xml"
-    }
-    response = requests.get(efetch_url, params=params)
-    response.raise_for_status()
-    fetch_data = BeautifulSoup(response.text, 'xml')
+        # Add direct PubMed URLs to each article
+        for pmid in pmids:
+            if pmid in summary_data["result"]:
+                # Add direct PubMed URL
+                summary_data["result"][pmid]["pubmed_url"] = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
 
-    for pmid in pmids:
-        abstract = fetch_data.find('AbstractText', {'Label': pmid})
-        if abstract:
-            summary_data["result"][pmid]["abstract"] = abstract.get_text(strip=True)
-        else:
-            summary_data["result"][pmid]["abstract"] = "No abstract available"
+        efetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+        params = {
+            "db": "pubmed",
+            "id": ",".join(pmids),
+            "retmode": "xml"
+        }
+        response = requests.get(efetch_url, params=params)
+        response.raise_for_status()
+        
+        # Use XML parser for proper XML parsing
+        fetch_data = BeautifulSoup(response.text, features="xml")
 
-    return summary_data
+        for pmid in pmids:
+            abstract = fetch_data.find('AbstractText', {'Label': pmid})
+            if abstract:
+                summary_data["result"][pmid]["abstract"] = abstract.get_text(strip=True)
+            else:
+                summary_data["result"][pmid]["abstract"] = "No abstract available"
+
+        return summary_data
+    except Exception as e:
+        return {"error": f"Error fetching PubMed details: {str(e)}", "result": {"uids": []}}
 
 @tool("Return_pubmed_identifiers")
 def get_pubmed_identifiers(url):

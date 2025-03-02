@@ -1,0 +1,10 @@
+langchain-core>=0.1.18
+langchain-openai>=0.1.1
+langgraph>=0.0.27
+langgraph-cli>=0.1.55
+fastapi>=0.104.1
+uvicorn>=0.24.0
+langserve>=0.0.32
+python-dotenv>=1.0.0
+typing-extensions>=4.8.0
+ipython
