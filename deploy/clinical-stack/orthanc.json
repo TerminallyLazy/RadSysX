@@ -1,0 +1,16 @@
+{
+  "Name": "RadSysX Orthanc",
+  "StorageDirectory": "/var/lib/orthanc/db",
+  "AuthenticationEnabled": true,
+  "RemoteAccessAllowed": true,
+  "Plugins": [
+    "/usr/local/share/orthanc/plugins/libOrthancDicomWeb.so"
+  ],
+  "RegisteredUsers": {
+    "__RADSYSX_ORTHANC_USERNAME__": "__RADSYSX_ORTHANC_PASSWORD__"
+  },
+  "DicomWeb": {
+    "Enable": true,
+    "Root": "/dicom-web/"
+  }
+}

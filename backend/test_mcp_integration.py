@@ -28,8 +28,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mcp.client import RadSysXMCPClient
 from mcp.fhir_server import FHIRMCPServer
 
-# Skip novion import for now due to compatibility issues
-# import novion
+# Skip radsysx import for now due to compatibility issues
+# import radsysx
 
 # Create a get_client function to match our original API
 def get_client():
@@ -121,7 +121,7 @@ async def test_agent_integration(query: str = "What are common medications for h
     
     # Agent integration test is currently disabled due to compatibility issues with langgraph
     logger.warning("Agent integration test is disabled due to compatibility issues with langgraph")
-    logger.warning("The novion.py file would need to be updated to work with the current version of langgraph")
+    logger.warning("The radsysx.py file would need to be updated to work with the current version of langgraph")
     
     # Return a dummy result
     return ["Agent integration test skipped"]

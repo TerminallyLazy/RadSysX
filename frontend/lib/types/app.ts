@@ -61,7 +61,7 @@ export interface ViewportGridProps {
   activeTool: unknown;
 }
 
-export interface NovionAgentsModalProps {
+export interface RadSysXAgentsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
@@ -73,7 +73,7 @@ export interface LeftToolbarProps extends ToolbarProps {
   layout: ViewportLayout;
   onLayoutChange: (layout: ViewportLayout) => void;
   onToggleFullscreen: () => void;
-  setIsNovionModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsRadSysXModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export interface RightPanelProps extends ToolbarProps {

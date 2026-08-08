@@ -1,6 +1,9 @@
-import { useState } from "react";
+"use client";
 
-export default function NovionAgent() {
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+
+export default function RadSysXAgent() {
     const [query, setQuery] = useState(""); // User input state
     const [response, setResponse] = useState(""); // API response state
     const [loading, setLoading] = useState(false); // Loading state
@@ -11,7 +14,8 @@ export default function NovionAgent() {
 
         setLoading(true);
         try {
-            const res = await fetch("http://localhost:8000/process", {
+            const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+            const res = await fetch(`${backendUrl}/process`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query }),
@@ -20,7 +24,9 @@ export default function NovionAgent() {
             if (!res.ok) throw new Error("Failed to fetch data");
 
             const data = await res.json();
-            setResponse(data.responses); // Store response
+            if (data.error) throw new Error(data.error);
+            const result = data.result;
+            setResponse(Array.isArray(result) ? result.join("\n\n") : result);
         } catch (error) {
             console.error("Error:", error);
             setResponse("Error fetching response.");
@@ -33,7 +39,7 @@ export default function NovionAgent() {
         <div className="w-full h-[calc(100%-44px)] overflow-hidden flex flex-col">
             {/* Title */}
             <div className="flex items-center justify-between p-4 border-b border-gray-300 dark:border-gray-600">
-                <h2 className="text-lg font-medium">Novion Agents</h2>
+                <h2 className="text-lg font-medium">RadSysX Agents</h2>
             </div>
 
             {/* Response Section */}
@@ -41,11 +47,8 @@ export default function NovionAgent() {
                 {loading ? (
                     <p className="text-gray-500">Processing your request...</p>
                 ) : response ? (
-                    <div className="p-3 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md">
-                        <div
-                            className="text-gray-800 dark:text-gray-200"
-                            dangerouslySetInnerHTML={{ __html: response.replace(/\n/g, "<br />") }}
-                        />
+                    <div className="p-3 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md prose prose-sm dark:prose-invert max-w-none">
+                        <ReactMarkdown>{response}</ReactMarkdown>
                     </div>
                 ) : (
                     <p className="text-gray-500">Enter a query to get a response.</p>

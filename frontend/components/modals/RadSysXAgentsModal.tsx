@@ -2,10 +2,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
-import NovionAgent from "@/components/novionAgents";
-import { NovionAgentsModalProps } from '@/lib/types/app';
+import RadSysXAgent from "@/components/radsysxAgents";
+import { RadSysXAgentsModalProps } from '@/lib/types/app';
 
-export function NovionAgentsModal({ isOpen, onClose }: NovionAgentsModalProps) {
+export function RadSysXAgentsModal({ isOpen, onClose }: RadSysXAgentsModalProps) {
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [isDragging, setIsDragging] = useState(false);
@@ -97,7 +97,7 @@ export function NovionAgentsModal({ isOpen, onClose }: NovionAgentsModalProps) {
             <div className="w-3 h-3 rounded-full bg-red-500"></div>
             <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
             <div className="w-3 h-3 rounded-full bg-green-500"></div>
-            <h2 className="text-white text-sm font-medium ml-2">Novion Agents</h2>
+            <h2 className="text-white text-sm font-medium ml-2">RadSysX Agents</h2>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -110,7 +110,7 @@ export function NovionAgentsModal({ isOpen, onClose }: NovionAgentsModalProps) {
           </div>
         </div>
 
-        <NovionAgent />
+        <RadSysXAgent />
 
         <div
           className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize"

@@ -81,7 +81,7 @@ def search_drugs_for_condition(condition: str) -> str:
             for result in data['results']:
                 drug_name = result.get('openfda', {}).get('substance_name', ['Unknown'])[0]
                 if drug_name != 'Unknown':
-                    drug_info = get_drug_use_cases(drug_name)
+                    drug_info = get_drug_use_cases.invoke({"drug_name": drug_name})
                     print(f"- {drug_name}")
                     print(f"  - Use cases: {drug_info['use_cases'][0]}\n")
 

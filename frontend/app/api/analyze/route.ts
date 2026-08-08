@@ -5,7 +5,7 @@ import { writeFile, unlink } from 'fs/promises';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import * as dicomParser from 'dicom-parser';
-import { getGeminiApiKey } from '@/lib/env';
+import { getAppMode, getGeminiApiKey, isExperimentalImagingEnabled } from '@/lib/env';
 
 // Ensure temp directory exists
 const tempDir = join(process.cwd(), 'tmp');
@@ -18,6 +18,15 @@ try {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isExperimentalImagingEnabled()) {
+    return NextResponse.json(
+      {
+        error: `The analyze route is disabled in ${getAppMode()} mode. Use the backend AI job API instead.`,
+      },
+      { status: 403 },
+    );
+  }
+
   try {
     // Initialize Gemini API inside the function to ensure env vars are loaded
     const genAI = new GoogleGenerativeAI(getGeminiApiKey());

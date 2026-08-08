@@ -42,9 +42,8 @@ def fetch_pubmed_details(query, retmax=20):
         # Use invoke instead of direct call
         try:
             pmids = search_pubmed.invoke({"query": query, "retmax": retmax})
-        except AttributeError:
-            # Fallback for backward compatibility
-            pmids = search_pubmed(query, retmax)
+        except Exception:
+            pmids = []
     else:
         return {"result": {"uids": []}, "error": "Invalid query format. Expected string or list."}
     
@@ -139,7 +138,7 @@ def get_pmc_link(url):
     """
     Description: Returns the pmc link
     """
-    identifiers = get_pubmed_identifiers(url)
+    identifiers = get_pubmed_identifiers.invoke({"url": url})
     pmcid = identifiers.get('PMCID')
     if pmcid:
         pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/"

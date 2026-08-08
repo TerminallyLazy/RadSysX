@@ -1,9 +1,19 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { writeFile } from 'fs/promises';
+import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { getAppMode, isExperimentalImagingEnabled } from '@/lib/env';
 
 export async function POST(req: NextRequest) {
+  if (!isExperimentalImagingEnabled()) {
+    return NextResponse.json(
+      {
+        error: `The upload route is disabled in ${getAppMode()} mode. Route imaging ingest through the clinical archive gateway.`,
+      },
+      { status: 403 },
+    );
+  }
+
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
@@ -60,13 +70,7 @@ export async function POST(req: NextRequest) {
 }
 
 async function createDirIfNotExists(dir: string) {
-  try {
-    await writeFile(dir, '', { flag: 'wx' });
-  } catch (error: any) {
-    if (error.code !== 'EEXIST') {
-      throw error;
-    }
-  }
+  await mkdir(dir, { recursive: true });
 }
 
 function generateSafeFilename(originalName: string): string {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import Draggable, { DraggableEventHandler } from 'react-draggable';
+import Draggable, { type DraggableEventHandler, type DraggableProps } from 'react-draggable';
 import { Play, Pause, Mic, Monitor, Video, X, Trash2, ChevronUp, ChevronDown, Maximize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGemini } from './Providers';
@@ -15,6 +15,8 @@ interface LogEntry {
   type: 'info' | 'error' | 'api' | 'gemini';
   message: string;
 }
+
+const DraggablePanel = Draggable as unknown as React.ComponentType<Partial<DraggableProps>>;
 
 export function MediaControlPanel({ onClose }: MediaControlPanelProps) {
   // Panel state
@@ -391,7 +393,7 @@ export function MediaControlPanel({ onClose }: MediaControlPanelProps) {
 
   return (
     <>
-      <Draggable
+      <DraggablePanel
         nodeRef={panelRef}
         position={position}
         onStart={handleDragStart}
@@ -671,7 +673,7 @@ export function MediaControlPanel({ onClose }: MediaControlPanelProps) {
             />
           )}
         </div>
-      </Draggable>
+      </DraggablePanel>
 
       {/* Maximized Event Log Modal */}
       {isLogMaximized && (

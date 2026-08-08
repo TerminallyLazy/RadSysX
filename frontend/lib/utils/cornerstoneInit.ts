@@ -93,6 +93,7 @@ interface GlobalCornerstoneState {
   isInitializing: boolean;
   isInitializedCore: boolean;
   isInitializedTools: boolean;
+  isInitializedDicomLoader: boolean;
   modulesLoaded: boolean;
   initializationPromise?: Promise<void>; // ensures callers can await full init
   renderingEngine: CoreTypes.IRenderingEngine | null;
@@ -107,6 +108,7 @@ function getGlobalCornerstoneState(): GlobalCornerstoneState {
       isInitializing: false,
       isInitializedCore: false,
       isInitializedTools: false,
+      isInitializedDicomLoader: false,
       modulesLoaded: false,
       renderingEngine: null,
       toolGroup: null,
@@ -216,7 +218,7 @@ export async function initializeCornerstone3D(): Promise<void> {
 
   const globalState = getGlobalCornerstoneState();
 
-  if (globalState.isInitializedCore && globalState.isInitializedTools) {
+  if (globalState.isInitializedCore && globalState.isInitializedTools && globalState.isInitializedDicomLoader) {
     console.log('Cornerstone 3D already fully initialized (global state).');
     return;
   }
@@ -247,14 +249,15 @@ export async function initializeCornerstone3D(): Promise<void> {
       }
 
       // Destructure necessary classes and objects from modules
-      const { 
-        csCoreResolved, 
-        csToolsResolved, 
-        ToolGroupManagerClass: ToolGroupManager, 
+      const {
+        csCoreResolved,
+        csToolsResolved,
+        csDicomImageLoaderResolved,
+        ToolGroupManagerClass: ToolGroupManager,
         // CoreCONSTANTS and ToolTypes will be accessed via modules.CoreCONSTANTS and modules.ToolTypes
-        CoreRenderingEngineClass: RenderingEngine, 
-        getRenderingEngine, 
-        PanToolClass, ZoomToolClass, StackScrollToolClass, WindowLevelToolClass, LengthToolClass, 
+        CoreRenderingEngineClass: RenderingEngine,
+        getRenderingEngine,
+        PanToolClass, ZoomToolClass, StackScrollToolClass, WindowLevelToolClass, LengthToolClass,
         ProbeToolClass, RectangleROIToolClass, EllipticalROIToolClass, BidirectionalToolClass, AngleToolClass,
         BrushToolClass
       } = modules;
@@ -272,6 +275,14 @@ export async function initializeCornerstone3D(): Promise<void> {
         csToolsResolved.init();
         globalState.isInitializedTools = true;
         console.log('✅ Cornerstone 3D Tools initialized');
+      }
+
+      if (!globalState.isInitializedDicomLoader) {
+        console.log('Initializing Cornerstone DICOM Image Loader...');
+        // init() registers wadouri/wadors/dicomfile scheme handlers and spawns decode workers
+        csDicomImageLoaderResolved.init();
+        globalState.isInitializedDicomLoader = true;
+        console.log('✅ Cornerstone DICOM Image Loader initialized');
       }
       
       if (!globalState.renderingEngine) {
@@ -378,6 +389,19 @@ export async function getVolumeLoader(): Promise<any> {
     throw new Error('Cornerstone volumeLoader module not available.');
   }
   return modules.CoreVolumeLoader;
+}
+
+/**
+ * Get Cornerstone imageLoader module (v3.x)
+ * Used to pre-load images and populate the metadata provider
+ */
+export async function getImageLoader(): Promise<any> {
+  await initializeCornerstone3D();
+  const modules = cornerstoneModules;
+  if (!modules?.CoreImageLoader) {
+    throw new Error('Cornerstone imageLoader module not available.');
+  }
+  return modules.CoreImageLoader;
 }
 
 /**

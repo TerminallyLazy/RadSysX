@@ -4,6 +4,7 @@ import * as React from "react";
 import type { Toast, ToasterToast } from "./types/toast";
 
 const TOAST_REMOVE_DELAY = 1000;
+const TOAST_AUTO_DISMISS_DELAY = 5000;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -45,6 +46,7 @@ interface State {
 }
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const autoDismissTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 const addToRemoveQueue = (toastId: string) => {
   if (toastTimeouts.has(toastId)) {
@@ -150,6 +152,13 @@ function toast({ ...props }: Toast) {
       },
     },
   });
+
+  // Schedule auto-dismiss
+  const autoDismissTimeout = setTimeout(() => {
+    autoDismissTimeouts.delete(id);
+    dismiss();
+  }, TOAST_AUTO_DISMISS_DELAY);
+  autoDismissTimeouts.set(id, autoDismissTimeout);
 
   return {
     id,

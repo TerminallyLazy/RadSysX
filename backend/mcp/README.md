@@ -95,13 +95,13 @@ enhanced_agent = enhance_agent_with_mcp(
 The RadSysX framework includes a function to enable or disable MCP integration:
 
 ```python
-import novion
+import radsysx
 
 # Enable MCP integration for all agents
-novion.enable_disable_mcp(True)
+radsysx.enable_disable_mcp(True)
 
 # Disable MCP integration
-novion.enable_disable_mcp(False)
+radsysx.enable_disable_mcp(False)
 ```
 
 ## Testing

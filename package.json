@@ -1,0 +1,38 @@
+{
+  "name": "radsysx",
+  "private": true,
+  "workspaces": [
+    "desktop",
+    "frontend",
+    "viewer",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace viewer && npm run build --workspace frontend",
+    "desktop": "node ./desktop/scripts/launch.mjs",
+    "desktop:bootstrap": "node ./desktop/scripts/bootstrap.mjs",
+    "desktop:dev-frontend": "npm run dev:frontend --workspace @radsysx/desktop",
+    "desktop:doctor": "npm run doctor --workspace @radsysx/desktop",
+    "desktop:launch": "node ./desktop/scripts/launch.mjs",
+    "desktop:run": "npm run dev --workspace @radsysx/desktop",
+    "desktop:smoke:import": "npm run smoke:import --workspace @radsysx/desktop",
+    "desktop:smoke:launch": "npm run smoke:launch --workspace @radsysx/desktop",
+    "desktop:smoke:local-start": "npm run smoke:local-start --workspace @radsysx/desktop",
+    "desktop:smoke:local-start-drop": "npm run smoke:local-start-drop --workspace @radsysx/desktop",
+    "desktop:smoke:local-start-nondicom": "npm run smoke:local-start-nondicom --workspace @radsysx/desktop",
+    "desktop:smoke:picker-files-import": "npm run smoke:picker-files-import --workspace @radsysx/desktop",
+    "desktop:smoke:picker-large-import": "npm run smoke:picker-large-import --workspace @radsysx/desktop",
+    "desktop:smoke:picker-many-import": "npm run smoke:picker-many-import --workspace @radsysx/desktop",
+    "desktop:smoke:picker-import": "npm run smoke:picker-import --workspace @radsysx/desktop",
+    "desktop:smoke:ui-import": "npm run smoke:ui-import --workspace @radsysx/desktop",
+    "desktop:smoke:viewer-launch": "npm run smoke:viewer-launch --workspace @radsysx/desktop",
+    "desktop:smoke": "npm run smoke --workspace @radsysx/desktop",
+    "dev:desktop": "npm run desktop",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:viewer": "npm run dev --workspace viewer",
+    "type-check": "npm run type-check --workspace frontend && npm run type-check --workspace viewer"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.0"
+  }
+}

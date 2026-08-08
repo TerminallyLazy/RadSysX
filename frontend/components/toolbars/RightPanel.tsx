@@ -11,6 +11,7 @@ import { LoadedImage } from '@/lib/types';
 import { processImageSeries, type ImageSeries } from '@/lib/services/imageUploadService';
 import { predict2D, predict3DNifti, type Predict2DResponse, type Predict3DResponse } from '@/lib/api/biomedparse';
 import { applyLabelmapFromNpz, applyHeatmapFromNpz } from '@/lib/utils/overlayService';
+import { getPublicAppMode } from '@/lib/env';
 
 interface ExtraProps {
   isExpanded: boolean;
@@ -46,6 +47,8 @@ export function RightPanel(props: Props) {
   const [bp2dResult, setBp2dResult] = useState<Predict2DResponse | null>(null);
   const [bp3dResult, setBp3dResult] = useState<Predict3DResponse | null>(null);
   const [heatmapOpacity, setHeatmapOpacity] = useState<number>(0.4);
+  const appMode = getPublicAppMode();
+  const experimentalImagingEnabled = appMode === 'research';
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -134,30 +137,42 @@ export function RightPanel(props: Props) {
 
             <TabsContent value="analysis" className="mt-4">
               <div className="space-y-4">
-                <ImageSeriesUpload onUploadComplete={handleUploadComplete} />
-                {loadedImages.length > 0 && !isSeriesLoaded && (
-                  <button onClick={handleLoadSeries} className="w-full px-4 py-3 rounded-md bg-[#4cedff] text-[#1b2237]">Load Series</button>
-                )}
-                {/* BiomedParse Controls */}
-                <div className="space-y-2 text-left">
-                  <label className="block text-sm">Prompts (comma-separated)</label>
-                  <input value={prompts} onChange={e => setPrompts(e.target.value)} className="w-full px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent" placeholder="liver, tumor" />
-                  <div className="flex items-center space-x-4 mt-2">
-                    <label className="flex items-center space-x-2 text-sm">
-                      <input type="checkbox" checked={returnHeatmap} onChange={e => setReturnHeatmap(e.target.checked)} />
-                      <span>Return heatmap</span>
-                    </label>
-                    <label className="flex items-center space-x-2 text-sm">
-                      <span>Threshold</span>
-                      <input type="number" min={0} max={1} step={0.05} value={threshold} onChange={e => setThreshold(Number(e.target.value))} className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent" />
-                    </label>
-                    <label className="flex items-center space-x-2 text-sm">
-                      <span>Slice batch</span>
-                      <input type="number" min={1} step={1} value={sliceBatchSize ?? ''} onChange={e => setSliceBatchSize(e.target.value ? Number(e.target.value) : undefined)} className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent" />
-                    </label>
+                {!experimentalImagingEnabled && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-left">
+                    <div className="text-sm font-semibold text-amber-300">Clinical boundary active</div>
+                    <p className="mt-2 text-sm text-foreground/80">
+                      Local file upload and direct browser-side analysis are disabled in {appMode} mode.
+                      Use the clinical worklist and backend AI job APIs instead.
+                    </p>
                   </div>
-                  <button onClick={onAnalyze} className="w-full px-4 py-3 rounded-md bg-emerald-400 text-[#1b2237]">Analyze with BiomedParse</button>
-                </div>
+                )}
+                {experimentalImagingEnabled && (
+                  <>
+                    <ImageSeriesUpload onUploadComplete={handleUploadComplete} />
+                    {loadedImages.length > 0 && !isSeriesLoaded && (
+                      <button onClick={handleLoadSeries} className="w-full px-4 py-3 rounded-md bg-[#4cedff] text-[#1b2237]">Load Series</button>
+                    )}
+                    <div className="space-y-2 text-left">
+                      <label className="block text-sm">Prompts (comma-separated)</label>
+                      <input value={prompts} onChange={e => setPrompts(e.target.value)} className="w-full px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent" placeholder="liver, tumor" />
+                      <div className="flex items-center space-x-4 mt-2">
+                        <label className="flex items-center space-x-2 text-sm">
+                          <input type="checkbox" checked={returnHeatmap} onChange={e => setReturnHeatmap(e.target.checked)} />
+                          <span>Return heatmap</span>
+                        </label>
+                        <label className="flex items-center space-x-2 text-sm">
+                          <span>Threshold</span>
+                          <input type="number" min={0} max={1} step={0.05} value={threshold} onChange={e => setThreshold(Number(e.target.value))} className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent" />
+                        </label>
+                        <label className="flex items-center space-x-2 text-sm">
+                          <span>Slice batch</span>
+                          <input type="number" min={1} step={1} value={sliceBatchSize ?? ''} onChange={e => setSliceBatchSize(e.target.value ? Number(e.target.value) : undefined)} className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent" />
+                        </label>
+                      </div>
+                      <button onClick={onAnalyze} className="w-full px-4 py-3 rounded-md bg-emerald-400 text-[#1b2237]">Analyze with BiomedParse</button>
+                    </div>
+                  </>
+                )}
 
                 {/* Results Panel */}
                 {(bp2dResult || bp3dResult) && (

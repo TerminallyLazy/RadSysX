@@ -2,8 +2,6 @@
 import "@/styles/globals.css";
 import { Inter } from "next/font/google";
 import { Toaster } from "@/components/Toaster";
-import { Providers } from "@/components/Providers";
-import { cn } from "@/lib/utils";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,17 +15,11 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </head>
-      <body className={cn(
-        inter.className,
-        "min-h-screen bg-white dark:bg-[#0a0d13] text-foreground",
-        "overflow-hidden"
-      )}>
-        <Providers>
-          <main className="h-screen">
-            {children}
-          </main>
-          <Toaster />
-        </Providers>
+      <body className={`${inter.className} min-h-screen overflow-hidden bg-white text-foreground dark:bg-[#0a0d13]`}>
+        <main className="h-screen">
+          {children}
+        </main>
+        <Toaster />
       </body>
     </html>
   );

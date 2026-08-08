@@ -1,23 +1,23 @@
 """
 Integration between LangChain agents and MCP functionality.
 
-This module provides utilities to enhance LangChain agents with
-capabilities to access and utilize FHIR data through MCP.
+This module provides the MCPToolkit class that creates LangChain-compatible
+tools for accessing FHIR data. Tools are passed directly to deepagents
+subagent configs rather than monkey-patched onto agents.
 """
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union
-from langchain.agents import Tool
-from langchain.schema import AgentAction
-import httpx
+from typing import List, Optional
+from langchain_core.tools import Tool
 
 from .client import RadSysXMCPClient
 
-# Create a get_client function
+
 def get_client():
     """Get the default MCP client."""
     return RadSysXMCPClient()
+
 
 logger = logging.getLogger(__name__)
 
@@ -127,48 +127,3 @@ class MCPToolkit:
                 coroutine=self._search_fhir_resources,
             ),
         ]
-
-
-def enhance_agent_with_mcp(
-    agent_obj: Any, 
-    client: Optional[RadSysXMCPClient] = None,
-    include_tools: Optional[List[str]] = None
-) -> Any:
-    """
-    Enhance a LangChain agent with MCP capabilities.
-    
-    This function adds MCP-powered tools to an existing LangChain agent,
-    allowing it to access FHIR resources through the MCP server.
-    
-    Args:
-        agent_obj: The LangChain agent object to enhance.
-        client: An optional RadSysXMCPClient instance.
-        include_tools: Optional list of tool names to include. If not provided,
-                      all available MCP tools will be added.
-                      
-    Returns:
-        The enhanced agent object.
-    """
-    toolkit = MCPToolkit(client)
-    all_tools = toolkit.get_tools()
-    
-    # Filter tools if specified
-    if include_tools:
-        tools_to_add = [tool for tool in all_tools if tool.name in include_tools]
-    else:
-        tools_to_add = all_tools
-    
-    # Add tools to the agent
-    # This assumes the agent has an 'add_tool' method or similar
-    # May need adaptation based on specific agent implementation
-    if hasattr(agent_obj, "tools"):
-        agent_obj.tools.extend(tools_to_add)
-    elif hasattr(agent_obj, "agent"):
-        if hasattr(agent_obj.agent, "tools"):
-            agent_obj.agent.tools.extend(tools_to_add)
-    else:
-        logger.warning(
-            "Could not add MCP tools to agent. Agent structure not recognized."
-        )
-    
-    return agent_obj

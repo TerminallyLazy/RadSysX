@@ -1,4 +1,27 @@
-import { Study, Annotation, Report, AIAnalysis } from '@prisma/client';
+export { clinicalApi } from '@/lib/clinical/client';
+export type {
+  AIJobRecord,
+  AIJobRequest,
+  AuditEvent,
+  ClinicalPlatformConfig,
+  DerivedDicomObject,
+  DerivedResultRecord,
+  DerivedResultRequest,
+  ImagingLaunchContext,
+  ImagingLaunchRequest,
+  ImagingLaunchResolveResponse,
+  ImagingLaunchResponse,
+  ReportDraftRequest,
+  ReportRecord,
+  StudyWorkspace,
+  WorklistResponse,
+  WorklistRow,
+} from '@/lib/clinical/contracts';
+
+type Study = Record<string, unknown>;
+type Annotation = Record<string, unknown>;
+type Report = Record<string, unknown>;
+type AIAnalysis = Record<string, unknown>;
 
 // API endpoints
 const API_BASE = '/api';

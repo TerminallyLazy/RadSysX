@@ -29,7 +29,7 @@ export async function applyLabelmapFromNpz(
 ): Promise<void> {
   const { core, tools } = await loadCornerstone();
   const { segmentation, Enums: ToolsEnums } = tools;
-  const { cache, utilities } = core;
+  const { cache } = core;
 
   const npz = await fetchNpz({ name: maskNpzName, key: 'seg' });
   const { shape, data_base64 } = npz; // shape = [D,H,W] uint8
@@ -38,34 +38,38 @@ export async function applyLabelmapFromNpz(
   for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
 
   // Build a labelmap volume matching the reference volume dimensions
-  const viewport = core.getRenderingEngine(renderingEngineId).getViewport(viewportId) as any;
+  const renderingEngine = core.getRenderingEngine(renderingEngineId);
+  if (!renderingEngine) throw new Error('Rendering engine not found');
+  const viewport = renderingEngine.getViewport(viewportId) as any;
   const referenceId = viewport.getActors?.()[0]?.uid || viewport.getDefaultActor()?.uid;
   if (!referenceId) throw new Error('No reference volume/stack found for labelmap');
   const referenceVolume = cache.getVolume(referenceId);
   if (!referenceVolume) throw new Error('Reference volume not in cache');
 
   // Create a new empty labelmap with same dimensions, then fill from NPZ
-  const labelmap = await core.volumeLoader.createAndCacheDerivedLabelmapVolume(referenceId);
-  const [w, h, d] = labelmap.dimensions; // Note: CS3D uses [w,h,numSlices]
+  const labelmap = await core.volumeLoader.createAndCacheDerivedLabelmapVolume(referenceId) as any;
+  const [w, h, d] = (labelmap.dimensions ?? [0, 0, 0]) as [number, number, number]; // Note: CS3D uses [w,h,numSlices]
   const [D, H, W] = shape; // backend is [D,H,W]
   if (w !== W || h !== H || d !== D) {
     // Fallback: if dims mismatch, best-effort copy into overlapping region
     // A full resample is out of scope here.
   }
-  const lmData = labelmap.voxelManager.getCompleteScalarDataArray();
+  const voxelManager = labelmap.voxelManager as {
+    getCompleteScalarDataArray?: () => ArrayLike<number>;
+    setCompleteScalarDataArray?: (data: Uint8Array) => void;
+  };
+  const lmData = new Uint8Array(voxelManager.getCompleteScalarDataArray?.() ?? []);
   // Map [D,H,W] → CS3D [w,h,d] linearized
-  let idx = 0;
   for (let z = 0; z < Math.min(d, D); z++) {
     for (let y = 0; y < Math.min(h, H); y++) {
       for (let x = 0; x < Math.min(w, W); x++) {
         const src = z * (H * W) + y * W + x;
         const dst = z * (w * h) + y * w + x;
         lmData[dst] = buf[src] > 0 ? 1 : 0; // single segment index 1
-        idx++;
       }
     }
   }
-  labelmap.voxelManager.setCompleteScalarDataArray(lmData);
+  voxelManager.setCompleteScalarDataArray?.(lmData);
 
   // Add segmentation to state and display
   const segmentationId = `bp-labelmap-${Date.now()}`;
@@ -87,8 +91,9 @@ export async function applyLabelmapFromNpz(
   ]);
 
   // Basic visibility/opacity defaults
-  tools.segmentation.config.setSegmentRGBColor(segmentationId, 1, opts?.color || [255, 0, 0]);
-  tools.segmentation.config.setRepresentationVisibility(viewportId, segmentationId, true);
+  const segmentationConfig = tools.segmentation.config as any;
+  segmentationConfig.setSegmentRGBColor?.(segmentationId, 1, opts?.color || [255, 0, 0]);
+  segmentationConfig.setRepresentationVisibility?.(viewportId, segmentationId, true);
   viewport.render?.();
 }
 
@@ -107,7 +112,9 @@ export async function applyHeatmapFromNpz(
   const buf = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
 
-  const viewport = core.getRenderingEngine(renderingEngineId).getViewport(viewportId) as any;
+  const renderingEngine = core.getRenderingEngine(renderingEngineId);
+  if (!renderingEngine) throw new Error('Rendering engine not found');
+  const viewport = renderingEngine.getViewport(viewportId) as any;
   const referenceId = viewport.getActors?.()[0]?.uid || viewport.getDefaultActor()?.uid;
   if (!referenceId) throw new Error('No reference volume/stack found for heatmap overlay');
   const referenceVolume = cache.getVolume(referenceId);
@@ -116,10 +123,14 @@ export async function applyHeatmapFromNpz(
   // Cornerstone3D does not have a first-class volume overlay layer API stable yet; 
   // a simple approach is to create a texture actor and blend, or reuse labelmap with graded indices.
   // Here we opt to create a labelmap with graded indices (0..255) as a pseudo-heatmap layer.
-  const labelmap = await core.volumeLoader.createAndCacheDerivedLabelmapVolume(referenceId);
-  const [w, h, d] = labelmap.dimensions;
+  const labelmap = await core.volumeLoader.createAndCacheDerivedLabelmapVolume(referenceId) as any;
+  const [w, h, d] = (labelmap.dimensions ?? [0, 0, 0]) as [number, number, number];
   const [D, H, W] = shape;
-  const lmData = labelmap.voxelManager.getCompleteScalarDataArray();
+  const voxelManager = labelmap.voxelManager as {
+    getCompleteScalarDataArray?: () => ArrayLike<number>;
+    setCompleteScalarDataArray?: (data: Uint8Array) => void;
+  };
+  const lmData = new Uint8Array(voxelManager.getCompleteScalarDataArray?.() ?? []);
   for (let z = 0; z < Math.min(d, D); z++) {
     for (let y = 0; y < Math.min(h, H); y++) {
       for (let x = 0; x < Math.min(w, W); x++) {
@@ -129,7 +140,7 @@ export async function applyHeatmapFromNpz(
       }
     }
   }
-  labelmap.voxelManager.setCompleteScalarDataArray(lmData);
+  voxelManager.setCompleteScalarDataArray?.(lmData);
 
   // For visualization, simple approach: map any nonzero to segment 1 and adjust opacity.
   // For a richer colormap, integrate shader-based rendering in a later step.

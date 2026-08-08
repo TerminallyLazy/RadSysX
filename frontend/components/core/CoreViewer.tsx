@@ -12,6 +12,7 @@ import {
   type UiToolType,
   getVolumeLoader,
   getCache,
+  getImageLoader,
 } from '@/lib/utils/cornerstoneInit';
 import type { Types as CoreTypes } from '@cornerstonejs/core';
 
@@ -323,6 +324,18 @@ export function CoreViewer({
             await (viewport as CoreTypes.IStackViewport).setStack(imageIds, 0);
             console.log(`CoreViewer [${viewportId}]: setStack completed. First ID = ${imageIds[0]}`);
           } else if (viewport.type === Enums.csCore.ViewportType.ORTHOGRAPHIC || viewport.type === Enums.csCore.ViewportType.VOLUME_3D) {
+            // Volume creation from wadouri: blob URLs requires all image metadata
+            // to be available upfront. Pre-load all images to populate the metadata provider.
+            const imageLoader = await getImageLoader();
+            console.log(`CoreViewer [${viewportId}]: Pre-loading ${imageIds.length} images for metadata...`);
+            try {
+              await Promise.all(
+                imageIds.map((id) => imageLoader.loadAndCacheImage(id))
+              );
+            } catch (preloadErr) {
+              console.warn(`CoreViewer [${viewportId}]: Image pre-load failed, volume creation may fail:`, preloadErr);
+            }
+
             const volumeId = `volume-${viewportId}-${Date.now()}`;
             activeVolumeIdRef.current = volumeId;
 
@@ -367,13 +380,22 @@ export function CoreViewer({
         onImageLoaded?.(true);
 
       } catch (err) {
-        console.error(`CoreViewer [${viewportId}]: Failed to load image stack:`, err);
-        onError?.((err as Error).message);
-        setState(prev => ({ ...prev, loading: false, error: (err as Error).message }));
+        const errorMsg = err instanceof Error
+          ? err.message
+          : (typeof err === 'string' ? err : JSON.stringify(err) || 'Unknown loading error');
+        console.error(`CoreViewer [${viewportId}]: Failed to load image stack:`, errorMsg, err);
+        onError?.(errorMsg);
+        setState(prev => ({ ...prev, loading: false, error: errorMsg }));
       }
     };
 
-    loadData();
+    loadData().catch((uncaught) => {
+      // Prevent unhandled rejection from crashing the Next.js error overlay
+      const msg = uncaught instanceof Error
+        ? uncaught.message
+        : (typeof uncaught === 'string' ? uncaught : JSON.stringify(uncaught) || 'Unknown error');
+      console.error(`CoreViewer [${viewportId}]: Unhandled error in loadData:`, msg);
+    });
 
   }, [loadSignal, imageIds, state.initialized, viewportId, onError, onImageLoaded, mode, localFiles]);
 

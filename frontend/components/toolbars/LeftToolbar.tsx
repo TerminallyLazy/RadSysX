@@ -18,7 +18,7 @@ interface ExtraProps {
   layout: '1x1' | '2x2' | '3x3';
   onLayoutChange: (layout: '1x1' | '2x2' | '3x3') => void;
   onToggleFullscreen: () => void;
-  setIsNovionModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsRadSysXModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 type Props = LeftToolbarProps & ExtraProps;

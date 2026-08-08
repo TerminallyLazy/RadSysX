@@ -24,22 +24,35 @@ model Settings {
 }
 
 model Study {
-  id           String       @id @default(cuid())
-  dicomUrl     String
-  patientId    String
-  patientName  String?
-  studyDate    DateTime
-  modality     String
-  description  String
-  seriesNumber String?
-  numImages    Int          @default(1)
-  metadata     String? // JSON string of additional DICOM metadata
-  user         User         @relation(fields: [userId], references: [id])
-  userId       String
-  annotations  Annotation[]
-  reports      Report[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id               String          @id @default(cuid())
+  dicomUrl         String
+  patientId        String
+  patientName      String?
+  patientRef       String?
+  studyInstanceUID String?         @unique
+  accessionNumber  String?
+  encounterRef     String?
+  archiveRef       String?
+  workflowStatus   String          @default("new")
+  reviewStatus     String          @default("new")
+  priorStudyUIDs   String          @default("[]") // JSON string
+  sourceOfTruth    String          @default("dicomweb")
+  studyDate        DateTime
+  modality         String
+  description      String
+  seriesNumber     String?
+  numImages        Int             @default(1)
+  metadata         String? // JSON string of additional DICOM metadata
+  user             User            @relation(fields: [userId], references: [id])
+  userId           String
+  annotations      Annotation[]
+  reports          Report[]
+  auditEvents      AuditEvent[]
+  aiJobs           AIJob[]
+  derivedResults   DerivedResult[]
+  clinicalTasks    ClinicalTask[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 }
 
 model Annotation {
@@ -56,15 +69,20 @@ model Annotation {
 }
 
 model Report {
-  id         String   @id @default(cuid())
-  study      Study    @relation(fields: [studyId], references: [id])
-  studyId    String
-  content    String // Markdown format
-  findings   String // AI-assisted findings
-  impression String
-  status     String // "DRAFT", "PENDING", "FINAL"
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  study              Study    @relation(fields: [studyId], references: [id])
+  studyId            String
+  diagnosticReportId String?
+  authorUserId       String?
+  reviewerUserId     String?
+  content            String // Markdown format
+  findings           String // AI-assisted findings
+  impression         String
+  derivedObjectRefs  String   @default("[]") // JSON string
+  aiContributionRefs String   @default("[]") // JSON string
+  status             String // "DRAFT", "PENDING", "FINAL"
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model AIAnalysis {
@@ -72,4 +90,105 @@ model AIAnalysis {
   taskId    String   @unique
   result    String // JSON string of analysis result
   createdAt DateTime @default(now())
+}
+
+model AuditEvent {
+  id               String   @id @default(cuid())
+  study            Study?   @relation(fields: [studyId], references: [id])
+  studyId          String?
+  actorUserId      String
+  actorRole        String
+  action           String
+  patientRef       String?
+  studyInstanceUID String?
+  resourceType     String
+  resourceId       String
+  traceId          String
+  sourceIp         String
+  outcome          String
+  occurredAt       DateTime @default(now())
+
+  @@index([studyInstanceUID])
+  @@index([traceId])
+}
+
+model AIJob {
+  id               String   @id @default(cuid())
+  study            Study?   @relation(fields: [studyId], references: [id])
+  studyId          String?
+  studyInstanceUID String
+  seriesInstanceUID String?
+  kind             String
+  workflowMode     String
+  modelId          String
+  modelVersion     String
+  inputHash        String
+  requestedBy      String
+  reviewerDecision String?
+  status           String
+  outputRefs       String   @default("[]") // JSON string
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([studyInstanceUID])
+  @@index([status])
+}
+
+model DerivedResult {
+  id               String   @id @default(cuid())
+  study            Study?   @relation(fields: [studyId], references: [id])
+  studyId          String?
+  studyInstanceUID String
+  seriesInstanceUID String?
+  sopInstanceUID   String?
+  objectType       String
+  storageClass     String
+  contentType      String   @default("application/dicom")
+  payloadRef       String?
+  metadata         String   @default("{}") // JSON string
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([studyInstanceUID])
+}
+
+model ClinicalTask {
+  id               String   @id @default(cuid())
+  study            Study?   @relation(fields: [studyId], references: [id])
+  studyId          String?
+  studyInstanceUID String
+  taskType         String
+  status           String
+  ownerUserId      String?
+  payload          String   @default("{}") // JSON string
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([studyInstanceUID])
+  @@index([status])
+}
+
+model GovernanceDecision {
+  id              String   @id @default(cuid())
+  modelRegistryId String?
+  decisionType    String
+  status          String
+  rationale       String
+  approvedBy      String?
+  evidenceRef     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ModelRegistry {
+  id                  String   @id @default(cuid())
+  modelId             String   @unique
+  version             String
+  intendedUse         String
+  workflowModes       String   @default("[]") // JSON string
+  validationEvidence  String   @default("[]") // JSON string
+  rollbackCriteria    String?
+  active              Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }

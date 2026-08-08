@@ -1,0 +1,22 @@
+test-data/2d/:
+-rw-r--r--@ 1 lazy  staff    89K Oct 18 01:11 144DME_as_F.jpeg
+-rwxr-xr-x@ 1 lazy  staff   213K Oct 18 01:11 C3_EndoCV2021_00462.jpg
+-rw-r--r--@ 1 lazy  staff    16M Oct 18 01:11 ISIC_0015551.jpg
+-rwxr-xr-x@ 1 lazy  staff   759K Oct 18 01:11 LIDC-IDRI-0140_143_280_CT_lung.png
+-rw-r--r--@ 1 lazy  staff   944K Oct 18 01:11 Part_1_516_pathology_breast.png
+-rw-r--r--@ 1 lazy  staff   6.6K Oct 18 01:11 Part_1_516_pathology_breast_inflammatory+cells.png
+-rw-r--r--@ 1 lazy  staff   9.2K Oct 18 01:11 Part_1_516_pathology_breast_neoplastic+cells.png
+-rwxr-xr-x@ 1 lazy  staff   953K Oct 18 01:11 Part_3_226_pathology_breast.png
+-rw-r--r--@ 1 lazy  staff   914K Oct 18 01:11 T0011.jpg
+-rwxr-xr-x@ 1 lazy  staff   386K Oct 18 01:11 TCGA_HT_7856_19950831_8_MRI-FLAIR_brain.png
+-rw-r--r--@ 1 lazy  staff    29K Oct 18 01:11 covid_1585.png
+-rw-r--r--@ 1 lazy  staff   637K Oct 18 01:11 oct.png
+-rw-r--r--@ 1 lazy  staff    15K Oct 18 01:11 oct_mask.png
+
+test-data/nifti/:
+-rwxr-xr-x@ 1 lazy  staff   9.6M Oct 18 01:11 BRATS_397.nii.gz
+-rwxr-xr-x@ 1 lazy  staff    10M Oct 18 01:11 BRATS_422.nii.gz
+-rw-r--r--@ 1 lazy  staff    40M Oct 18 01:11 CT_kidney.nii.gz
+-rwxr-xr-x@ 1 lazy  staff    35M Oct 18 01:11 amos_0328.nii.gz
+-rw-r--r--@ 1 lazy  staff   196B Oct 18 01:10 avg152T1_LR_nifti.nii.gz
+-rw-r--r--@ 1 lazy  staff   1.9M Oct 18 01:11 patient0500_2CH_half_sequence.nii.gz

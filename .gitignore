@@ -1,16 +1,32 @@
+/Users/lazy/Projects/Novion/frontend/.env.local
+frontend/.next/*
+dicom-test-files/*
+!dicom-test-files/AGENTS.md
+test-data/*
+frontend/node_modules/*
+frontend/dist/*
+viewer/dist/*
+frontend/lib/api/.venv/*
+backend/.venv/*
+backend/local-imaging-data/*
+*/.venv/*
+.venv/
+.venv-ai/
 .env.local
 *.pyc
-*.png
+*.db
 *.dcm
 */node_modules/*
 frontend/package-lock.json
 frontend/dist
+viewer/dist
 
 *.code-workspace
 .cursorignore
 .cursor/
 tmp/*
 tmp/
+local-imaging-data/*
 
 __pycache__/
 
@@ -34,6 +50,18 @@ __pycache__/
 # production
 /build
 
+.langgraph*
+
+*.pkl
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.hdf5
+*.hdf
+*.hdf5
+*.hdf5
+
 # misc
 .DS_Store
 *.pem
@@ -53,4 +81,8 @@ next-env.d.ts
 
 public/*
 
-radsysx
+.gitignore
+download-biomedparse-checkpoint.sh
+
+.claude/runtime/logs/stop.log
+.claude/runtime/sessions.jsonl

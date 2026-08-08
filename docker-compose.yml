@@ -1,0 +1,90 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - frontend
+      - viewer
+      - backend
+      - orthanc
+    ports:
+      - "3000:80"
+    volumes:
+      - ./deploy/clinical-stack/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  frontend:
+    image: node:20-bookworm-slim
+    working_dir: /workspace
+    command: >
+      bash -lc "npm install --legacy-peer-deps &&
+      npm run dev --workspace frontend -- --hostname 0.0.0.0 --port 3000"
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: ""
+      NEXT_PUBLIC_VIEWER_BASE_URL: "/viewer"
+      NEXT_PUBLIC_RADSYSX_APP_MODE: "clinical"
+      RADSYSX_APP_MODE: "clinical"
+    volumes:
+      - .:/workspace
+
+  viewer:
+    image: node:20-bookworm-slim
+    working_dir: /workspace
+    command: >
+      bash -lc "npm install --legacy-peer-deps &&
+      npm run dev --workspace viewer"
+    volumes:
+      - .:/workspace
+
+  backend:
+    image: python:3.12-slim
+    working_dir: /workspace
+    command: >
+      bash -lc "pip install --no-cache-dir -r backend/requirements-clinical.txt &&
+      uvicorn backend.server:app --host 0.0.0.0 --port 8000"
+    environment:
+      RADSYSX_APP_MODE: "clinical"
+      RADSYSX_CLINICAL_API_SECRET: "${RADSYSX_CLINICAL_API_SECRET:-radsysx-clinical-local-compose-secret}"
+      RADSYSX_VIEWER_BASE_URL: "http://localhost:3000/viewer"
+      RADSYSX_VIEWER_BASE_PATH: "/viewer"
+      RADSYSX_SESSION_COOKIE_SECURE: "false"
+      RADSYSX_DICOMWEB_PUBLIC_BASE_URL: "/dicom-web"
+      RADSYSX_DICOMWEB_QIDO_ROOT: "/dicom-web"
+      RADSYSX_DICOMWEB_WADO_ROOT: "/dicom-web"
+      RADSYSX_DICOMWEB_WADO_URI_ROOT: "/dicom-web"
+      RADSYSX_DICOMWEB_STOW_ROOT: "/dicom-web"
+      RADSYSX_ALLOWED_ORIGINS: "http://localhost:3000"
+      RADSYSX_ORTHANC_DICOMWEB_URL: "http://orthanc:8042/dicom-web"
+      RADSYSX_ORTHANC_USERNAME: "${RADSYSX_ORTHANC_USERNAME:?Set RADSYSX_ORTHANC_USERNAME}"
+      RADSYSX_ORTHANC_PASSWORD: "${RADSYSX_ORTHANC_PASSWORD:?Set RADSYSX_ORTHANC_PASSWORD}"
+    volumes:
+      - .:/workspace
+
+  orthanc:
+    image: jodogne/orthanc-plugins:1.12.10
+    environment:
+      RADSYSX_ORTHANC_USERNAME: "${RADSYSX_ORTHANC_USERNAME:?Set RADSYSX_ORTHANC_USERNAME}"
+      RADSYSX_ORTHANC_PASSWORD: "${RADSYSX_ORTHANC_PASSWORD:?Set RADSYSX_ORTHANC_PASSWORD}"
+    entrypoint:
+      - /bin/sh
+      - /usr/local/bin/render-orthanc-config.sh
+    volumes:
+      - ./deploy/clinical-stack/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - ./deploy/clinical-stack/render-orthanc-config.sh:/usr/local/bin/render-orthanc-config.sh:ro
+      - orthanc-storage:/var/lib/orthanc/db
+
+  orthanc-seed:
+    image: python:3.12-slim
+    depends_on:
+      - orthanc
+    working_dir: /workspace
+    command: >
+      bash -lc "pip install --no-cache-dir httpx pydicom &&
+      python backend/clinical/seed_orthanc.py"
+    environment:
+      RADSYSX_ORTHANC_DICOMWEB_URL: "http://orthanc:8042/dicom-web"
+      RADSYSX_ORTHANC_USERNAME: "${RADSYSX_ORTHANC_USERNAME:?Set RADSYSX_ORTHANC_USERNAME}"
+      RADSYSX_ORTHANC_PASSWORD: "${RADSYSX_ORTHANC_PASSWORD:?Set RADSYSX_ORTHANC_PASSWORD}"
+    volumes:
+      - .:/workspace
+
+volumes:
+  orthanc-storage:

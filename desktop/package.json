@@ -1,0 +1,29 @@
+{
+  "name": "@radsysx/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "bootstrap": "node ./scripts/bootstrap.mjs",
+    "dev": "electron --no-sandbox .",
+    "dev:frontend": "node ./scripts/dev-frontend.mjs",
+    "doctor": "node ./scripts/doctor.mjs",
+    "launch": "node ./scripts/launch.mjs",
+    "smoke:import": "node ./scripts/import-smoke.mjs",
+    "smoke:launch": "node ./scripts/launch.mjs --smoke --no-bootstrap",
+    "smoke:local-start": "node ./scripts/ui-import-smoke.mjs --local-start",
+    "smoke:local-start-drop": "node ./scripts/ui-import-smoke.mjs --local-start-drop",
+    "smoke:local-start-nondicom": "node ./scripts/ui-import-smoke.mjs --local-start-nondicom",
+    "smoke:picker-files-import": "node ./scripts/ui-import-smoke.mjs --picker-files",
+    "smoke:picker-large-import": "node ./scripts/ui-import-smoke.mjs --picker-large-folder",
+    "smoke:picker-many-import": "node ./scripts/ui-import-smoke.mjs --picker-many-folder",
+    "smoke:picker-import": "node ./scripts/ui-import-smoke.mjs --picker-folder",
+    "smoke:ui-import": "node ./scripts/ui-import-smoke.mjs",
+    "smoke:viewer-launch": "node ./scripts/ui-import-smoke.mjs --viewer-launch",
+    "smoke": "node ./scripts/startup-smoke.mjs"
+  },
+  "devDependencies": {
+    "electron": "^39.2.6"
+  }
+}
