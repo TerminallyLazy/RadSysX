@@ -13,6 +13,20 @@ export type AIJobStatus =
   | "completed"
   | "failed"
   | "withdrawn";
+export type AISidebarLaneStatus =
+  | "planned"
+  | "stub"
+  | "available"
+  | "disabled";
+export type AISidebarOrchestrationMode =
+  | "stub"
+  | "local"
+  | "api"
+  | "hybrid";
+export type AISidebarInputSource =
+  | "typed"
+  | "voice"
+  | "context";
 export type ReportStatus =
   | "new"
   | "in_review"
@@ -72,6 +86,148 @@ export type ViewerFeatureFlags = {
   derivedPanel: boolean;
   auditPanel: boolean;
   directStow: boolean;
+};
+
+export type LocalImagingImportedStudy = {
+  studyInstanceUID: string;
+  accessionNumber: string;
+  modality: string;
+  description: string;
+  archiveRef: string;
+  fileCount: number;
+  formats: string[];
+  warnings: string[];
+};
+
+export type LocalImagingImportResponse = {
+  importId: string;
+  importedStudies: LocalImagingImportedStudy[];
+  acceptedFiles: number;
+  rejectedFiles: number;
+  warnings: string[];
+};
+
+export type LocalImagingStudyAsset = {
+  assetId: string;
+  relativePath: string;
+  format: string;
+  modality?: string | null;
+  size: number;
+  studyInstanceUID?: string | null;
+  seriesInstanceUID?: string | null;
+  sopInstanceUID?: string | null;
+  analysisSupported: boolean;
+  viewerSupported: boolean;
+  previewSupported: boolean;
+  previewUrl?: string | null;
+  previewSlices: Record<string, number>;
+  defaultPreviewAxis?: string | null;
+  defaultPreviewSlice?: number | null;
+};
+
+export type LocalImagingStudyFinding = {
+  label: string;
+  value: string;
+};
+
+export type LocalImagingStudyAssetsResponse = {
+  studyInstanceUID: string;
+  archiveRef: string;
+  modality: string;
+  description: string;
+  fileCount: number;
+  formats: string[];
+  summary: string;
+  findings: LocalImagingStudyFinding[];
+  assets: LocalImagingStudyAsset[];
+  warnings: string[];
+};
+
+export type LocalImagingAssetAnalysis = {
+  assetId: string;
+  relativePath: string;
+  format: string;
+  summary: string;
+  metrics: LocalImagingStudyFinding[];
+  warnings: string[];
+};
+
+export type LocalImagingStudyAnalysisResponse = {
+  studyInstanceUID: string;
+  analyzedAt: string;
+  summary: string;
+  analyses: LocalImagingAssetAnalysis[];
+  warnings: string[];
+};
+
+export type BiomedParseDemoCapabilities = {
+  enabled: boolean;
+  ready: boolean;
+  reason?: string | null;
+  modelId: string;
+  license: string;
+  source: "included_ct_amos";
+  supportedPromptIds: number[];
+  defaultPromptIds: number[];
+  researchOnly: boolean;
+  outputNote: string;
+};
+
+export type BiomedParseDemoRunRequest = {
+  source?: "included_ct_amos";
+  promptIds?: number[];
+  sliceBatchSize?: number;
+  studyInstanceUID?: string;
+  traceId?: string;
+};
+
+export type BiomedParseDemoLabelSummary = {
+  label: number;
+  prompt: string;
+  voxelCount: number;
+  boundingBox?: number[] | null;
+  color: string;
+};
+
+export type BiomedParseDemoTiming = {
+  modelInstantiatedSeconds?: number | null;
+  modelLoadedSeconds?: number | null;
+  inferenceSeconds?: number | null;
+};
+
+export type BiomedParseDemoRuntime = {
+  python?: string | null;
+  torchVersion?: string | null;
+  torchCuda?: string | null;
+  device?: string | null;
+  gpuName?: string | null;
+  peakVramGib?: number | null;
+};
+
+export type BiomedParseDemoArtifacts = {
+  maskNpzUrl: string;
+  previewPngUrl: string;
+};
+
+export type BiomedParseDemoRunResponse = {
+  status: "completed";
+  runId: string;
+  source: "included_ct_amos";
+  modelId: string;
+  modelVersion: string;
+  license: string;
+  promptIds: number[];
+  inputShape: number[];
+  maskShape: number[];
+  nonzeroVoxels: number;
+  previewSlice: number;
+  labels: BiomedParseDemoLabelSummary[];
+  timings: BiomedParseDemoTiming;
+  runtime: BiomedParseDemoRuntime;
+  artifacts: BiomedParseDemoArtifacts;
+  warnings: string[];
+  studyInstanceUID?: string | null;
+  traceId?: string | null;
 };
 
 export type ViewerRuntime = {
@@ -178,6 +334,82 @@ export type AIJobRequest = {
   traceId?: string;
 };
 
+export type AISidebarModelLane = {
+  lane: string;
+  status: AISidebarLaneStatus;
+  role: string;
+  modelId?: string | null;
+};
+
+export type AISidebarCapabilities = {
+  backendBound: boolean;
+  voiceFirst: boolean;
+  textComposer: boolean;
+  contextAttachments: boolean;
+  orchestrationMode: AISidebarOrchestrationMode;
+  eventTransport: "http" | "sse" | "websocket";
+  audioInputModes: string[];
+  modelLanes: AISidebarModelLane[];
+  safetyNote: string;
+};
+
+export type AISidebarViewerContext = {
+  studyInstanceUID?: string | null;
+  seriesInstanceUID?: string | null;
+  sopInstanceUID?: string | null;
+  route?: string | null;
+  privacyClass?: "local-only" | "deidentified" | "phi-bearing" | "unknown";
+};
+
+export type AISidebarSessionCreateRequest = {
+  viewerContext?: AISidebarViewerContext | null;
+  traceId?: string | null;
+};
+
+export type AISidebarSessionResponse = {
+  sessionId: string;
+  status: "ready" | "fallback";
+  createdAt: string;
+  backendBound: boolean;
+  voiceFirst: boolean;
+  orchestrationMode: AISidebarOrchestrationMode;
+  message: string;
+};
+
+export type AISidebarAttachment = {
+  id: string;
+  kind: string;
+  label: string;
+  metadata: Record<string, unknown>;
+};
+
+export type AISidebarMessageRequest = {
+  text?: string;
+  inputSource?: AISidebarInputSource;
+  attachments?: AISidebarAttachment[];
+  viewerContext?: AISidebarViewerContext | null;
+  traceId?: string | null;
+};
+
+export type AISidebarAssistantMessage = {
+  role: "assistant";
+  text: string;
+  createdAt: string;
+  modelId: string;
+  modelVersion: string;
+};
+
+export type AISidebarTurnResponse = {
+  sessionId: string;
+  turnId: string;
+  status: "completed";
+  assistantMessage: AISidebarAssistantMessage;
+  route: string[];
+  auditTraceId: string;
+  persisted: boolean;
+  warnings: string[];
+};
+
 export type DerivedDicomObject = {
   objectType: string;
   studyInstanceUID: string;
@@ -234,6 +466,7 @@ export type AuditEvent = {
   actorUserId: string;
   actorRole: string;
   action:
+    | "IMPORT_STUDY"
     | "SEARCH_STUDY"
     | "OPEN_STUDY"
     | "VIEW_SERIES"
@@ -269,6 +502,7 @@ export type StudyWorkspace = {
 export type ClinicalPlatformConfig = {
   mode: AppMode;
   experimentalRoutesEnabled: boolean;
+  localImagingEnabled: boolean;
   viewerBaseUrl: string;
   viewerKind: string;
   viewerBasePath: string;

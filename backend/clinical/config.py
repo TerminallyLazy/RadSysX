@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import cast
 
 from .contracts import AppMode, AuthMode, WorkflowMode
@@ -87,6 +88,18 @@ class ClinicalPlatformSettings:
             WorkflowMode.SHADOW,
         )
         self.ai_allow_active = self._read_bool("RADSYSX_AI_ALLOW_ACTIVE", False)
+        self.local_imaging_enabled = self._read_bool(
+            "RADSYSX_LOCAL_IMAGING_ENABLED",
+            False,
+        )
+        self.local_imaging_storage_dir = os.getenv(
+            "RADSYSX_LOCAL_IMAGING_STORAGE_DIR",
+            str(Path(__file__).resolve().parents[1] / "local-imaging-data"),
+        )
+        self.local_imaging_max_files = int(os.getenv("RADSYSX_LOCAL_IMAGING_MAX_FILES", "750"))
+        self.local_imaging_max_file_bytes = int(
+            os.getenv("RADSYSX_LOCAL_IMAGING_MAX_FILE_BYTES", str(1024 * 1024 * 512)),
+        )
 
         if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
             raise RuntimeError(

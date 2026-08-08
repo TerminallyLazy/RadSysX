@@ -100,7 +100,10 @@ async function determineImageFormat(url: string): Promise<string> {
     
     // If no clear extension, check content type
     const response = await axios.head(url);
-    const contentType = response.headers['content-type'];
+    const rawContentType = response.headers['content-type'];
+    const contentType = Array.isArray(rawContentType)
+      ? rawContentType.join(';').toLowerCase()
+      : String(rawContentType ?? '').toLowerCase();
     
     if (contentType.includes('application/dicom')) return 'dicom';
     if (contentType.includes('image/png')) return 'png';
@@ -240,4 +243,4 @@ export async function handleOpenISearch(params: string): Promise<string> {
     console.error('Error in handleOpenISearch:', error);
     return JSON.stringify({ error: 'Failed to search OpenI database' });
   }
-} 
+}

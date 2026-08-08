@@ -13,6 +13,13 @@ from fastapi import HTTPException
 from .config import ClinicalPlatformSettings
 from .contracts import (
     AIJobCreateRequest,
+    AISidebarAssistantMessage,
+    AISidebarCapabilities,
+    AISidebarMessageRequest,
+    AISidebarModelLane,
+    AISidebarSessionCreateRequest,
+    AISidebarSessionResponse,
+    AISidebarTurnResponse,
     AuditAction,
     AuditEvent,
     AuditStudyResponse,
@@ -246,6 +253,127 @@ class ClinicalPlatformService:
         )
         return record
 
+    def get_ai_sidebar_capabilities(self) -> AISidebarCapabilities:
+        return AISidebarCapabilities(
+            backend_bound=True,
+            voice_first=True,
+            text_composer=True,
+            context_attachments=True,
+            orchestration_mode="stub",
+            event_transport="http",
+            audio_input_modes=[
+                "browser_speech_recognition",
+                "planned_backend_streaming_asr",
+            ],
+            model_lanes=[
+                AISidebarModelLane(
+                    lane="asr",
+                    status="stub",
+                    role="Voice capture is currently browser-side; Nemotron streaming ASR is the planned local worker.",
+                    model_id="nvidia/nemotron-3.5-asr-streaming-0.6b",
+                ),
+                AISidebarModelLane(
+                    lane="reasoning",
+                    status="planned",
+                    role="Primary radiology chat, report drafting, and tool planning lane.",
+                    model_id="google/medgemma-1.5-4b-it",
+                ),
+                AISidebarModelLane(
+                    lane="specialists",
+                    status="planned",
+                    role="Pillar/Sybil specialist prediction lanes for supported modality-specific tasks.",
+                    model_id="YalaLab/Pillar0-Sybil-1.5",
+                ),
+                AISidebarModelLane(
+                    lane="segmentation",
+                    status="stub",
+                    role="BioMedParse can run the bundled CT demo; patient-study segmentation is still a planned adapter.",
+                    model_id="microsoft/BiomedParse",
+                ),
+            ],
+            safety_note=(
+                "This is a backend-bound interaction spine. Current replies are deterministic stubs; "
+                "no diagnostic model output, DICOM SEG persistence, or clinical report update is performed."
+            ),
+        )
+
+    def create_ai_sidebar_session(
+        self,
+        request: AISidebarSessionCreateRequest,
+        actor: SessionClaims,
+        source_ip: str,
+    ) -> AISidebarSessionResponse:
+        del source_ip
+        now = self._format_dt(utc_now())
+        study_uid = request.viewer_context.study_instance_uid if request.viewer_context else None
+        message = (
+            "Backend AI session ready for the current study context."
+            if study_uid
+            else "Backend AI session ready for local viewer context."
+        )
+        return AISidebarSessionResponse(
+            session_id=f"ais-{uuid4().hex}",
+            status="ready",
+            created_at=now,
+            backend_bound=True,
+            voice_first=True,
+            orchestration_mode="stub",
+            message=message,
+        )
+
+    def submit_ai_sidebar_message(
+        self,
+        session_id: str,
+        request: AISidebarMessageRequest,
+        actor: SessionClaims,
+        source_ip: str,
+    ) -> AISidebarTurnResponse:
+        if not session_id.startswith("ais-"):
+            raise HTTPException(status_code=400, detail="Invalid AI sidebar session id.")
+        if not request.text.strip() and not request.attachments:
+            raise HTTPException(status_code=400, detail="AI sidebar messages require text or context attachments.")
+
+        now = self._format_dt(utc_now())
+        turn_id = f"aiturn-{uuid4().hex}"
+        trace_id = request.trace_id or f"trace-{uuid4()}"
+        study_uid = request.viewer_context.study_instance_uid if request.viewer_context else None
+
+        if study_uid:
+            self._repository.add_audit_event(
+                self._build_audit_event(
+                    actor_user_id=actor.username,
+                    actor_role=actor.primary_role,
+                    action=AuditAction.RUN_AI,
+                    study_instance_uid=study_uid,
+                    resource_type=ResourceType.AI_JOB,
+                    resource_id=turn_id,
+                    trace_id=trace_id,
+                    source_ip=source_ip,
+                )
+            )
+
+        return AISidebarTurnResponse(
+            session_id=session_id,
+            turn_id=turn_id,
+            status="completed",
+            assistant_message=AISidebarAssistantMessage(
+                text=self._build_ai_sidebar_stub_reply(request),
+                created_at=now,
+                model_id="radsysx-ai-sidebar-orchestrator",
+                model_version="stub-2026-06-13",
+            ),
+            route=[
+                "voice" if request.input_source == "voice" else "composer",
+                "backend-session",
+                "stub-orchestrator",
+            ],
+            audit_trace_id=trace_id,
+            persisted=False,
+            warnings=[
+                "Stub response only; model inference and clinical persistence are not active for this endpoint yet.",
+            ],
+        )
+
     async def store_derived_results(
         self,
         request: DerivedResultRequest,
@@ -343,7 +471,7 @@ class ClinicalPlatformService:
             stow_root=self._settings.dicomweb_stow_root if direct_stow_enabled else "",
             auth_mode=self._settings.auth_mode,
             feature_flags=ViewerFeatureFlags(
-                local_file_import=False,
+                local_file_import=self._settings.local_imaging_enabled,
                 report_panel=True,
                 ai_panel=True,
                 derived_panel=True,
@@ -409,3 +537,15 @@ class ClinicalPlatformService:
     @staticmethod
     def _format_dt(value) -> str:
         return to_iso_z(value)
+
+    @staticmethod
+    def _build_ai_sidebar_stub_reply(request: AISidebarMessageRequest) -> str:
+        attachment_labels = ", ".join(f"@{item.label}" for item in request.attachments)
+        source = "voice" if request.input_source == "voice" else "composer"
+        context_part = f" Attached context: {attachment_labels}." if attachment_labels else ""
+        return (
+            f"{source.capitalize()} turn received by the RadSysX backend."
+            f"{context_part} The next runtime step is Nemotron ASR feeding a MedGemma-led "
+            "orchestrator, with Pillar/Sybil specialist calls and BioMedParse segmentation "
+            "fallbacks routed through explicit tools."
+        )

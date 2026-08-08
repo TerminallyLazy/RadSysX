@@ -20,14 +20,35 @@ function readProcessEnv(name: string): string | undefined {
   return process.env[name];
 }
 
+function readPublicAppModeEnv(): string | undefined {
+  if (typeof process === "undefined" || !process.env) {
+    return undefined;
+  }
+  return process.env.NEXT_PUBLIC_RADSYSX_APP_MODE;
+}
+
+function readPublicBackendUrlEnv(): string | undefined {
+  if (typeof process === "undefined" || !process.env) {
+    return undefined;
+  }
+  return process.env.NEXT_PUBLIC_BACKEND_URL;
+}
+
+function readPublicViewerUrlEnv(): string | undefined {
+  if (typeof process === "undefined" || !process.env) {
+    return undefined;
+  }
+  return process.env.NEXT_PUBLIC_VIEWER_BASE_URL;
+}
+
 export function getAppMode(): AppMode {
   return normalizeMode(
-    readProcessEnv("RADSYSX_APP_MODE") ?? readProcessEnv("NEXT_PUBLIC_RADSYSX_APP_MODE"),
+    readProcessEnv("RADSYSX_APP_MODE") ?? readPublicAppModeEnv(),
   );
 }
 
 export function getPublicAppMode(): AppMode {
-  return normalizeMode(readProcessEnv("NEXT_PUBLIC_RADSYSX_APP_MODE"));
+  return normalizeMode(readPublicAppModeEnv());
 }
 
 export function isResearchMode(): boolean {
@@ -39,7 +60,7 @@ export function isExperimentalImagingEnabled(): boolean {
 }
 
 export function getBackendBaseUrl(): string {
-  const explicit = readProcessEnv("NEXT_PUBLIC_BACKEND_URL");
+  const explicit = readPublicBackendUrlEnv() ?? readProcessEnv("NEXT_PUBLIC_BACKEND_URL");
   if (explicit) {
     return explicit.replace(/\/$/, "");
   }
@@ -52,6 +73,6 @@ export function getBackendBaseUrl(): string {
 }
 
 export function getViewerBaseUrl(): string {
-  const explicit = readProcessEnv("NEXT_PUBLIC_VIEWER_BASE_URL");
+  const explicit = readPublicViewerUrlEnv() ?? readProcessEnv("NEXT_PUBLIC_VIEWER_BASE_URL");
   return (explicit ?? "/viewer").replace(/\/$/, "");
 }

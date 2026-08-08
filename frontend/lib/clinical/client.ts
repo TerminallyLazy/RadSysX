@@ -1,1 +1,1 @@
-export { clinicalApi, createClinicalApi } from "@radsysx/clinical-web/client";
+export { clinicalApi, createClinicalApi, resolveClinicalApiUrl } from "@radsysx/clinical-web/client";

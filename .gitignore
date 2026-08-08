@@ -1,15 +1,17 @@
-package-lock.json
 /Users/lazy/Projects/Novion/frontend/.env.local
 frontend/.next/*
 dicom-test-files/*
+!dicom-test-files/AGENTS.md
 test-data/*
 frontend/node_modules/*
 frontend/dist/*
 viewer/dist/*
 frontend/lib/api/.venv/*
 backend/.venv/*
+backend/local-imaging-data/*
 */.venv/*
 .venv/
+.venv-ai/
 .env.local
 *.pyc
 *.db
@@ -24,6 +26,7 @@ viewer/dist
 .cursor/
 tmp/*
 tmp/
+local-imaging-data/*
 
 __pycache__/
 

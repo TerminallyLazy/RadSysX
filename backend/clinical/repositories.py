@@ -13,6 +13,7 @@ from .contracts import (
     DerivedDicomObject,
     DerivedResultRecord,
     LaunchSessionRecord,
+    LocalImagingImportedStudy,
     ReportDraftRequest,
     ReportRecord,
     ReportStatus,
@@ -53,6 +54,34 @@ class ClinicalRepository:
         with self._session_factory() as session:
             row = session.get(StudyModel, study_uid)
             return self._to_worklist_row(row) if row else None
+
+    def register_local_imported_study(self, imported: LocalImagingImportedStudy) -> WorklistRow:
+        with self._session_factory() as session:
+            now = datetime.utcnow()
+            model = session.get(StudyModel, imported.study_instance_uid)
+            if model is None:
+                model = StudyModel(
+                    study_instance_uid=imported.study_instance_uid,
+                    created_at=now,
+                )
+                session.add(model)
+
+            model.accession_number = imported.accession_number
+            model.patient_ref = "Patient/local-import"
+            model.modality = imported.modality
+            model.description = imported.description
+            model.status = ReportStatus.NEW.value
+            model.archive_ref = imported.archive_ref
+            model.encounter_ref = "Encounter/local-import"
+            model.prior_study_uids = []
+            model.triage_score = None
+            model.workflow_status = ReportStatus.NEW.value
+            model.review_status = ReportStatus.NEW.value
+            model.source_of_truth = "local-import"
+            model.last_updated_at = now
+            session.commit()
+            session.refresh(model)
+            return self._to_worklist_row(model)
 
     def create_launch_session(
         self,

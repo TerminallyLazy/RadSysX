@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node ./scripts/build-ohif-dist.mjs",
     "dev": "npm run build && http-server ./dist -p 3001 -c-1",
+    "test:fhir-bridge": "node ./scripts/test-fhir-bridge.mjs",
     "type-check": "tsc --noEmit -p ./tsconfig.json"
   },
   "dependencies": {
@@ -13,7 +14,9 @@
     "@ohif/app": "3.11.1"
   },
   "devDependencies": {
+    "dcmjs": "0.43.1",
     "http-server": "^14.1.1",
-    "typescript": "^5.3.2"
+    "typescript": "^5.3.2",
+    "webpack": "5.95.0"
   }
 }
