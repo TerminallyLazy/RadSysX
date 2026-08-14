@@ -100,7 +100,7 @@ langchain-community==0.4.1
 langchain-core>=1.2.0
 # These older provider/tooling add-ons are not imported by the shipped runtime
 # and routinely constrain the core LangChain stack.
-langchain-openai>=1.1.0
+langchain-openai>=1.1.14
 langsmith==0.8.18
 langdetect==1.0.9
 langgraph>=1.0.0
