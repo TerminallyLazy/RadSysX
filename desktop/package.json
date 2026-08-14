@@ -24,6 +24,6 @@
     "smoke": "node ./scripts/startup-smoke.mjs"
   },
   "devDependencies": {
-    "electron": "^39.2.6"
+    "electron": "^43.0.0"
   }
 }
