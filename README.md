@@ -1,12 +1,11 @@
-<p align="center">
-  <img src="./RadSysX-Logo.png" alt="RadSysX logo" width="280" />
-</p>
+![](./RadSysX-Logo.png)
 
-<p align="center">
-  Governed clinical imaging workflows, research experimentation, and agent-assisted medical reasoning.
-</p>
+---
+> #### **Governed clinical imaging workflows, research experimentation, and agent-assisted medical reasoning.**
+---
 
-RadSysX is a medical imaging and analysis platform with two distinct product surfaces:
+
+**RadSysX** is a medical imaging and analysis platform with two distinct product surfaces:
 
 - `clinical`: the governed migration target, built around FastAPI contracts, worklist-driven launch, opaque viewer sessions, audited workflow state, and a dedicated OHIF viewer runtime.
 - `research`: the experimentation surface for prototype workflows, a LangGraph/deepagents-based multi-agent stack, MCP/FHIR integrations, and imaging/AI exploration that is explicitly not the clinical source of truth.
