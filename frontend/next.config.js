@@ -40,7 +40,10 @@ const nextConfig = {
       // Client-side polyfills for Cornerstone3D and DICOM dependencies
       buffer: 'buffer',
       'process/browser': 'process/browser',
-      util: 'util',
+      util: {
+        browser: 'util',
+        node: 'node:util',
+      },
     },
   },
 
