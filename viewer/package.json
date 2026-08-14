@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit -p ./tsconfig.json"
   },
   "dependencies": {
-    "@ohif/app": "3.12.12",
+    "@ohif/app": "3.13.4",
     "@radsysx/clinical-web": "file:../packages/clinical-web"
   },
   "devDependencies": {
