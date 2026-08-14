@@ -2,8 +2,6 @@
   <img src="./RadSysX-Logo.png" alt="RadSysX logo" width="280" />
 </p>
 
-<h1 align="center">RadSysX</h1>
-
 <p align="center">
   Governed clinical imaging workflows, research experimentation, and agent-assisted medical reasoning.
 </p>
