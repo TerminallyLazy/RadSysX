@@ -39,3 +39,5 @@ None.
 - `runner.py` validates the snapshot and rebuilds its annotated review plan before dispatch. At most two workers evaluate 40 pairs, with a 10-second attempt and 60-second snapshot ceiling, one identical-byte retry, interruptible backoff and five-second cleanup.
 - Requests and attempt-start records are committed before dispatch; outcomes precede assessments. Storage failures stop scheduling. Cancellation, expiry, provider failure and semantic labels remain distinct.
 - Explicit resume reuses completed assessments only when snapshot, unit, evidence, model, rubric and request identities match. Prior attempts remain auditable; unfinished/submitted attempts without usage retain unknown billing.
+
+- `gemini.py` is a direct, single-turn `gemini-3.8-flash` reviewer. It receives the same claim/sections and rubric, with no research graph, tools, history, reference labels or cached context. It validates the resolved model and label, retains prompt/output/thinking usage separately and never invents probabilities. Frozen experiments must supply an expected resolved model; initial development defaults are temperature 1, 4000 output tokens and medium thinking.
