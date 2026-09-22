@@ -41,3 +41,10 @@ None.
 - Explicit resume reuses completed assessments only when snapshot, unit, evidence, model, rubric and request identities match. Prior attempts remain auditable; unfinished/submitted attempts without usage retain unknown billing.
 
 - `gemini.py` is a direct, single-turn `gemini-3.8-flash` reviewer. It receives the same claim/sections and rubric, with no research graph, tools, history, reference labels or cached context. It validates the resolved model and label, retains prompt/output/thinking usage separately and never invents probabilities. Frozen experiments must supply an expected resolved model; initial development defaults are temperature 1, 4000 output tokens and medium thinking.
+
+## Human references and comparison
+
+- `study.py` binds case identity to immutable snapshots/pairs, checks PMID/topic partitions, and distinguishes input readiness from human-label readiness. The real target is 200 pairs, at least 50 PMIDs, 50 development and 150 held-out cases. Synthetic fixtures cannot satisfy it.
+- Reference freeze requires distinct, qualified, blinded reviewer attestations. Agreement resolves directly; disagreement requires a separate qualified adjudicator or remains unresolved. Review revisions are new artifacts. Hashes prove local integrity, not medical truth or reviewer identity.
+- `metrics.py` reports explicit denominators, ordered five-label matrices, per-label precision/recall, failures and unreviewed reference contradictions, own-completed and paired-intersection results. Intervals use 2,000 deterministic topic-family resamples; insufficient groups/denominators remain unavailable. Latency quantiles use nearest rank. Missing pricing/usage remains unknown, and cached assessments are excluded from fresh latency.
+- Held-out comparisons require frozen experiment, model, resolved version, rubric/configuration and limit identities. Reports never automatically promote an evaluator or modify answers.

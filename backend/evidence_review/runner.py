@@ -38,7 +38,7 @@ def _utc():
 
 async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Evaluator,
                             store: ArtifactStore, limits: Limits, cancel: asyncio.Event,
-                            resume: RunView | None = None) -> RunResult:
+                            resume: RunView | None = None, experiment_sha256: str | None = None) -> RunResult:
     snapshot = load_snapshot(canonical_json(snapshot.model_dump(mode="json")), limits=limits)
     annotations = tuple(SpanAnnotation(start=u.start,end=u.end,citation_spans=u.citation_spans)
                         for u in plan.units if u.origin == "curated")
@@ -46,6 +46,7 @@ async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Ev
     if expected != plan or (resume and (resume.snapshot is None or resume.snapshot != snapshot)):
         raise ValueError("evaluation_input_mismatch")
     loop = asyncio.get_running_loop()
+    started_at = _utc()
     started = loop.time()
     deadline = started + limits.snapshot_seconds
     failure = None
@@ -91,6 +92,8 @@ async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Ev
     manifest["plan_ref"] = record(plan,"plan")
     manifest["evaluator"] = adapter.evaluator_id
     manifest["model"] = adapter.model
+    manifest["experiment_sha256"] = experiment_sha256
+    manifest["config"] = getattr(adapter,"config",{})
     manifest["limits"] = limits.model_dump(mode="json")
     # Keep prior request bytes and attempts auditable, including interrupted billing.
     if resume:
@@ -246,7 +249,9 @@ async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Ev
         evaluator=adapter.evaluator_id,model=adapter.model,limits=limits,
         assessments=tuple(assessments[p.pair_id] for p in plan.pairs),coverage=plan.coverage,
         excluded_pairs=plan.excluded_pairs,attempts=tuple(attempts.values()),evaluator_failure=failure,
-        elapsed_seconds=loop.time()-started,finalization_seconds=loop.time()-cleanup_started)
+        elapsed_seconds=loop.time()-started,finalization_seconds=loop.time()-cleanup_started,
+        started_at=started_at,experiment_sha256=experiment_sha256,
+        evaluator_config_sha256=sha256_bytes(canonical_json({"evaluator":adapter.evaluator_id,"model":adapter.model,"config":getattr(adapter,"config",{})})))
     manifest["result_ref"] = record(result,"result")
     persist()
     return result

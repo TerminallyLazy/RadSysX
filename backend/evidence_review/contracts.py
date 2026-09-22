@@ -282,6 +282,9 @@ class Assessment(Record):
 
 
 class RunResult(Record):
+    started_at: AwareDatetime | None = None
+    experiment_sha256: Hash | None = None
+    evaluator_config_sha256: Hash | None = None
     run_id: Identifier
     snapshot_sha256: Hash
     evaluator: Identifier
