@@ -2491,7 +2491,7 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   }
   if(phase==='delete') {
     const root=await counters();
-    assert(root.privateRuns===2,'Expected two private reviews before deletion');
+    assert(root.privateRuns===3,'Expected three private reviews before deletion');
     // Use the visible saved-history deletion action, accepting its synthetic-only dialog.
     panel.querySelector('[data-action="history"]').click();
     await wait(()=>panel.querySelector(`[data-action="clear-history"][data-id="${sid}"]`),'Saved history deletion missing');
@@ -2537,6 +2537,14 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   assert((await api(`sidebar/evidence-reviews/${secondSummary.reviewId}`)).status==='reviewing','End voice cancelled independent review');
   button(second,'cancel').click();await wait(()=>second.textContent.includes('Cancelled'),'Explicit review cancellation failed');
   assert((await api(`sidebar/evidence-reviews/${secondSummary.reviewId}`)).unknownUsageAttempts===1,'Cancelled submitted attempt lost unknown usage');
+  assert(!button(second,'prepare').hidden,'Cancelled review has no fresh preparation action');
+  button(second,'prepare').click();
+  await wait(()=>second.textContent.includes('Ready to review'),'Fresh abstract preparation failed');
+  const freshSummary=(await api(`sidebar/sessions/${sid}/evidence-reviews`)).reviews.find(r=>r.toolCallId==='smoke-research-two');
+  assert(freshSummary.reviewId!==secondSummary.reviewId,'Fresh preparation reused cancelled review');
+  assert((await api(`sidebar/evidence-reviews/${secondSummary.reviewId}`)).status==='cancelled','Fresh preparation replaced prior receipt');
+  assert(second.querySelector('[data-evidence-confirmation]').value==='' && button(second,'start').disabled,'Fresh preview inherited text confirmation');
+  assert((await counters()).submitted===2,'Fresh abstract preparation inferred before confirmation');
   panel.querySelector('[data-action="history"]').click();await wait(()=>panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`),'History action missing');
   panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`).click();
   await wait(()=>panel.querySelector('[data-role="status"]').textContent.includes('Viewing saved conversation'),'Saved history did not open');
@@ -2564,5 +2572,5 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   // Expand the real receipt for the retained synthetic screenshot.
   card('smoke-research-one').querySelectorAll('details').forEach(node=>{if(node.querySelector('summary')?.textContent.includes('Execution receipt'))node.open=true;});
   card('smoke-research-one').scrollIntoView({block:'start'});
-  return {...prior,status:receipt.status,resolvedModel:receipt.assessments[0].resolvedModel,submitted:2,completedPairs:1,excludedSubmitted:false,unknownUsageAttempts:1,unchangedAnswer:true,reopenWithoutInference:true,endVoiceIndependent:true,staleHistoryReplyDiscarded:true,geometry,nvidiaModelCount:catalog.models.length};
+  return {...prior,status:receipt.status,resolvedModel:receipt.assessments[0].resolvedModel,submitted:2,completedPairs:1,excludedSubmitted:false,unknownUsageAttempts:1,unchangedAnswer:true,reopenWithoutInference:true,repreparedWithoutInference:true,endVoiceIndependent:true,staleHistoryReplyDiscarded:true,geometry,nvidiaModelCount:catalog.models.length};
 }

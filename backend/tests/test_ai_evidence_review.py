@@ -417,6 +417,45 @@ def test_shutdown_before_worker_starts_is_interrupted(review):
     asyncio.run(scenario())
 
 
+def test_retry_after_shutdown_before_evaluation_initialization(review):
+    async def scenario():
+        from backend.clinical.ai_evidence_contracts import EvidenceRetryRequest
+        detail=await ready(review)
+        await review.service.start(review.actor,detail.review_id,start_request(detail))
+        await review.service.shutdown()
+        interrupted=review.service.get(review.actor,detail.review_id)
+        assert interrupted.status=='interrupted' and interrupted.selected_unit_ids
+        assert not review.http.submitted
+        await review.service.retry(review.actor,detail.review_id,EvidenceRetryRequest(
+            idempotency_key='restart-retry',preview_sha256=detail.preview_sha256,confirmation='synthetic'))
+        await review.service.jobs[detail.review_id].task
+        result=review.service.get(review.actor,detail.review_id)
+        assert result.status=='completed',result.reason
+        assert result.selected_unit_ids==interrupted.selected_unit_ids
+        assert result.original_answer==detail.original_answer
+        assert len(review.http.submitted)==1
+    asyncio.run(scenario())
+
+
+def test_retry_never_treats_an_evaluator_manifest_as_preparation(review):
+    async def scenario():
+        from backend.clinical.ai_evidence_contracts import EvidenceRetryRequest
+        detail=await ready(review)
+        await review.service.start(review.actor,detail.review_id,start_request(detail))
+        await review.service.shutdown()
+        row=review.service.repository.owned(review.actor,detail.review_id)
+        with review.service.artifacts(row).open_run() as store:
+            manifest=dict(store.load_run().manifest)
+            manifest['request_refs']=[]  # Not the exact preparation-only manifest.
+            store.commit_manifest(manifest)
+        await review.service.retry(review.actor,detail.review_id,EvidenceRetryRequest(
+            idempotency_key='invalid-resume',preview_sha256=detail.preview_sha256,confirmation='synthetic'))
+        await review.service.jobs[detail.review_id].task
+        assert review.service.get(review.actor,detail.review_id).status=='failed'
+        assert not review.http.submitted
+    asyncio.run(scenario())
+
+
 def test_two_citation_aliases_for_one_pubmed_article_remain_reviewable(review):
     async def scenario():
         from backend.clinical.ai_evidence_contracts import EvidencePrepareRequest

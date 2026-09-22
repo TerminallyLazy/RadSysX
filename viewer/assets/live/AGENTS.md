@@ -46,3 +46,5 @@
 - Preserve the browser fetch global receiver: a default injectable fetcher must wrap `fetch(input, init)` rather than invoke native fetch as a controller method. Node's permissive fetch is insufficient coverage; retain the receiver regression and actual Electron path.
 
 - User preference (2026-09-22): the AI sidebar is for radiologists in a reading room. Use an understated charcoal/slate palette with muted blue accents, readable subdued text, soft borders and dark native scrollbars. Avoid bright mint/white button fills, neon glows and distracting animation. Preserve visible keyboard focus, clear states and compact conversation space. Theme only the AI surface, preserving diagnostic image rendering.
+
+- Failed/interrupted preparation, cancelled/unavailable reviews and previews without eligible claims expose an explicit **Fetch abstracts again** action. Create a new owned preparation without modifying prior records or making Jev calls; clear consent and require confirmation for its new preview. Reopen selects the newest saved review for that tool. Refresh remains GET-only, and uncertain preparation retransmission keeps its operation key.

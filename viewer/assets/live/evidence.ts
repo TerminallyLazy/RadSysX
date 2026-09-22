@@ -24,6 +24,18 @@ export class EvidenceController {
 
   get suspended(): boolean { return this.disposed; }
 
+  get canPrepareAgain(): boolean {
+    const detail = this.detail;
+    if (!detail || active(detail.status) || detail.status === 'completed') return false;
+    return ['cancelled', 'unavailable'].includes(detail.status) ||
+      (!detail.selectedUnitIds?.length && (detail.status !== 'ready' || !detail.claims.some(claim => claim.eligible)));
+  }
+
+  reviewForTool(toolCallId: string): EvidenceReviewSummary | undefined {
+    return [...this.reviews.values()].reverse().filter(review => review.toolCallId === toolCallId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  }
+
   constructor(private notify: () => void, private fetcher: typeof fetch = (input, init) => fetch(input, init)) {}
 
   private resetRequest(): number {
@@ -118,13 +130,27 @@ export class EvidenceController {
     const generation = this.resetRequest(); this.open = true; this.confirmation = null;
     this.busy = true; this.message = ''; this.pollStarted = Date.now(); this.pollDelay = 1000;
     this.detail = undefined; this.selectedUnitIds.clear(); this.notify();
-    const saved = [...this.reviews.values()].find(review => review.toolCallId === toolCallId);
+    const saved = this.reviewForTool(toolCallId);
     try {
       const value = saved
         ? await this.request<EvidenceReviewDetail>(`/evidence-reviews/${encodeURIComponent(saved.reviewId)}`, generation)
         : await this.request<EvidenceReviewDetail>(`/sessions/${encodeURIComponent(this.sessionId)}/tools/${encodeURIComponent(toolCallId)}/evidence-reviews`, generation,
             { idempotencyKey: this.key(`prepare:${toolCallId}`, { sessionId: this.sessionId, toolCallId }) });
       if (value) this.apply(value);
+    } catch (error) { this.fail(error, generation); }
+    finally { if (this.current(generation)) { this.busy = false; this.schedule(); this.notify(); } }
+  }
+  async prepareAgain(): Promise<void> {
+    if (this.busy || this.disposed || !this.sessionId || !this.detail || !this.canPrepareAgain) return;
+    const { reviewId, toolCallId } = this.detail;
+    const operation = `reprepare:${reviewId}`;
+    const idempotencyKey = this.key(operation, { sessionId: this.sessionId, toolCallId, reviewId });
+    const generation = this.resetRequest();
+    this.busy = true; this.confirmation = null; this.selectedUnitIds.clear(); this.message = '';
+    this.pollStarted = Date.now(); this.pollDelay = 1000; this.notify();
+    try {
+      const value = await this.request<EvidenceReviewDetail>(`/sessions/${encodeURIComponent(this.sessionId)}/tools/${encodeURIComponent(toolCallId)}/evidence-reviews`, generation, { idempotencyKey });
+      if (value) { this.apply(value); this.operations.delete(operation); }
     } catch (error) { this.fail(error, generation); }
     finally { if (this.current(generation)) { this.busy = false; this.schedule(); this.notify(); } }
   }

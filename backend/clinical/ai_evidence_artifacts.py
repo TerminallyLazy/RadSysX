@@ -44,6 +44,15 @@ class ReviewArtifacts:
     def open_run(self): return ArtifactStore.open(self.root,run_id=self.run_id)
     def delete(self): ArtifactStore.delete_run(self.root,run_id=self.run_id)
 
+    def evaluation_resume(self,store,preview_ref):
+        view=store.load_run()
+        preview=parse_json(store.read_bytes(preview_ref))
+        # Only the exact committed preparation manifest proves no evaluation began.
+        # Missing selection in any evaluator manifest must still fail strict resume.
+        preparation={'schema_version':1,'objects':[preview_ref,preview['snapshot_ref'],preview['plan_ref']],
+            'preview_ref':preview_ref,'snapshot_ref':preview['snapshot_ref'],'plan_ref':preview['plan_ref']}
+        return None if view.manifest==preparation else view
+
 
 def progress(view, total):
     return {'totalPairs':total,'completedPairs':sum(a.status=='completed' for a in view.assessments),

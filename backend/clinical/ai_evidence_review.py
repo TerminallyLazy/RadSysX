@@ -257,7 +257,7 @@ class EvidenceReviewService:
                         job.store=store
                         preview=self._preview(job.row,store)
                         plan=select_review_plan(preview['plan'],selected_unit_ids=tuple(job.row.selection))
-                        resume=store.load_run() if job.phase=='retry' else None
+                        resume=self.artifacts(job.row).evaluation_resume(store,job.row.preview_ref) if job.phase=='retry' else None
                         async with new_http_client() as client:
                             result=await evaluate_snapshot(preview['snapshot'],plan,adapter=TypeSafeAdapter(self.live.config.typesafe_api_key,client),
                                 store=store,limits=self.limits,cancel=job.cancel,resume=resume,

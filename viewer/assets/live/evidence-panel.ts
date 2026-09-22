@@ -48,7 +48,7 @@ export function mountEvidencePanel(host: HTMLElement, controller: EvidenceContro
   host.innerHTML = `<div data-evidence-status role="status" aria-live="polite"></div><button type="button" data-evidence-action="open">Review evidence with Jev</button>
     <div data-evidence-detail hidden><button type="button" data-evidence-action="close">Close review</button><p data-evidence-message role="status" aria-live="polite"></p>
     <p>TypeSafe · jev-1.13.0 · experimental abstract-support review. The original answer stays unchanged.</p>
-    <details data-evidence-selection><summary>Claim selection and text confirmation</summary><div data-evidence-consent></div></details><div data-evidence-actions><button type="button" data-evidence-action="start">Start Jev review</button><button type="button" data-evidence-action="retry">Retry unfinished review</button><button type="button" data-evidence-action="cancel">Cancel review</button><button type="button" data-evidence-action="refresh">Refresh review</button></div>
+    <details data-evidence-selection><summary>Claim selection and text confirmation</summary><div data-evidence-consent></div></details><div data-evidence-actions><button type="button" data-evidence-action="start">Start Jev review</button><button type="button" data-evidence-action="retry">Retry unfinished review</button><button type="button" data-evidence-action="prepare">Fetch abstracts again</button><button type="button" data-evidence-action="cancel">Cancel review</button><button type="button" data-evidence-action="refresh">Refresh review</button></div>
     <div data-evidence-result></div></div>`;
   const query = <T extends HTMLElement = HTMLElement>(selector: string) => host.querySelector<T>(selector)!;
   const button = (action: string) => query<HTMLButtonElement>(`[data-evidence-action="${action}"]`);
@@ -61,6 +61,7 @@ export function mountEvidencePanel(host: HTMLElement, controller: EvidenceContro
       case 'close': controller.close(); button('open').focus(); break;
       case 'start': void controller.start(); break;
       case 'retry': void controller.retry(); break;
+      case 'prepare': void controller.prepareAgain(); break;
       case 'cancel': void controller.cancel(); break;
       case 'refresh': void controller.refresh(); break;
     }
@@ -72,7 +73,7 @@ export function mountEvidencePanel(host: HTMLElement, controller: EvidenceContro
   };
   host.addEventListener('click',click); host.addEventListener('change',change);
   const update = () => {
-    const summary = [...controller.reviews.values()].find(value => value.toolCallId === toolId);
+    const summary = controller.reviewForTool(toolId);
     query('[data-evidence-status]').innerHTML = summary ? renderEvidenceSummary(summary) : '';
     const detail = controller.detail?.toolCallId === toolId ? controller.detail : undefined;
     query('[data-evidence-detail]').hidden = !detail || !controller.open;
@@ -105,6 +106,7 @@ export function mountEvidencePanel(host: HTMLElement, controller: EvidenceContro
     if (confirmation) { confirmation.value = controller.confirmation ?? ''; confirmation.disabled = controller.busy || (detail.status !== 'ready' && !retryable); }
     button('start').hidden = detail.status !== 'ready'; button('start').disabled = controller.busy || !controller.confirmation || !controller.selectedUnitIds.size;
     button('retry').hidden = !retryable; button('retry').disabled = controller.busy || !controller.confirmation;
+    button('prepare').hidden = !controller.canPrepareAgain; button('prepare').disabled = controller.busy;
     button('cancel').hidden = !['preparing','reviewing'].includes(detail.status);
     // Cancellation can abort a GET currently in flight.
     button('refresh').disabled = controller.busy;

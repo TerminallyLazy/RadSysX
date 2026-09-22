@@ -124,3 +124,41 @@ test('default browser fetch retains the native global receiver',async()=>{
   try {await c.selectSession('ais-fixture');assert.equal(c.reviews.size,1);}
   finally {c.dispose();globalThis.fetch=saved;}
 });
+
+test('unsuccessful preparation can explicitly fetch fresh abstracts without inferring',async()=>{
+ for(const state of ['failed','interrupted','cancelled','unavailable','ready']) {
+  const old=reviewFixture({status:state,selectedUnitIds:null,claims:[],assessments:[],attempts:[],totalPairs:0});
+  const fresh=reviewFixture({reviewId:'jer-fresh',createdAt:'2026-09-22T01:00:00Z',status:'ready',selectedUnitIds:null,assessments:[],attempts:[]});
+  const calls=[];
+  const c=new EvidenceController(()=>{},async(url,init)=>{
+   calls.push({url,init});
+   if(url.includes('/sessions/') && init.method==='GET')return response({reviews:[old],truncated:false});
+   if(init.method==='POST')return response(fresh);
+   return response(url.endsWith('/jer-fresh')?fresh:old);
+  });
+  await c.selectSession('ais-fixture');await c.openTool('research-fixture');await c.refresh();
+  assert.equal(calls.filter(x=>x.init.method==='POST').length,0);
+  c.setConfirmation('synthetic');
+  await Promise.all([c.prepareAgain(),c.prepareAgain()]);
+  const posts=calls.filter(x=>x.init.method==='POST');assert.equal(posts.length,1,state);
+  assert.ok(posts[0].url.endsWith('/tools/research-fixture/evidence-reviews'));
+  assert.deepEqual(Object.keys(JSON.parse(posts[0].init.body)),['idempotencyKey']);
+  assert.equal(c.detail.reviewId,'jer-fresh');assert.equal(c.confirmation,null);
+  assert.equal(c.reviews.size,2);await c.start();assert.equal(calls.filter(x=>x.init.method==='POST').length,1);
+  c.close();await c.openTool('research-fixture');assert.equal(c.detail.reviewId,'jer-fresh');
+  c.dispose();
+ }
+});
+
+test('uncertain new preparation retransmits one identity and ignores stale replies',async()=>{
+ const old=reviewFixture({status:'failed',selectedUnitIds:null});let fail=true,release;const keys=[];
+ const c=new EvidenceController(()=>{},async(url,init)=>{
+  if(url.includes('/sessions/')&&init.method==='GET')return response({reviews:[old],truncated:false});
+  if(init.method==='POST') {keys.push(JSON.parse(init.body).idempotencyKey);if(fail){fail=false;throw Error('network');}return new Promise(resolve=>{release=resolve;});}
+  return response(old);
+ });
+ await c.selectSession('ais-fixture');await c.openTool('research-fixture');await c.prepareAgain();
+ const pending=c.prepareAgain();await flush();await c.selectSession('another-session');
+ release(response(reviewFixture({reviewId:'fresh'})));await pending;
+ assert.equal(keys.length,2);assert.equal(keys[0],keys[1]);assert.equal(c.detail,undefined);assert.equal(c.confirmation,null);c.dispose();
+});
