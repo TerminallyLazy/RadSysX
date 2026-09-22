@@ -69,3 +69,5 @@ None.
 
 - Optional selected-unit evaluation projects executable pairs from the fully rebuilt immutable plan; it never rewrites the original answer or weakens span/citation validation. Selection is bound into explicit resume identity; old unselected CLI runs remain compatible.
 - Callers may supply a synchronous pre-attempt guard and committed-progress callback. Guards prevent submission with a distinct nonsemantic reason, including on retries; callbacks see only successfully committed manifests. Callback persistence failure stops scheduling as local storage failure. Actor/database authority remains outside this package.
+
+- `pubmed.py` retrieves only fixed-origin NCBI EFetch by exact canonical PMID citations, never model-supplied fetch URLs. It bounds bodies/nodes/depth, rejects redirects/compression/entity declarations, permits ordinary nonexpanding public DOCTYPE declarations, and reuses original `EvidenceCollector` section semantics. Missing/ambiguous/unsafe evidence is explicitly unavailable. Retrieval guards are caller-owned.

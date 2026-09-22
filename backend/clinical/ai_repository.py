@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select, update
 
 from .contracts import SessionClaims, to_iso_z, utc_now, parse_iso_z
-from .models import AILiveEventModel, AILiveSessionModel, AILiveToolModel, AIResearchPreferenceModel
+from .models import AILiveEventModel, AILiveSessionModel, AILiveToolModel, AIResearchPreferenceModel, AIResearchGenerationModel
 from .ai_config import profile_for_model
 
 TERMINAL_TOOLS = {"completed", "failed", "cancelled", "interrupted", "outcome_unknown", "denied"}
@@ -31,6 +31,27 @@ class AILiveRepository:
             else:
                 row.provider, row.model_id = provider, model
             db.commit()
+
+    def record_research_generation(self, session_id, tool_id, *, provider, model):
+        with self.factory() as db:
+            key = f"{session_id}:{tool_id}"
+            tool = db.get(AILiveToolModel, key)
+            if tool is None or tool.name != "research_run" or tool.status != "running":
+                raise HTTPException(409, "Research dispatch is unavailable.")
+            existing = db.get(AIResearchGenerationModel, key)
+            if existing:
+                if (existing.provider, existing.model_id) != (provider, model):
+                    raise HTTPException(409, "Research generation identity changed.")
+                return
+            db.add(AIResearchGenerationModel(id=key, session_id=session_id, provider=provider,
+                model_id=model, recorded_at=to_iso_z(utc_now())))
+            db.commit()
+
+    def research_generation(self, session_id, tool_id):
+        with self.factory() as db:
+            row = db.get(AIResearchGenerationModel, f"{session_id}:{tool_id}")
+            return {"providerId": row.provider if row else None,
+                "modelId": row.model_id if row else None, "recordedAt": row.recorded_at if row else None}
 
     def recover(self):
         with self.factory() as db:
@@ -123,7 +144,7 @@ class AILiveRepository:
     def clear(self, session_id, actor):
         self.owned(session_id, actor)
         with self.factory() as db:
-            for cls in (AILiveEventModel, AILiveToolModel):
+            for cls in (AILiveEventModel, AILiveToolModel, AIResearchGenerationModel):
                 db.execute(delete(cls).where(cls.session_id == session_id))
             db.execute(delete(AILiveSessionModel).where(AILiveSessionModel.id == session_id))
             db.commit()

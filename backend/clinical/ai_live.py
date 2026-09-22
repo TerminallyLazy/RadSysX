@@ -830,6 +830,7 @@ class LiveRuntime:
                 from .ai_research import ResearchSupervisor
                 provider, key, model = self.config.research_configuration()
                 worker = ResearchSupervisor(api_key=key, model=model, provider=provider)
+                self.repo.record_research_generation(self.id, tool_id, provider=provider, model=model)
                 result = await worker.run(args["query"])
                 if result.get("sources"):
                     await self.emit("citations", sources=result["sources"], suggestionsHtml=result.get("suggestionsHtml", ""))

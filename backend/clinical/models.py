@@ -22,6 +22,15 @@ class AIResearchPreferenceModel(Base):
     model_id: Mapped[str] = mapped_column(String(241))
 
 
+class AIResearchGenerationModel(Base):
+    __tablename__ = "ai_research_generations"
+    id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[str] = mapped_column(String(241))
+    recorded_at: Mapped[str] = mapped_column(String(64))
+
+
 class AILiveSessionModel(Base):
     __tablename__ = "ai_live_sessions"
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
