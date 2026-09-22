@@ -15,7 +15,7 @@ Last updated: 2026-09-22
 - Runtime code remains owned by the nearest applicable subtree such as `backend/`, `viewer/`, `frontend/`, `desktop/`, or `packages/`.
 
 - `ai-backend/LIVE_IMPLEMENTATION.md` owns the Gemini/OpenAI implementation contract, canonical map/ticket links, dated verification evidence, and the NVIDIA VoiceChat deployment assessment. The user deferred VoiceChat; it is not implemented or enabled. Distinguish downloadable model access from a running provider endpoint. Its current decisions supersede the June prototype assumptions.
-- `ai-backend/JEV_RESEARCH.md` owns the dated TypeSafe/Jev opportunity survey, source limitations and repository findings. It links to the user-approved specification under `docs/superpowers/specs/` and the implementation plan awaiting review under `docs/superpowers/plans/`. These documents do not establish implementation, inference or clinical acceptance. `docs/AGENTS.md` owns the specification and plan.
+- `ai-backend/JEV_RESEARCH.md` owns the dated TypeSafe/Jev opportunity survey, source limitations and repository findings. It links to the user-approved specification under `docs/superpowers/specs/` and the approved native implementation plan under `docs/superpowers/plans/`. `ai-backend/JEV_EVALUATION.md` records actual software/provider evidence and pending human/visual acceptance; research/design documents alone do not establish acceptance. `docs/AGENTS.md` owns the specification and plan.
 
 ## Local Contracts
 

@@ -2,7 +2,7 @@
 
 Research date: 2026-09-22. Repository baseline: `43d443ff8a41c67cbc6bf8985b2b26d27e8eee17`.
 
-Status: research dossier supporting [the approved specification](../../docs/superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md) and [implementation plan](../../docs/superpowers/plans/2026-09-22-jev-pubmed-evidence-review.md). The plan awaits review and execution-method selection; Jev is not implemented or inference-validated.
+Status: research dossier supporting [the approved specification](../../docs/superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md) and [implementation plan](../../docs/superpowers/plans/2026-09-22-jev-pubmed-evidence-review.md). Native implementation was approved; [observed evaluation evidence](JEV_EVALUATION.md) separates implemented software, actual provider probes and pending human-quality acceptance.
 
 ## Intent and scope
 
