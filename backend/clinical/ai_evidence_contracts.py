@@ -2,7 +2,10 @@
 from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
-from ..evidence_review.contracts import Hash, Label
+if __package__ == "clinical":  # Supported direct backend/server.py launch.
+    from evidence_review.contracts import Hash, Label
+else:
+    from ..evidence_review.contracts import Hash, Label
 
 Id = Annotated[str, Field(min_length=1, max_length=160)]
 Key = Annotated[str, Field(pattern=r'^[A-Za-z0-9_-]{1,80}$')]

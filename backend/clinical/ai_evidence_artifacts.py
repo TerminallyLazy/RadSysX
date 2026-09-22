@@ -2,10 +2,16 @@
 from pathlib import Path
 from contextlib import nullcontext
 from .ai_evidence_contracts import (EvidenceClaim, EvidenceAbstract, EvidenceAssessment, EvidenceAttempt, EvidenceExclusion)
-from ..evidence_review.artifacts import ArtifactStore
-from ..evidence_review.contracts import Limits, ReviewPlan, load_snapshot
-from ..evidence_review.serialization import canonical_json, parse_json, sha256_bytes
-from ..evidence_review.rubric import RUBRIC_VERSION, RUBRIC_SHA256
+if __package__ == "clinical":  # Supported direct backend/server.py launch.
+    from evidence_review.artifacts import ArtifactStore
+    from evidence_review.contracts import Limits, ReviewPlan, load_snapshot
+    from evidence_review.serialization import canonical_json, parse_json, sha256_bytes
+    from evidence_review.rubric import RUBRIC_VERSION, RUBRIC_SHA256
+else:
+    from ..evidence_review.artifacts import ArtifactStore
+    from ..evidence_review.contracts import Limits, ReviewPlan, load_snapshot
+    from ..evidence_review.serialization import canonical_json, parse_json, sha256_bytes
+    from ..evidence_review.rubric import RUBRIC_VERSION, RUBRIC_SHA256
 
 
 def preview_hash(snapshot, plan, generation):

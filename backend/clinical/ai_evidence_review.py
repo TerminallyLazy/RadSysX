@@ -14,13 +14,22 @@ from .ai_evidence_contracts import EvidenceReviewAvailability, EvidenceReviewDet
 from .ai_evidence_repository import EvidenceReviewRepository, identity
 from .ai_evidence_artifacts import ReviewArtifacts, progress, project
 from .contracts import parse_iso_z, utc_now
-from ..evidence_review.contracts import Limits, ResearchResult, freeze_snapshot
-from ..evidence_review.serialization import canonical_json
-from ..evidence_review.units import build_review_plan, select_review_plan
-from ..evidence_review.pubmed import canonical_pmid, fetch_pubmed_evidence
-from ..evidence_review.transport import new_http_client
-from ..evidence_review.typesafe import TypeSafeAdapter
-from ..evidence_review.runner import evaluate_snapshot, LocalStorageFailure
+if __package__ == "clinical":  # Supported direct backend/server.py launch.
+    from evidence_review.contracts import Limits, ResearchResult, freeze_snapshot
+    from evidence_review.serialization import canonical_json
+    from evidence_review.units import build_review_plan, select_review_plan
+    from evidence_review.pubmed import canonical_pmid, fetch_pubmed_evidence
+    from evidence_review.transport import new_http_client
+    from evidence_review.typesafe import TypeSafeAdapter
+    from evidence_review.runner import evaluate_snapshot, LocalStorageFailure
+else:
+    from ..evidence_review.contracts import Limits, ResearchResult, freeze_snapshot
+    from ..evidence_review.serialization import canonical_json
+    from ..evidence_review.units import build_review_plan, select_review_plan
+    from ..evidence_review.pubmed import canonical_pmid, fetch_pubmed_evidence
+    from ..evidence_review.transport import new_http_client
+    from ..evidence_review.typesafe import TypeSafeAdapter
+    from ..evidence_review.runner import evaluate_snapshot, LocalStorageFailure
 
 
 @dataclass

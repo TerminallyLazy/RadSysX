@@ -4,7 +4,10 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select, update
 from .models import AIJevReviewModel, AIJevOperationModel, AILiveSessionModel
 from .contracts import to_iso_z, utc_now
-from ..evidence_review.serialization import canonical_json, sha256_bytes
+if __package__ == "clinical":  # Supported direct backend/server.py launch.
+    from evidence_review.serialization import canonical_json, sha256_bytes
+else:
+    from ..evidence_review.serialization import canonical_json, sha256_bytes
 
 
 def identity(value): return sha256_bytes(canonical_json(value))
