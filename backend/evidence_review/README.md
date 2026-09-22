@@ -1,6 +1,6 @@
 # Public evidence review
 
-An explicit local experiment that compares abstract-relative Jev and Gemini judgments. It never changes research answers, sources, reports, viewer actions or conversation behavior. There is no server route or live observer. Inputs must be deliberately designated public literature or synthetic material; do not use clinical session exports.
+An explicit local experiment that compares abstract-relative Jev, Gemini and explicitly selected NVIDIA NIM judgments. It never changes research answers, sources, reports, viewer actions or conversation behavior. There is no server route or live observer. Inputs must be deliberately designated public literature or synthetic material; do not use clinical session exports.
 
 ## Setup and destinations
 
@@ -15,6 +15,7 @@ Keys stay in operator `.env.ai` or exported environment variables. `--env-file` 
 
 - Jev: `RADSYSX_TYPESAFE_AI_API_KEY`, fixed `https://api.typesafe.ai/v1/systemone`, pinned `jev-1.13.0`.
 - Baseline: `RADSYSX_GEMINI_API_KEY`, fixed Gemini `generateContent`, `gemini-3.8-flash`, fresh context with no tools or history.
+- NIM: `RADSYSX_NVIDIA_API_KEY`, fixed `https://integrate.api.nvidia.com/v1` hosted catalog/chat endpoints. An exact model ID is required. JSON support and latency vary by model; catalog listing alone does not verify either.
 - Fresh capture: the existing isolated Gemini DeepAgents worker and its existing Google/NCBI research destinations. Original PubMed sections are captured passively; normal research prompts and answers are unchanged.
 
 Network commands reject `RADSYSX_APP_MODE=clinical` and unknown modes before loading keys. The default is research; pilot still requires explicit public/synthetic input. Local validation, blinding, reference freeze and comparison work without keys, including in clinical mode.
@@ -35,6 +36,8 @@ Save it privately as `tmp/jev-evaluations/inputs/queries.json` after creating it
 .venv/bin/python -m backend.evidence_review capture --input tmp/jev-evaluations/inputs/queries.json
 .venv/bin/python -m backend.evidence_review replay --snapshot /absolute/private/snapshot.json --evaluator jev
 .venv/bin/python -m backend.evidence_review replay --snapshot /absolute/private/snapshot.json --evaluator gemini
+.venv/bin/python -m backend.evidence_review models --provider nvidia_nim
+.venv/bin/python -m backend.evidence_review replay --snapshot /absolute/private/snapshot.json --evaluator nvidia_nim --model z-ai/glm-5.3-flash
 .venv/bin/python -m backend.evidence_review resume --run /absolute/private/run-directory
 ```
 
@@ -82,3 +85,7 @@ Artifacts remain local until the operator deletes the selected private directori
 ```bash
 .venv/bin/python -m pytest backend/tests/evidence_review -q
 ```
+
+NIM uses the same claim/abstract rubric, with a label-only JSON object, temperature 0 and 1,024 output tokens by default. Frozen generation configurations can tighten/change temperature within 0–1 and output tokens within 1–4,000 while retaining JSON-object output. Unsupported formats, model changes and truncated responses fail explicitly. Provider-reported model IDs may be mutable aliases; the saved ID does not certify immutable weights. Missing price or usage remains unknown, even for developer accounts. See [NIM research configuration and acceptance](../../roadmap/ai-backend/NIM_IMPLEMENTATION.md).
+
+The selected NIM model for this project is `z-ai/glm-5.3-flash`. Its default evaluator configuration explicitly sets `reasoning_effort=low` and `chat_template_kwargs.clear_thinking=true`; both are saved in request/configuration hashes. It supports image inputs according to NVIDIA, but this evidence contract accepts text/abstracts only.

@@ -36,14 +36,26 @@ class AISettings:
             return os.environ.get(name, values.get(name, default))
         self.api_key = setting("RADSYSX_GEMINI_API_KEY")
         self.openai_api_key = setting("RADSYSX_OPENAI_API_KEY")
+        self.nvidia_api_key = setting("RADSYSX_NVIDIA_API_KEY")
+        self.research_provider = setting("RADSYSX_RESEARCH_PROVIDER", "gemini")
         self.key_store_dir = setting("RADSYSX_AI_KEY_STORE_DIR")
         self.credential_errors = set()
         self.openai_voice = "marin"
         self.model = "gemini-3.8-live-extended-thinking"
-        self.research_model = "gemini-3.8-flash"
+        self.research_model = setting("RADSYSX_NIM_RESEARCH_MODEL") if self.research_provider == "nvidia_nim" else "gemini-3.8-flash"
         self.enabled = setting("RADSYSX_AI_ENABLED", "true").lower() in {"1", "true", "yes"}
         self.app_mode = app_mode
         self.voice = setting("RADSYSX_GEMINI_VOICE", "Puck")
+
+    def research_configuration(self):
+        from .ai_research_worker import validate_research_model
+        if not self.enabled or self.app_mode not in {"research", "pilot"}:
+            raise ValueError("Research disabled")
+        validate_research_model(self.research_provider, self.research_model)
+        key = self.nvidia_api_key if self.research_provider == "nvidia_nim" else self.api_key
+        if not key or self.research_provider in self.credential_errors:
+            raise ValueError("Research credential unavailable")
+        return self.research_provider, key, self.research_model
 
     def readiness(self, provider_id="gemini"):
         if provider_id not in PROVIDER_PROFILES:

@@ -244,8 +244,9 @@ def test_research_tool_budget_rejects_another_dispatch():
     assert tools.tool_calls == MAX_TOOL_CALLS
 
 
+@pytest.mark.parametrize("provider", ["gemini", "nvidia_nim"])
 @pytest.mark.parametrize("requested", [MAX_TOOL_CALLS, MAX_TOOL_CALLS + 1])
-def test_actual_graph_applies_shared_budget_to_parallel_scratch_tools(monkeypatch, requested):
+def test_actual_graph_applies_shared_budget_to_parallel_scratch_tools(monkeypatch, requested, provider):
     from deepagents.backends import StateBackend
     from langchain_core.messages import AIMessage
     from langchain_core.outputs import ChatGeneration, ChatResult
@@ -270,9 +271,11 @@ def test_actual_graph_applies_shared_budget_to_parallel_scratch_tools(monkeypatc
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setenv("LANGCHAIN_TRACING_V2", "false")
     monkeypatch.setattr(StateBackend, "als", list_scratch)
-    monkeypatch.setattr(ChatGoogleGenerativeAI, "_agenerate", generate)
-    tools = ResearchTools(None, MODEL, lambda event: None)
-    agent, _, _ = create_research_agent("synthetic-unused-key", MODEL, tools)
+    from langchain_nvidia_ai_endpoints import ChatNVIDIA
+    monkeypatch.setattr(ChatGoogleGenerativeAI if provider == "gemini" else ChatNVIDIA, "_agenerate", generate)
+    model = MODEL if provider == "gemini" else "nvidia/nemotron-3-super-120b-a12b"
+    tools = ResearchTools(None, model, lambda event: None)
+    agent, _, _ = create_research_agent("synthetic-unused-key", model, tools, provider=provider)
 
     async def scenario():
         invocation = agent.ainvoke({"messages": [{"role": "user", "content": "Synthetic budget check."}]})
@@ -378,3 +381,76 @@ def test_worker_process_without_key_exits_privately():
     assert result.returncode == 1
     assert not result.stdout
     assert "synthetic private failure marker" not in result.stderr
+
+
+def test_nim_environment_and_supervisor_use_only_selected_credential(monkeypatch):
+    monkeypatch.setenv('GEMINI_API_KEY','must-not-inherit')
+    monkeypatch.setenv('RADSYSX_OPENAI_API_KEY','must-not-inherit')
+    env=_child_environment('synthetic-nim',provider='nvidia_nim')
+    assert env['NVIDIA_API_KEY']=='synthetic-nim' and 'GEMINI_API_KEY' not in env
+    async def scenario():
+        process=FakeProcess([{'kind':'result','result':RESULT}])
+        spawn=AsyncMock(return_value=process)
+        monkeypatch.setattr(supervisor_module.asyncio,'create_subprocess_exec',spawn)
+        result=await ResearchSupervisor('synthetic-nim',model='nvidia/nemotron-3-super-120b-a12b',provider='nvidia_nim').run('Synthetic query')
+        assert result['summary']==RESULT['summary']
+        assert spawn.call_args.kwargs['env']['NVIDIA_API_KEY']=='synthetic-nim'
+        assert 'GEMINI_API_KEY' not in spawn.call_args.kwargs['env']
+        assert json.loads(process.stdin.data)['provider']=='nvidia_nim'
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("nim_model", ["nvidia/nemotron-3-super-120b-a12b", "z-ai/glm-5.3-flash"])
+def test_nim_real_graph_pubmed_and_structured_result(monkeypatch, nim_model):
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration,ChatResult
+    from langchain_nvidia_ai_endpoints import ChatNVIDIA
+    calls=[]
+    async def generate(self,messages,stop=None,run_manager=None,**kwargs):
+        calls.append(kwargs)
+        assert self._async_client.timeout == 60
+        if nim_model == 'z-ai/glm-5.3-flash':
+            assert self.model_kwargs == {'reasoning_effort':'low','chat_template_kwargs':{'clear_thinking':True}}
+        names={t['function']['name'] for t in kwargs['tools']}
+        assert 'search_pubmed' in names
+        assert not names & {'search_web','read_source','execute','eval','task','task_async','launch_async_task'}
+        call=({'name':'search_pubmed','args':{'query':'synthetic evidence'},'id':'search-1','type':'tool_call'} if len(calls)==1 else
+              {'name':'ResearchAnswer','args':{'summary':'Synthetic evidence [s1].','source_ids':['s1','fake'],'limitations':[]},'id':'answer-1','type':'tool_call'})
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content='',tool_calls=[call],
+            usage_metadata={'input_tokens':10,'output_tokens':5,'total_tokens':15}))])
+    async def pubmed(self,query: str,limit: int=5)->dict:
+        """Search synthetic PubMed literature."""
+        self._begin('searching_pubmed')
+        return {'sources':[self.ledger.add('Synthetic paper','https://pubmed.ncbi.nlm.nih.gov/123/')],'articles':[]}
+    pubmed.__name__='search_pubmed'
+    monkeypatch.setenv('NVIDIA_API_KEY','synthetic-nim')
+    monkeypatch.delenv('GEMINI_API_KEY',raising=False)
+    monkeypatch.setenv('LANGSMITH_TRACING','false')
+    from langchain_nvidia_ai_endpoints._common import _NVIDIASyncClient
+    from langchain_nvidia_ai_endpoints._statics import Model as NIMModel
+    monkeypatch.setattr(_NVIDIASyncClient,'available_models',property(lambda self:[NIMModel(id=nim_model)]))
+    monkeypatch.setattr(ChatNVIDIA,'_agenerate',generate)
+    monkeypatch.setattr(ResearchTools,'search_pubmed',pubmed)
+    result=asyncio.run(run_worker({'query':'Synthetic public query','provider':'nvidia_nim','model':nim_model},lambda event:None))
+    assert result['summary']=='Synthetic evidence [s1].'
+    assert len(result['sources'])==1 and result['usage']['model_calls']==2 and result['usage']['tool_calls']==1
+
+
+def test_research_settings_select_provider_and_never_fall_back(monkeypatch):
+    from backend.clinical.ai_config import AISettings
+    monkeypatch.setattr(Path,'is_file',lambda self:False)
+    monkeypatch.setenv('RADSYSX_GEMINI_API_KEY','synthetic-google')
+    monkeypatch.setenv('RADSYSX_NVIDIA_API_KEY','synthetic-nvidia')
+    monkeypatch.delenv('RADSYSX_RESEARCH_PROVIDER',raising=False)
+    assert AISettings().research_configuration()==('gemini','synthetic-google',MODEL)
+    monkeypatch.setenv('RADSYSX_RESEARCH_PROVIDER','nvidia_nim')
+    monkeypatch.setenv('RADSYSX_NIM_RESEARCH_MODEL','nvidia/nemotron-3-super-120b-a12b')
+    config=AISettings()
+    assert config.research_configuration()==('nvidia_nim','synthetic-nvidia','nvidia/nemotron-3-super-120b-a12b')
+    config.api_key='owner-google'
+    assert config.research_configuration()[1]=='synthetic-nvidia'
+    config.nvidia_api_key=''
+    with pytest.raises(ValueError): config.research_configuration()
+    monkeypatch.setenv('RADSYSX_RESEARCH_PROVIDER','typo')
+    with pytest.raises(ValueError): AISettings().research_configuration()
+    with pytest.raises(ValueError): AISettings(app_mode='clinical').research_configuration()

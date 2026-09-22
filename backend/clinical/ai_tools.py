@@ -123,7 +123,7 @@ DESCRIPTIONS = {
     "report_save": "Open the app approval card for this exact report draft on the bound imported/governed study. Calling this tool only proposes the save; the backend waits for the user's approval button before persistence. It does not finalize or sign a report.",
     "viewer_open_worklist": "Open the RadSysX worklist; current live context will end.",
     "study_open": "Open an opaque worklist studyId through the governed viewer launch contract; current context will end.",
-    "research_run": "Delegate a public web/literature question to an independent Gemini research agent. Up to two run concurrently while conversation continues. Never include patient information.",
+    "research_run": "Delegate a public literature question to the configured independent research agent. Up to two run concurrently while conversation continues. Never include patient information.",
     "research_cancel": "Cancel one pending research tool call by its toolCallId.",
 }
 

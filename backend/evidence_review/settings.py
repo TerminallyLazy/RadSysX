@@ -11,6 +11,7 @@ class EvaluationSettings:
     app_mode: str
     typesafe_key: SecretStr
     gemini_key: SecretStr
+    nvidia_key: SecretStr = SecretStr("")
 
 
 def check_network_mode(environ: Mapping[str,str]) -> str:
@@ -28,4 +29,4 @@ def load_settings(*, environ: Mapping[str,str], env_file: Path | None) -> Evalua
         values = dotenv_values(env_file, interpolate=False)
     def key(name):
         return SecretStr(environ.get(name, values.get(name) or ""))
-    return EvaluationSettings(mode,key("RADSYSX_TYPESAFE_AI_API_KEY"),key("RADSYSX_GEMINI_API_KEY"))
+    return EvaluationSettings(mode,key("RADSYSX_TYPESAFE_AI_API_KEY"),key("RADSYSX_GEMINI_API_KEY"),key("RADSYSX_NVIDIA_API_KEY"))

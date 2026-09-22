@@ -110,6 +110,8 @@ def live(tmp_path, monkeypatch):
     import dotenv
     monkeypatch.setattr(dotenv, "dotenv_values", lambda *args, **kwargs: {})
     monkeypatch.setenv("RADSYSX_GEMINI_API_KEY", "synthetic-not-a-real-key")
+    monkeypatch.setenv("RADSYSX_RESEARCH_PROVIDER", "gemini")
+    monkeypatch.delenv("RADSYSX_NVIDIA_API_KEY", raising=False)
     monkeypatch.setenv("RADSYSX_AI_ENABLED", "true")
     monkeypatch.setenv("RADSYSX_APP_MODE", "pilot")
     monkeypatch.setenv("RADSYSX_CLINICAL_API_SECRET", "synthetic-clinical-test-signing-secret")

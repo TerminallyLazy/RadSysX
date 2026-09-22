@@ -42,3 +42,5 @@ Last updated: 2026-09-22
 ## Child DOX Index
 
 - None yet.
+
+- `ai-backend/NIM_IMPLEMENTATION.md` owns the approved NIM evaluation/research extension, explicit provider configuration and dated live acceptance. It distinguishes direct evaluation from native DeepAgents/LangGraph research and keeps NIM separate from live voice.

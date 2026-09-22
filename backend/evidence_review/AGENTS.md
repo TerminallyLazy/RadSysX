@@ -57,9 +57,12 @@ None.
 
 ## Explicit operator interface
 
-- `python -m backend.evidence_review` exposes capture, replay, resume, blind, freeze-references, validate-suite and compare. See `README.md` for private input formats and destinations. Input files are bounded, owner-only regular files; suite/run-list paths cannot escape their private directory.
+- `python -m backend.evidence_review` exposes models, capture, replay, resume, blind, freeze-references, validate-suite and compare. See `README.md` for private input formats and destinations. Input files are bounded, owner-only regular files; suite/run-list paths cannot escape their private directory.
 - Network mode is checked before settings/clients. Local commands never read credentials. SIGINT/SIGTERM signal cancellation; exit codes are 0 completed operation, 2 rejected configuration/input, 3 partial/provider/storage failure and 130 cancellation.
 - CLI resume reconstructs the original configuration and rejects changed request bytes. Experiment generation configurations are retained alongside their hashes so replay/resume can enforce the same declared request.
 
 - Paired estimates and their completion denominators are computed separately for development and held-out partitions; development performance never enters the held-out interval. Reports identify the held-out comparison explicitly.
 - Output export failures return a storage failure and preserve the already-created run locator. Tests block operator dotenv reads; only temporary fixture files may exercise dotenv parsing.
+
+- `nim.py` implements the `nvidia_nim` catalog and evaluator on fixed NVIDIA hosted endpoints. Use backend-only `RADSYSX_NVIDIA_API_KEY` and an explicit `replay --model`. Catalog output lists IDs only and does not certify tools, JSON support, availability or free usage. NIM judgments have no probabilities; exact response model/finish state/label and token usage are validated, reasoning text discarded. The shared runner owns limits, retries and immutable resume.
+- NIM evaluation uses direct HTTP; NIM research uses the separate native DeepAgents/LangGraph worker. Capture remains Gemini-only so the existing study generation protocol stays fixed.

@@ -139,13 +139,18 @@ class AILiveService:
     def capabilities(self, actor=None):
         config = self.config_for(actor)
         availability, reason = config.readiness()
+        try:
+            config.research_configuration()
+            research_available = True
+        except ValueError:
+            research_available = False
         return AISidebarCapabilities(backend_bound=True, voice_first=True, text_composer=True,
             context_attachments=True, orchestration_mode="api", event_transport="websocket",
             audio_input_modes=["pcm16_16000", "pcm16_24000"], model_lanes=[
                 AISidebarModelLane(lane="live", status="available" if availability == "configured" else "disabled",
                     role="Conversational voice, shared viewport and app tools.", model_id=config.model),
-                AISidebarModelLane(lane="research", status="available" if availability == "configured" else "disabled",
-                    role="Bounded asynchronous research delegates.", model_id=config.research_model)],
+                AISidebarModelLane(lane="research", status="available" if research_available else "disabled",
+                    role="Bounded PubMed research via NVIDIA NIM." if config.research_provider == "nvidia_nim" else "Bounded asynchronous research delegates.", model_id=config.research_model or None)],
             safety_note="Synthetic/deidentified use only. Sharing is opt-in; raw audio and screen frames are not retained.",
             availability=availability, model_id=config.model, reason=reason,
             providers=config.profiles())
@@ -756,7 +761,8 @@ class LiveRuntime:
             await self.emit("tool", **tool)
             if name == "research_run":
                 from .ai_research import ResearchSupervisor
-                worker = ResearchSupervisor(api_key=self.config.api_key, model=self.config.research_model)
+                provider, key, model = self.config.research_configuration()
+                worker = ResearchSupervisor(api_key=key, model=model, provider=provider)
                 result = await worker.run(args["query"])
                 if result.get("sources"):
                     await self.emit("citations", sources=result["sources"], suggestionsHtml=result.get("suggestionsHtml", ""))

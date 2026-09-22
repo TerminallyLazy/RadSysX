@@ -16,7 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .ai_research_worker import normalize_result
+from .ai_research_worker import normalize_result, validate_research_model
 
 _LOOP_SLOTS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 _MAX_LINE_BYTES = 128 * 1024
@@ -31,17 +31,22 @@ def _slots() -> asyncio.Semaphore:
     return _LOOP_SLOTS[loop]
 
 
-def _child_environment(api_key: str) -> dict[str, str]:
+def _child_environment(api_key: str, *, provider: str = "gemini") -> dict[str, str]:
     # No HOME override, user Python path, proxy credentials, cloud project,
     # tracing credentials, OpenAI key, or clinical configuration is inherited.
     allowed = ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "LANG", "LC_ALL")
     environment = {name: os.environ[name] for name in allowed if name in os.environ}
     environment.update({
-        "GEMINI_API_KEY": api_key,
-        "GOOGLE_GENAI_USE_VERTEXAI": "false",
+
         "LANGSMITH_TRACING": "false",
         "LANGCHAIN_TRACING_V2": "false",
     })
+    if provider == "gemini":
+        environment.update({"GEMINI_API_KEY":api_key,"GOOGLE_GENAI_USE_VERTEXAI":"false"})
+    elif provider == "nvidia_nim":
+        environment["NVIDIA_API_KEY"] = api_key
+    else:
+        raise ValueError("Invalid research provider")
     return environment
 
 
@@ -84,7 +89,10 @@ class ResearchSupervisor:
         model: str = "gemini-3.8-flash",
         *,
         timeout_seconds: float = 120,
+        provider: str = "gemini",
     ) -> None:
+        validate_research_model(provider, model)
+        self._provider = provider
         self._api_key = api_key
         self._model = model
         self._timeout_seconds = max(0.01, min(timeout_seconds, 120))
@@ -120,7 +128,7 @@ class ResearchSupervisor:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
-                env=_child_environment(self._api_key),
+                env=_child_environment(self._api_key, provider=self._provider),
                 limit=_MAX_LINE_BYTES,
             ))
             try:
@@ -131,6 +139,7 @@ class ResearchSupervisor:
                 raise
             assert process.stdin is not None and process.stdout is not None
             request = {"query": query, "model": self._model}
+            if self._provider != "gemini": request["provider"] = self._provider
             process.stdin.write((json.dumps(request) + "\n").encode())
             await process.stdin.drain()
             process.stdin.close()

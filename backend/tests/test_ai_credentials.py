@@ -401,3 +401,24 @@ def test_key_change_between_socket_accept_and_runtime_attach_cannot_start_old_pr
                 await asyncio.gather(pending, return_exceptions=True)
             await live.service.shutdown()
     asyncio.run(scenario())
+
+
+def test_nim_research_dispatch_keeps_personal_google_key_separate(live,monkeypatch):
+    async def scenario():
+        live.service.config.research_provider='nvidia_nim'
+        live.service.config.research_model='nvidia/nemotron-3-super-120b-a12b'
+        live.service.config.nvidia_api_key='synthetic-nim'
+        live.service.credentials.save(live.actor.sub,'gemini',KEY)
+        captured=[]
+        class Research:
+            def __init__(self,**kwargs): captured.append(kwargs)
+            async def run(self,query): return {'summary':'Synthetic result','sources':[]}
+        monkeypatch.setattr('backend.clinical.ai_research.ResearchSupervisor',Research)
+        runtime=runtime_for(live)
+        try:
+            await runtime.schedule_tool(call('research_run',query='Public synthetic topic'))
+            await wait_until(lambda:'call-1' not in runtime.tasks)
+            assert captured==[{'api_key':'synthetic-nim','model':'nvidia/nemotron-3-super-120b-a12b','provider':'nvidia_nim'}]
+            assert runtime.config.api_key==KEY
+        finally: await live.service.shutdown()
+    asyncio.run(scenario())

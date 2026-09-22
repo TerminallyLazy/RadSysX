@@ -38,3 +38,5 @@
 - `test_ai_credentials.py` covers encrypted personal keys, signed owner/provider isolation, deployment fallback, live/research key selection, fixed nonreflecting validation errors, no-store replies, unsafe/missing/corrupt master storage, FIFO rejection and actor-scoped session/job shutdown before key mutation. Use only synthetic key strings and isolated SQLite-adjacent key directories. Never read, change or validate a real account key in these tests.
 
 The evidence-review CLI tests exercise real private artifacts and mocked capture/providers, including capture/replay/resume, offline blind/reference/comparison flows, mode gates and SIGINT. They do not claim live inference, browser rendering, or qualified human review.
+
+- NIM tests cover bounded catalog/evaluator HTTP, cancellation, immutable CLI resume, provider configuration and key isolation, and actual DeepAgents graphs with synthetic NVIDIA model calls. Shared dispatch-budget tests run against both Gemini and NIM. Live NIM acceptance remains a separate public/synthetic probe.

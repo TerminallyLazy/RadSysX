@@ -17,6 +17,7 @@ from .capture import capture_public_query
 from .contracts import Limits, Record, ReviewPlan, SpanAnnotation, freeze_snapshot, load_snapshot
 from .gemini import GeminiAdapter
 from .metrics import compare_runs
+from .nim import NIMAdapter, discover_models
 from .report import blind_projection, render_blind, render_comparison, render_run
 from .runner import LocalStorageFailure, evaluate_snapshot
 from .serialization import canonical_json, parse_json, sha256_bytes
@@ -88,15 +89,18 @@ def _save(store,values):
         raise LocalStorageFailure(store.run_path) from None
 
 
-def _adapter(services,evaluator,settings,client,*,config=None,expected_resolved_model=None):
+def _adapter(services,evaluator,settings,client,*,config=None,expected_resolved_model=None,model=None):
     if services.adapter_factory:
         return services.adapter_factory(evaluator,settings,client,config=config,expected_resolved_model=expected_resolved_model)
+    if evaluator=='nvidia_nim': return NIMAdapter(settings.nvidia_key,client,model=model,config=config,expected_resolved_model=expected_resolved_model)
+    if model is not None and model != {'jev':'jev-1.13.0','gemini':'gemini-3.8-flash'}.get(evaluator): raise ValueError('unexpected_model')
     if evaluator=='jev': return TypeSafeAdapter(settings.typesafe_key,client)
     if evaluator=='gemini': return GeminiAdapter(settings.gemini_key,client,config=config,expected_resolved_model=expected_resolved_model)
     raise ValueError('unsupported_evaluator')
 
 
 async def _capture_one(function,query,*,cancel,**kwargs):
+    if cancel.is_set(): raise asyncio.CancelledError
     task = asyncio.create_task(function(query,**kwargs)); signal_task = asyncio.create_task(cancel.wait())
     try:
         done,_ = await asyncio.wait([task,signal_task],return_when=asyncio.FIRST_COMPLETED)
@@ -111,10 +115,16 @@ async def _capture_one(function,query,*,cancel,**kwargs):
 
 
 async def dispatch(args, *, services: CLIServices) -> int:
-    network = args.command in {'capture','replay','resume'}
+    network = args.command in {'capture','replay','resume','models'}
     if network:
         check_network_mode(os.environ)  # Must precede any settings loader or client.
     with ExitStack() as stack:
+        if args.command=='models':
+            settings = (services.settings_loader or load_settings)(environ=os.environ,env_file=args.env_file)
+            async with services.client_factory() as client:
+                result = await _capture_one(discover_models,settings.nvidia_key,client=client,cancel=services.cancel)
+            _print(result)
+            return 3 if 'error' in result else 0
         if args.command=='capture':
             manifest = CaptureManifest.model_validate_json(read_private(args.input))
             if any(not 1 <= len(query.strip()) <= 2000 for query in manifest.queries): raise ValueError('invalid_query')
@@ -136,7 +146,7 @@ async def dispatch(args, *, services: CLIServices) -> int:
             _print({'status':'completed','run':str(store.run_path),'exports':exports}); return 0
 
         if args.command in {'replay','resume'}:
-            resume = None; experiment = None; config = None; resolved = None; experiment_hash = None
+            resume = None; experiment = None; config = None; resolved = None; experiment_hash = None; model = None
             if args.command=='resume':
                 store = stack.enter_context(services.store_factory.open(args.run.parent,run_id=args.run.name))
                 resume = store.load_run()
@@ -145,10 +155,12 @@ async def dispatch(args, *, services: CLIServices) -> int:
                 plan = ReviewPlan.model_validate_json(store.read_bytes(resume.manifest['plan_ref']))
                 limits = Limits.model_validate_json(canonical_json(resume.manifest['limits']))
                 evaluator = resume.manifest['evaluator']
+                if evaluator=='nvidia_nim': model = resume.manifest['model']
                 config = resume.manifest.get('config') or None
                 resolved = resume.manifest.get('expected_resolved_model')
                 experiment_hash = resume.manifest.get('experiment_sha256')
             else:
+                model = args.model
                 limits = Limits()
                 if args.experiment:
                     experiment = ExperimentConfig.model_validate_json(read_private(args.experiment))
@@ -162,7 +174,7 @@ async def dispatch(args, *, services: CLIServices) -> int:
                 store = stack.enter_context(_create(services,args.output_root,evaluator))
             settings = (services.settings_loader or load_settings)(environ=os.environ,env_file=args.env_file)
             async with services.client_factory() as client:
-                adapter = _adapter(services,evaluator,settings,client,config=config,expected_resolved_model=resolved)
+                adapter = _adapter(services,evaluator,settings,client,config=config,expected_resolved_model=resolved,model=model)
                 config_hash = sha256_bytes(canonical_json({'evaluator':adapter.evaluator_id,'model':adapter.model,'config':getattr(adapter,'config',{})}))
                 if experiment is not None and (experiment.models.get(evaluator) != adapter.model
                         or experiment.config_hashes.get(evaluator) != config_hash or not resolved):
@@ -227,16 +239,18 @@ async def dispatch(args, *, services: CLIServices) -> int:
 def parser():
     root = argparse.ArgumentParser(description='Explicit public/synthetic evidence review; never changes assistant answers.')
     commands = root.add_subparsers(dest='command',required=True)
-    for name in ('capture','replay','resume','blind','freeze-references','validate-suite','compare'):
+    for name in ('capture','replay','resume','blind','freeze-references','validate-suite','compare','models'):
         command = commands.add_parser(name)
-        if name in {'capture','replay','resume'}: command.add_argument('--env-file',type=Path,default=Path('.env.ai'))
-        if name not in {'resume','validate-suite'}: command.add_argument('--output-root',type=Path,default=Path('tmp/jev-evaluations'))
+        if name in {'capture','replay','resume','models'}: command.add_argument('--env-file',type=Path,default=Path('.env.ai'))
+        if name not in {'resume','validate-suite','models'}: command.add_argument('--output-root',type=Path,default=Path('tmp/jev-evaluations'))
         if name=='capture': command.add_argument('--input',type=Path,required=True)
         if name=='replay':
             command.add_argument('--snapshot',type=Path,required=True)
-            command.add_argument('--evaluator',choices=['jev','gemini'],required=True)
+            command.add_argument('--evaluator',choices=['jev','gemini','nvidia_nim'],required=True)
+            command.add_argument('--model',help='Required exact model ID for nvidia_nim; pinned for other evaluators.')
             command.add_argument('--annotations',type=Path)
             command.add_argument('--experiment',type=Path)
+        if name=='models': command.add_argument('--provider',choices=['nvidia_nim'],required=True)
         if name=='resume': command.add_argument('--run',type=Path,required=True)
         if name in {'blind','freeze-references','validate-suite','compare'}: command.add_argument('--suite',type=Path,required=True)
         if name in {'validate-suite','compare'}: command.add_argument('--references',type=Path,required=name=='compare')
@@ -265,7 +279,7 @@ def main(argv=None, *, services=None):
         if error.run_path is not None: receipt['run'] = error.run_path
         _print(receipt); return 3
     except (ValueError,TypeError,KeyError,OSError):
-        reason = 'evaluation_disabled' if args.command in {'capture','replay','resume'} and os.environ.get('RADSYSX_APP_MODE','research') not in {'research','pilot'} else 'input_or_configuration_rejected'
+        reason = 'evaluation_disabled' if args.command in {'capture','replay','resume','models'} and os.environ.get('RADSYSX_APP_MODE','research') not in {'research','pilot'} else 'input_or_configuration_rejected'
         _print({'error':reason}); return 2
     except (KeyboardInterrupt,asyncio.CancelledError):
         _print({'status':'cancelled'}); return 130

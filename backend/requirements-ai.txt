@@ -1,4 +1,4 @@
-# Desktop Gemini/OpenAI runtime. Install into the repo .venv; do not combine with
+# Desktop Gemini/OpenAI/NVIDIA research runtime. Install into the repo .venv; do not combine with
 # requirements.txt, which owns the separate legacy research dependency set.
 # Python 3.12 Linux wheel resolution verified 2026-09-22.
 -r requirements-clinical.txt
@@ -11,3 +11,4 @@ langgraph==1.2.12
 python-dotenv==1.2.2
 websockets==16.1.1
 cryptography==50.0.1
+langchain-nvidia-ai-endpoints==1.4.3
