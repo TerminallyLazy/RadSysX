@@ -1,5 +1,8 @@
 # Realtime Voice And Chat Research Synthesis
 
+> September 22, 2026 update: The Gemini Live implementation, additional OpenAI `gpt-realtime-2.1-mini` choice and current verification are tracked in [LIVE_IMPLEMENTATION.md](LIVE_IMPLEMENTATION.md), Wayfinder #75/#76. The June model/transport/stub descriptions below are historical research and deferred alternatives, not the current runtime contract. Both providers use backend WSS and owned history/actions; research delegates remain Gemini Flash. GPU workers, NVIDIA VoiceChat and real-patient clinical use remain deferred.
+
+
 Last updated: 2026-06-12
 Status: distilled research artifact; not runtime implementation.
 

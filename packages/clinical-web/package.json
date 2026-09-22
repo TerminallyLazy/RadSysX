@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
     "./contracts": "./src/contracts.ts",
+    "./ai-live": "./src/ai-live.ts",
     "./env": "./src/env.ts"
   }
 }

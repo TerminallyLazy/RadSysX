@@ -383,6 +383,18 @@ class AISidebarModelLane(ClinicalModel):
     model_id: str | None = Field(default=None, alias="modelId")
 
 
+class AISidebarProvider(ClinicalModel):
+    id: Literal["gemini", "openai"]
+    label: str
+    model_id: str = Field(alias="modelId")
+    availability: Literal["configured", "unavailable", "disabled"]
+    reason: str
+    input_sample_rate: Literal[16000, 24000] = Field(alias="inputSampleRate")
+    output_sample_rate: Literal[24000] = Field(alias="outputSampleRate")
+    screen: bool
+    tools: bool
+
+
 class AISidebarCapabilities(ClinicalModel):
     backend_bound: bool = Field(alias="backendBound")
     voice_first: bool = Field(alias="voiceFirst")
@@ -393,6 +405,30 @@ class AISidebarCapabilities(ClinicalModel):
     audio_input_modes: list[str] = Field(default_factory=list, alias="audioInputModes")
     model_lanes: list[AISidebarModelLane] = Field(default_factory=list, alias="modelLanes")
     safety_note: str = Field(alias="safetyNote")
+    availability: Literal["configured", "unavailable", "disabled"] = "unavailable"
+    model_id: str = Field(default="gemini-3.8-live-extended-thinking", alias="modelId")
+    reason: str = "Gemini is not configured."
+    default_provider_id: Literal["gemini", "openai"] = Field(default="gemini", alias="defaultProviderId")
+    providers: list[AISidebarProvider] = Field(default_factory=list)
+
+
+class AIProviderCredentialStatus(ClinicalModel):
+    id: Literal["gemini", "openai"]
+    label: str
+    configured: bool
+    source: Literal["saved", "environment", "none"]
+    environment_configured: bool = Field(alias="environmentConfigured")
+
+
+class AICredentialStatusResponse(ClinicalModel):
+    storage_available: bool = Field(alias="storageAvailable")
+    providers: list[AIProviderCredentialStatus]
+
+
+class AICredentialSaveRequest(ClinicalModel):
+    # The route validates bounded raw JSON itself so validation errors cannot
+    # echo this field back to the browser or enter automatic error diagnostics.
+    api_key: str = Field(alias="apiKey", min_length=8, max_length=4096, repr=False)
 
 
 class AISidebarViewerContext(ClinicalModel):
@@ -400,6 +436,9 @@ class AISidebarViewerContext(ClinicalModel):
     series_instance_uid: str | None = Field(default=None, alias="seriesInstanceUID")
     sop_instance_uid: str | None = Field(default=None, alias="sopInstanceUID")
     route: str | None = None
+    target_id: str = Field(default="viewer", alias="targetId", max_length=128)
+    capture_target: Literal["viewer"] = Field(default="viewer", alias="captureTarget")
+    state: dict[str, Any] = Field(default_factory=dict)
     privacy_class: Literal["local-only", "deidentified", "phi-bearing", "unknown"] = Field(
         default="unknown",
         alias="privacyClass",
@@ -407,18 +446,48 @@ class AISidebarViewerContext(ClinicalModel):
 
 
 class AISidebarSessionCreateRequest(ClinicalModel):
+    provider_id: Literal["gemini", "openai"] = Field(default="gemini", alias="providerId")
     viewer_context: AISidebarViewerContext | None = Field(default=None, alias="viewerContext")
     trace_id: str | None = None
+    attestation: Literal["synthetic", "deidentified"] | None = None
 
 
 class AISidebarSessionResponse(ClinicalModel):
     session_id: str = Field(alias="sessionId")
-    status: Literal["ready", "fallback"]
+    status: Literal["allocated", "ready", "unavailable", "closed", "interrupted", "connecting", "reconnecting", "fallback", "failed"]
     created_at: str = Field(alias="createdAt")
     backend_bound: bool = Field(alias="backendBound")
     voice_first: bool = Field(alias="voiceFirst")
     orchestration_mode: Literal["stub", "local", "api", "hybrid"] = Field(alias="orchestrationMode")
     message: str
+    context_version: int = Field(default=1, alias="contextVersion")
+    expires_at: str | None = Field(default=None, alias="expiresAt")
+    live_url: str | None = Field(default=None, alias="liveUrl")
+    attestation: Literal["synthetic", "deidentified"] | None = None
+    viewer_context: AISidebarViewerContext | None = Field(default=None, alias="viewerContext")
+    model_id: str = Field(default="gemini-3.8-live-extended-thinking", alias="modelId")
+    provider_id: Literal["gemini", "openai"] = Field(default="gemini", alias="providerId")
+    input_sample_rate: Literal[16000, 24000] = Field(default=16000, alias="inputSampleRate")
+    output_sample_rate: Literal[24000] = Field(default=24000, alias="outputSampleRate")
+
+
+class AILiveContextUpdate(AISidebarSessionCreateRequest):
+    context_version: int = Field(alias="contextVersion", ge=1)
+
+
+class AILiveDecision(ClinicalModel):
+    context_version: int = Field(alias="contextVersion", ge=1)
+    approved: bool
+
+
+class AILiveEvent(ClinicalModel):
+    """Application envelope; binary audio never appears in the durable journal."""
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True, extra="allow")
+    kind: Literal["session", "transcript", "interaction", "interrupted", "tool", "viewer_action", "citations", "error", "pong", "audio_chunk", "screen_status"]
+    session_id: str = Field(alias="sessionId")
+    sequence: int
+    context_version: int = Field(alias="contextVersion")
+    interaction_id: str | None = Field(default=None, alias="interactionId")
 
 
 class AISidebarAttachment(ClinicalModel):

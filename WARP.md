@@ -54,6 +54,10 @@ npm run desktop
 
 The desktop launcher checks bootstrap, repairs setup when allowed, and then opens OHIF local-start first. The app defaults to local `pilot` mode, enables backend-owned local imaging import, and supervises FastAPI, Next.js, and the OHIF viewer bridge behind one localhost origin. Use compose when you need Orthanc-backed DICOMweb validation.
 
+Desktop bootstrap installs `backend/requirements-ai.txt` (clinical base plus Gemini/OpenAI transports and deepagents), using repo-local Python 3.12. Keep legacy research dependencies in a separate environment. Configure `RADSYSX_GEMINI_API_KEY` and/or `RADSYSX_OPENAI_API_KEY` only in backend `.env.ai` or the process environment. The sidebar selects the exact Gemini Live or `gpt-realtime-2.1-mini` provider; research delegates remain Gemini Flash. Both providers require explicit synthetic/deidentified attestation, connection, microphone and viewport sharing controls; real patient cloud use is disabled. Read `roadmap/ai-backend/LIVE_IMPLEMENTATION.md` for current contracts and verification. `npm run desktop:smoke:ai-live` is synthetic bridge validation, not authenticated cloud or physical-audio acceptance.
+
+Users can configure their own Gemini/OpenAI keys through **API keys** in the assistant panel. Keys are write-only, encrypted by the backend per authenticated user and override app configuration only for that user. Changes end active assistant sessions. Keep `.env.ai`, `.ai-secrets/` and local databases uncommitted; the source distribution must contain no personal key.
+
 After initial recon on the Linux host, wait for the user's first app test report before widening the code-change scope.
 
 Local compose stack:

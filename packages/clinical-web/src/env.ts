@@ -1,4 +1,5 @@
-export type AppMode = "research" | "pilot" | "clinical";
+import type { AppMode } from "./contracts";
+export type { AppMode } from "./contracts";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8000";
 

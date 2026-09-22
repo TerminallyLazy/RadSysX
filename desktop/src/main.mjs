@@ -8,6 +8,8 @@ import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { serviceEnvironment } from "./environment.mjs";
+import { assertDesktopSender, isViewerUrl, mayUseViewerPermission, ViewerCapture } from "./live-capture.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const desktopRoot = path.resolve(path.dirname(__filename), "..");
@@ -67,6 +69,7 @@ const LOCAL_IMAGING_EXTENSIONS = new Set([
 ]);
 
 const children = new Set();
+const bridgeSockets = new Set();
 const logLines = [];
 let shuttingDown = false;
 let shutdownStarted = false;
@@ -74,6 +77,11 @@ let smokeExitScheduled = false;
 let bridgeServer = null;
 let mainWindow = null;
 let publicBaseUrl = null;
+const viewerCapture = new ViewerCapture({
+  getContents: () => mainWindow?.webContents,
+  getOrigin: () => publicBaseUrl,
+  getSession: readCaptureSession,
+});
 
 function appendLog(scope, message) {
   const lines = String(message)
@@ -383,10 +391,7 @@ function spawnService(name, command, args, options = {}) {
 
   const child = spawn(command, args, {
     cwd: options.cwd ?? workspaceRoot,
-    env: {
-      ...process.env,
-      ...(options.env ?? {}),
-    },
+    env: serviceEnvironment(name, process.env, options.env),
     stdio: ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32",
   });
@@ -529,6 +534,19 @@ function viewerDistIsFresh(indexPath) {
     if (!fs.existsSync(outputPath) || isNewerThan(sourcePath, outputPath)) {
       return false;
     }
+  }
+
+  const liveOutput = path.join(viewerDist, "radsysx-live.js");
+  const workletOutput = path.join(viewerDist, "radsysx-audio-worklet.js");
+  if (!fs.existsSync(liveOutput) || !fs.existsSync(workletOutput)) return false;
+  for (const sourcePath of [path.join(viewerRoot, "scripts", "build-live.mjs"), path.join(viewerRoot, "tsconfig.live.json")]) {
+    if (isNewerThan(sourcePath, liveOutput)) return false;
+  }
+  const liveSourceRoot = path.join(viewerRoot, "assets", "live");
+  if (!fs.existsSync(liveSourceRoot)) return false;
+  for (const entry of fs.readdirSync(liveSourceRoot, { withFileTypes: true, recursive: true })) {
+    if (entry.isFile() && (isNewerThan(path.join(entry.parentPath, entry.name), liveOutput) ||
+        isNewerThan(path.join(entry.parentPath, entry.name), workletOutput))) return false;
   }
 
   return true;
@@ -679,7 +697,8 @@ async function startRuntime() {
     [
       "-m",
       "uvicorn",
-      "backend.server:app",
+      process.env.RADSYSX_DESKTOP_ALLOW_TEST_SHUTDOWN === "1" && process.env.RADSYSX_DESKTOP_BACKEND_APP === "backend.clinical.ai_fixture_server:app"
+        ? "backend.clinical.ai_fixture_server:app" : "backend.server:app",
       "--host",
       "127.0.0.1",
       "--port",
@@ -717,6 +736,10 @@ function startDesktopBridge({ appPort, backendBaseUrl, frontendBaseUrl }) {
         backendBaseUrl,
         frontendBaseUrl,
       });
+    });
+    server.on("connection", socket => {
+      bridgeSockets.add(socket);
+      socket.once("close", () => bridgeSockets.delete(socket));
     });
     server.on("upgrade", (request, socket, head) => {
       handleBridgeUpgrade(request, socket, head, {
@@ -1067,11 +1090,33 @@ function createMainWindow() {
     window.setTitle("RadSysX");
   });
   window.once("ready-to-show", () => window.show());
+  const contents = window.webContents;
+  contents.session.setPermissionCheckHandler((sender, permission, origin, details) =>
+    mayUseViewerPermission(sender, mainWindow?.webContents, publicBaseUrl, permission, details, origin));
+  contents.session.setPermissionRequestHandler((sender, permission, callback, details) =>
+    callback(mayUseViewerPermission(sender, mainWindow?.webContents, publicBaseUrl, permission, details)));
+  contents.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
+    if (isMainFrame) viewerCapture.revoke(contents);
+  });
+  contents.on("render-process-gone", () => viewerCapture.revoke(contents));
+  contents.on("destroyed", () => viewerCapture.revoke(contents));
+  contents.on("will-navigate", (event, url) => {
+    if (!publicBaseUrl) return;
+    try {
+      if (new URL(url).origin === publicBaseUrl) return;
+      event.preventDefault();
+      if (["http:", "https:"].includes(new URL(url).protocol)) shell.openExternal(url);
+    } catch { event.preventDefault(); }
+  });
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (publicBaseUrl && url.startsWith(publicBaseUrl)) {
-      return { action: "allow" };
-    }
-    shell.openExternal(url);
+    try {
+      const destination = new URL(url);
+      if (publicBaseUrl && destination.origin === publicBaseUrl) {
+        return { action: "allow" };
+      } else if (["http:", "https:"].includes(destination.protocol)) {
+        shell.openExternal(url);
+      }
+    } catch { /* Reject unsupported external protocols. */ }
     return { action: "deny" };
   });
 
@@ -1079,7 +1124,11 @@ function createMainWindow() {
 }
 
 function registerDesktopIpc() {
+  ipcMain.handle("radsysx:start-viewer-capture", (event, input) => viewerCapture.start(event, input));
+  ipcMain.handle("radsysx:capture-viewer-frame", (event, input) => viewerCapture.frame(event, input));
+  ipcMain.handle("radsysx:stop-viewer-capture", (event, input) => viewerCapture.stop(event, input));
   ipcMain.handle("radsysx:select-local-imaging", async (event, options = {}) => {
+    assertDesktopSender(event, mainWindow?.webContents, publicBaseUrl, false);
     const mode = options?.mode === "folder" ? "folder" : "files";
     const selection = await selectLocalImagingPaths(event.sender, mode);
     if (selection.cancelled) {
@@ -1091,6 +1140,7 @@ function registerDesktopIpc() {
   });
 
   ipcMain.handle("radsysx:import-local-imaging", async (event, options = {}) => {
+    assertDesktopSender(event, mainWindow?.webContents, publicBaseUrl, false);
     const mode = options?.mode === "folder" ? "folder" : "files";
     const selection = await selectLocalImagingPaths(event.sender, mode);
     if (selection.cancelled) {
@@ -1100,6 +1150,19 @@ function registerDesktopIpc() {
     const response = await importPickedFilesThroughBackend(event.sender, selection.filePaths);
     return { cancelled: false, response };
   });
+}
+
+async function readCaptureSession(sender, sessionId) {
+  if (!publicBaseUrl || !isViewerUrl(sender.getURL(), publicBaseUrl)) return null;
+  const cookies = await sender.session.cookies.get({ url: publicBaseUrl });
+  const response = await fetch(`${publicBaseUrl}/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}`, {
+    headers: { cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; ") },
+    signal: AbortSignal.timeout(2500),
+    redirect: "error",
+  });
+  if (!response.ok) return null;
+  const history = await response.json();
+  return history.session ?? null;
 }
 
 async function selectLocalImagingPaths(sender, mode) {
@@ -1331,6 +1394,7 @@ async function shutdown() {
   }
   shutdownStarted = true;
   shuttingDown = true;
+  viewerCapture.revoke();
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.destroy();
@@ -1342,6 +1406,8 @@ async function shutdown() {
   children.clear();
 
   if (bridgeServer) {
+    for (const socket of bridgeSockets) socket.destroy();
+    bridgeSockets.clear();
     bridgeServer.closeAllConnections?.();
     await new Promise((resolve) => bridgeServer.close(resolve));
     bridgeServer = null;

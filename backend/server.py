@@ -15,9 +15,13 @@ import pathlib
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 
+RESEARCH_RUNTIME = os.getenv("RADSYSX_APP_MODE", "research") == "research"
+
 RADSYSX_IMPORT_ERROR = None
 
 try:
+    if not RESEARCH_RUNTIME:
+        raise ImportError("Research runtime is disabled in this app mode.")
     from backend.radsysx import process_query, stream_query, enable_disable_mcp  # type: ignore
 except Exception as exc:
     RADSYSX_IMPORT_ERROR = exc
@@ -34,10 +38,14 @@ except Exception as exc:
 MCP_IMPORT_ERROR = None
 
 try:
+    if not RESEARCH_RUNTIME:
+        raise ImportError("Research runtime is disabled in this app mode.")
     from backend.mcp.fhir_server import FHIRMCPServer  # type: ignore
     from backend.mcp.client import RadSysXMCPClient  # type: ignore
 except Exception:
     try:
+        if not RESEARCH_RUNTIME:
+            raise ImportError("Research runtime is disabled in this app mode.")
         from mcp.fhir_server import FHIRMCPServer
         from mcp.client import RadSysXMCPClient
     except Exception as exc:
@@ -48,9 +56,13 @@ except Exception:
 CHAT_IMPORT_ERROR = None
 
 try:
+    if not RESEARCH_RUNTIME:
+        raise ImportError("Research runtime is disabled in this app mode.")
     from backend.chat_interface import initialize_chat_interface, get_chat_interface  # type: ignore
 except Exception:
     try:
+        if not RESEARCH_RUNTIME:
+            raise ImportError("Research runtime is disabled in this app mode.")
         from chat_interface import initialize_chat_interface, get_chat_interface  # type: ignore
     except Exception as exc:
         CHAT_IMPORT_ERROR = exc
@@ -354,7 +366,7 @@ async def stream(request: Request):
 
 # Create FHIR server instance for handling tool requests
 try:
-    if FHIRMCPServer is None:
+    if not RESEARCH_RUNTIME or FHIRMCPServer is None:
         raise RuntimeError(MCP_IMPORT_ERROR or "FHIR/MCP imports are unavailable.")
     fhir_server = FHIRMCPServer()
 except Exception as exc:
@@ -368,10 +380,27 @@ clinical_service = ClinicalPlatformService(
 local_imaging_importer = LocalImagingImporter(settings, clinical_repository)
 clinical_repository.initialize()
 
+try:
+    from backend.clinical.ai_live import AILiveService
+    from backend.clinical.ai_routes import live_router
+except ModuleNotFoundError:
+    from clinical.ai_live import AILiveService
+    from clinical.ai_routes import live_router
+ai_live_service = AILiveService(clinical_service, clinical_repository, settings)
+app.include_router(live_router(ai_live_service, session_manager))
+
+@app.on_event("shutdown")
+async def shutdown_ai_live():
+    await ai_live_service.shutdown()
+
+
 # Initialize FHIR server on startup
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
+    ai_live_service.repository.recover()
+    if not RESEARCH_RUNTIME:
+        return
     if RADSYSX_IMPORT_ERROR is not None:
         print(f"Research agent stack unavailable: {RADSYSX_IMPORT_ERROR}")
 
@@ -481,8 +510,11 @@ async def clinical_auth_session(http_request: Request) -> SessionResponse:
 
 
 @app.post("/api/auth/logout")
-async def clinical_auth_logout(response: Response) -> SessionResponse:
-    """Clear the current clinical session cookie."""
+async def clinical_auth_logout(response: Response, request: Request) -> SessionResponse:
+    """Close owned Live work and clear the current clinical session cookie."""
+    actor = _optional_session(request)
+    if actor:
+        await ai_live_service.stop_owner(actor)
     _clear_session_cookie(response)
     return SessionResponse(authenticated=False, session=None)
 
@@ -794,40 +826,6 @@ async def submit_ai_job(request: AIJobCreateRequest, http_request: Request):
     """Queue an AI job under governance rules."""
     actor = _require_session(http_request)
     return clinical_service.submit_ai_job(
-        request,
-        actor=actor,
-        source_ip=_client_ip(http_request),
-    )
-
-
-@app.get("/api/ai/sidebar/capabilities", response_model=AISidebarCapabilities)
-async def get_ai_sidebar_capabilities(http_request: Request):
-    """Return the backend-bound voice-first sidebar contract."""
-    _require_session(http_request)
-    return clinical_service.get_ai_sidebar_capabilities()
-
-
-@app.post("/api/ai/sidebar/sessions", response_model=AISidebarSessionResponse)
-async def create_ai_sidebar_session(request: AISidebarSessionCreateRequest, http_request: Request):
-    """Create an ephemeral backend session for the OHIF AI sidebar."""
-    actor = _require_session(http_request)
-    return clinical_service.create_ai_sidebar_session(
-        request,
-        actor=actor,
-        source_ip=_client_ip(http_request),
-    )
-
-
-@app.post("/api/ai/sidebar/sessions/{session_id}/messages", response_model=AISidebarTurnResponse)
-async def submit_ai_sidebar_message(
-    session_id: str,
-    request: AISidebarMessageRequest,
-    http_request: Request,
-):
-    """Submit a voice or composer turn from the OHIF AI sidebar."""
-    actor = _require_session(http_request)
-    return clinical_service.submit_ai_sidebar_message(
-        session_id,
         request,
         actor=actor,
         source_ip=_client_ip(http_request),

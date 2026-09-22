@@ -8,6 +8,50 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 
+class AICredentialModel(Base):
+    __tablename__ = "ai_credentials"
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    ciphertext: Mapped[str] = mapped_column(Text)
+
+
+class AILiveSessionModel(Base):
+    __tablename__ = "ai_live_sessions"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    created_at: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[str] = mapped_column(String(128))
+    context_version: Mapped[int] = mapped_column(default=1)
+    context_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    attestation: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sequence: Mapped[int] = mapped_column(default=0)
+
+
+class AILiveEventModel(Base):
+    __tablename__ = "ai_live_events"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    sequence: Mapped[int] = mapped_column(index=True)
+    event_json: Mapped[dict] = mapped_column(JSON)
+
+
+class AILiveToolModel(Base):
+    __tablename__ = "ai_live_tools"
+    id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    provider_id: Mapped[str] = mapped_column(String(128))
+    name: Mapped[str] = mapped_column(String(128))
+    arguments: Mapped[dict] = mapped_column(JSON)
+    context_version: Mapped[int] = mapped_column()
+    status: Mapped[str] = mapped_column(String(32))
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[str] = mapped_column(String(64))
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
 class StudyModel(Base):
     __tablename__ = "clinical_studies"
 

@@ -41,10 +41,12 @@ The OHIF app also serves `/viewer/fhir-viewer` for FHIR R4 imaging discovery thr
 
 ## Python Baseline
 
-- Use Python `3.12` when the same environment needs both `backend/requirements-clinical.txt` and `backend/requirements.txt`.
+- Use Python `3.12` for `backend/requirements-ai.txt`, the desktop Gemini/OpenAI and deepagents runtime layered over clinical requirements. Keep the incompatible legacy `backend/requirements.txt` in a separate environment.
 - Python `3.13` is acceptable for the governed clinical bootstrap path only.
 
 ## Critical Rules
+
+- API-key settings are backend-owned, encrypted per authenticated user and write-only from the browser. Never commit `.env.ai`, `.ai-secrets/` or local databases. Saved keys override operator configuration only for their owner; changes end their active assistant sessions and tasks.
 
 - Do not reintroduce browser-supplied actor identity into governed clinical APIs.
 - Do not put PHI-bearing launch context into URLs.

@@ -30,7 +30,10 @@
     "dev:desktop": "npm run desktop",
     "dev:frontend": "npm run dev --workspace frontend",
     "dev:viewer": "npm run dev --workspace viewer",
-    "type-check": "npm run type-check --workspace frontend && npm run type-check --workspace viewer"
+    "type-check": "npm run type-check --workspace frontend && npm run type-check --workspace viewer",
+    "desktop:test:live": "npm run test:live --workspace @radsysx/desktop",
+    "desktop:smoke:ai-live": "npm run smoke:ai-live --workspace @radsysx/desktop",
+    "desktop:smoke:ai-viewer": "npm run smoke:ai-viewer --workspace @radsysx/desktop"
   },
   "devDependencies": {
     "patch-package": "^8.0.0",

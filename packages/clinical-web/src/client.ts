@@ -2,6 +2,9 @@ import { getBackendBaseUrl } from "./env";
 import type {
   AIJobRecord,
   AIJobRequest,
+  AICredentialSaveRequest,
+  AICredentialStatusResponse,
+  AIProviderCredentialStatus,
   AISidebarCapabilities,
   AISidebarMessageRequest,
   AISidebarSessionCreateRequest,
@@ -80,6 +83,21 @@ async function requestMultipart<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+async function requestAICredentials(
+  path: string, init: RequestInit, options?: ClinicalApiOptions,
+): Promise<AICredentialStatusResponse> {
+  const response = await fetch(resolveClinicalApiUrl(path, options), {
+    ...init, credentials: "include", cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+  });
+  // Credential endpoints must not surface a proxy/server response that could echo
+  // submitted input. The backend's detailed logs and history never receive keys.
+  if (!response.ok) throw new Error(response.status === 401 ? "Sign in to manage API keys."
+    : response.status === 422 ? "Enter a valid API key without spaces."
+    : "API key settings could not be updated. Check the connection and try again.");
+  return response.json() as Promise<AICredentialStatusResponse>;
 }
 
 export function createClinicalApi(options?: ClinicalApiOptions) {
@@ -176,6 +194,20 @@ export function createClinicalApi(options?: ClinicalApiOptions) {
       return requestJson("/api/ai/sidebar/capabilities", undefined, options);
     },
 
+    getAICredentials(): Promise<AICredentialStatusResponse> {
+      return requestAICredentials("/api/ai/sidebar/credentials", { method: "GET" }, options);
+    },
+
+    saveAICredential(providerId: AIProviderCredentialStatus["id"], payload: AICredentialSaveRequest): Promise<AICredentialStatusResponse> {
+      return requestAICredentials(`/api/ai/sidebar/credentials/${encodeURIComponent(providerId)}`, {
+        method: "PUT", body: JSON.stringify(payload),
+      }, options);
+    },
+
+    deleteAICredential(providerId: AIProviderCredentialStatus["id"]): Promise<AICredentialStatusResponse> {
+      return requestAICredentials(`/api/ai/sidebar/credentials/${encodeURIComponent(providerId)}`, { method: "DELETE" }, options);
+    },
+
     createAISidebarSession(payload: AISidebarSessionCreateRequest = {}): Promise<AISidebarSessionResponse> {
       return requestJson("/api/ai/sidebar/sessions", {
         method: "POST",
@@ -191,6 +223,32 @@ export function createClinicalApi(options?: ClinicalApiOptions) {
         method: "POST",
         body: JSON.stringify(payload),
       }, options);
+    },
+
+    listAILiveSessions(): Promise<{ sessions: AISidebarSessionResponse[] }> {
+      return requestJson("/api/ai/sidebar/sessions", undefined, options);
+    },
+    getAILiveHistory(sessionId: string): Promise<import("./ai-live").AILiveHistory> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}`, undefined, options);
+    },
+    updateAILiveContext(sessionId: string, payload: import("./ai-live").AILiveContextUpdate): Promise<AISidebarSessionResponse> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/context`, {
+        method: "POST", body: JSON.stringify(payload),
+      }, options);
+    },
+    closeAILiveSession(sessionId: string): Promise<AISidebarSessionResponse> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/close`, { method: "POST" }, options);
+    },
+    deleteAILiveHistory(sessionId: string): Promise<{ deleted: boolean }> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" }, options);
+    },
+    decideAILiveTool(sessionId: string, toolId: string, contextVersion: number, approved: boolean): Promise<import("./ai-live").AILiveTool> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(toolId)}/decision`, {
+        method: "POST", body: JSON.stringify({ contextVersion, approved }),
+      }, options);
+    },
+    cancelAILiveTool(sessionId: string, toolId: string): Promise<import("./ai-live").AILiveTool> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(toolId)}/cancel`, { method: "POST" }, options);
     },
 
     storeDerivedResults(payload: DerivedResultRequest): Promise<DerivedResultResponse> {

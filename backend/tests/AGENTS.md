@@ -29,3 +29,9 @@
 ## Security regression suite
 
 - `python3 -m pytest backend/tests/test_security_regressions.py` covers synthetic error privacy, streaming completion, artifact traversal/symlink rejection, worker failures, and DICOM/FHIR logging. It must not contact a real FHIR server or process live patient data.
+
+- `test_ai_live.py` verifies synthetic Live ownership, media/lifecycle, action approval/idempotency/recovery without Google; `test_ai_research.py` verifies bounded isolated delegates, shared dispatch limits across public and virtual tools, and citation contracts. Tests must not read a real provider key into fixtures or accidentally call Google.
+- `test_ai_openai.py` verifies the OpenAI transport without cloud access; `test_ai_providers.py` verifies selected-provider routing, immutable session identity, readiness, media markers and shared tool authority. Mock both providers and isolate `.env.ai` reads in fixtures; authenticated provider probes are separate, explicitly synthetic acceptance work.
+- `test_ai_connection_races.py` covers queued-input provider replacement and authority revocation, context-before-ready ordering, atomic audio markers, serialized detach/accept, no mutation replay, and exclusion of unconfirmed assistant speech from fresh OpenAI context.
+- `test_ai_screen_awareness.py` covers explicit sharing off/pending/received state, nonpersistent receipts, first-frame failures, stop/reconnect resets, historical-image honesty and stale provider notification races.
+- `test_ai_credentials.py` covers encrypted personal keys, signed owner/provider isolation, deployment fallback, live/research key selection, fixed nonreflecting validation errors, no-store replies, unsafe/missing/corrupt master storage, FIFO rejection and actor-scoped session/job shutdown before key mutation. Use only synthetic key strings and isolated SQLite-adjacent key directories. Never read, change or validate a real account key in these tests.

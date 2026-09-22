@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { buildOhifSource } from "./build-ohif-source.mjs";
+import { buildLiveRuntime } from "./build-live.mjs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,7 +21,7 @@ const copiedRuntimeAssetNames = [
   "radsysx-ohif-mode.js",
   "radsysx-viewer.css",
 ];
-const generatedRuntimeAssetNames = ["radsysx-fhir-datasource.js"];
+const generatedRuntimeAssetNames = ["radsysx-fhir-datasource.js", "radsysx-live.js", "radsysx-audio-worklet.js"];
 const runtimeAssetNames = [...copiedRuntimeAssetNames, ...generatedRuntimeAssetNames];
 
 if (!sourceDist) {
@@ -38,6 +39,7 @@ for (const assetName of copiedRuntimeAssetNames) {
   copyViewerAsset(assetName);
 }
 await buildFhirDataSourceBundle();
+await buildLiveRuntime(distRoot);
 copyWorkspaceFile(["RadSysX-Logo.png"], "radsysx-logo.png");
 copyWorkspaceFile(["RadSysX-Logo-Light.png"], "radsysx-logo-light.png");
 copyWorkspaceAsset(["react", "umd", "react.production.min.js"], "react.production.min.js");
@@ -313,6 +315,7 @@ function patchIndexHtml() {
       `<script src="radsysx-bootstrap.js?v=${runtimeAssetVersion}"></script>`,
       `<script src="radsysx-fhir-datasource.js?v=${runtimeAssetVersion}"></script>`,
       `<script src="radsysx-fhir-extension.js?v=${runtimeAssetVersion}"></script>`,
+      `<script src="radsysx-live.js?v=${runtimeAssetVersion}"></script>`,
       `<script src="radsysx-ohif-extension.js?v=${runtimeAssetVersion}"></script>`,
       `<script src="radsysx-ohif-mode.js?v=${runtimeAssetVersion}"></script>`,
       '<script rel="preload" as="script" src="app-config.js"></script>',

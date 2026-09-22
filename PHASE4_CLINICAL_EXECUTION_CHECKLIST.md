@@ -36,9 +36,9 @@ These items are already part of the current post-Phase-4-polish baseline:
 
 - [ ] Start the native Linux validation tranche correctly.
   - Use a native Linux host as the reference posture.
-  - Bootstrap Python deps with `.venv` and `backend/requirements-clinical.txt`, and Node deps with workspace `npm install`.
+  - Bootstrap clinical Python deps with `.venv` and `backend/requirements-clinical.txt`, and Node deps with workspace `npm install`. Desktop additionally uses `backend/requirements-ai.txt`; do not combine it with legacy research pins.
   - Keep research/agent extras out of the initial governed clinical bring-up unless the task explicitly needs them.
-  - If the validation pass needs both the clinical and research/backend dependency sets on one host, use Python `3.12`.
+  - Use Python `3.12` for desktop AI validation; keep the legacy research/backend dependency set in a separate environment on the same host.
   - Do a short context recon, then wait for the user's first Linux runtime test report before broad code changes.
 
 - [ ] Finish documentation alignment across the maintained surface.

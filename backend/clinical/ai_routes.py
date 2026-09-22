@@ -1,0 +1,163 @@
+"""Same-origin, signed-cookie AI API; no provider credentials reach the browser."""
+from __future__ import annotations
+
+import json
+
+from fastapi import APIRouter, HTTPException, Request, WebSocket
+from fastapi.responses import JSONResponse
+
+from .ai_config import PROVIDER_PROFILES
+from .ai_credentials import validate_api_key
+from .contracts import (AICredentialStatusResponse, AILiveContextUpdate, AILiveDecision,
+                        AISidebarSessionCreateRequest)
+
+
+def live_router(service, session_manager):
+    router = APIRouter(prefix="/api/ai/sidebar")
+
+    def actor(request, *, require_ai=True):
+        claims = session_manager.loads(request.cookies.get(session_manager.cookie_name))
+        if claims is None:
+            raise HTTPException(401, "Clinical session required.")
+        if require_ai:
+            service.require_actor(claims)
+        # Origin check is required for WS and checked for all browser writes.
+        origin = request.headers.get("origin")
+        if origin and origin not in service.platform.allowed_origins:
+            raise HTTPException(403, "Origin is not allowed.")
+        return claims
+
+    @router.get("/capabilities")
+    async def capabilities(request: Request):
+        return service.capabilities(actor(request))
+
+    def credential_actor(request, *, write=False):
+        claims = actor(request)
+        if write and request.headers.get("origin") not in service.platform.allowed_origins:
+            raise HTTPException(403, "An allowed Origin is required to change API key settings.")
+        return claims
+
+    def private_error(error):
+        # Exception responses do not inherit a normal Response's headers.
+        error.headers = {**(error.headers or {}), "Cache-Control": "no-store"}
+        return error
+
+    @router.get("/credentials", response_model=AICredentialStatusResponse)
+    async def credentials(request: Request):
+        try:
+            result = service.credential_status(credential_actor(request))
+            return JSONResponse(result, headers={"Cache-Control": "no-store"})
+        except HTTPException as error:
+            raise private_error(error)
+
+    @router.put("/credentials/{provider_id}", response_model=AICredentialStatusResponse)
+    async def save_credential(provider_id: str, request: Request):
+        try:
+            claims = credential_actor(request, write=True)
+            if provider_id not in PROVIDER_PROFILES:
+                raise HTTPException(422, "Choose a supported AI provider.")
+            # No automatic Pydantic body errors: they include the rejected
+            # input. Bound the stream before decoding JSON or reading a key.
+            try:
+                if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+                    raise ValueError()
+                size = request.headers.get("content-length")
+                if size is not None and (not size.isdecimal() or int(size) > 8192):
+                    raise ValueError()
+                body = bytearray()
+                async for chunk in request.stream():
+                    if len(body) + len(chunk) > 8192:
+                        raise ValueError()
+                    body.extend(chunk)
+                payload = json.loads(body)
+                if not isinstance(payload, dict) or set(payload) != {"apiKey"}:
+                    raise ValueError()
+                key = validate_api_key(payload["apiKey"])
+            except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+                raise HTTPException(422, "Enter a valid API key without spaces or control characters.") from None
+            result = await service.change_credential(claims, provider_id, key)
+            return JSONResponse(result, headers={"Cache-Control": "no-store"})
+        except HTTPException as error:
+            raise private_error(error)
+
+    @router.delete("/credentials/{provider_id}", response_model=AICredentialStatusResponse)
+    async def delete_credential(provider_id: str, request: Request):
+        try:
+            claims = credential_actor(request, write=True)
+            result = await service.change_credential(claims, provider_id)
+            return JSONResponse(result, headers={"Cache-Control": "no-store"})
+        except HTTPException as error:
+            raise private_error(error)
+
+    @router.post("/sessions")
+    async def create(payload: AISidebarSessionCreateRequest, request: Request):
+        return service.create(payload, actor(request))
+
+    @router.get("/sessions")
+    async def sessions(request: Request):
+        return {"sessions": service.repository.list(actor(request))}
+
+    @router.get("/sessions/{session_id}")
+    async def history(session_id: str, request: Request):
+        return service.repository.history(session_id, actor(request))
+
+    @router.post("/sessions/{session_id}/context")
+    async def context(session_id: str, payload: AILiveContextUpdate, request: Request):
+        return await service.update_context(session_id, payload, actor(request))
+
+    @router.post("/sessions/{session_id}/close")
+    async def close(session_id: str, request: Request):
+        claims = actor(request)
+        service.repository.owned(session_id, claims)
+        await service.stop(session_id)
+        return service.repository.owned(session_id, claims)
+
+    @router.delete("/sessions/{session_id}")
+    async def clear(session_id: str, request: Request):
+        claims = actor(request)
+        service.repository.owned(session_id, claims)
+        await service.stop(session_id)
+        service.repository.clear(session_id, claims)
+        return {"deleted": True}
+
+    @router.post("/sessions/{session_id}/tools/{tool_id}/decision")
+    async def decide(session_id: str, tool_id: str, payload: AILiveDecision, request: Request):
+        claims = actor(request)
+        service.repository.owned(session_id, claims, active=True)
+        runtime = service.runtimes.get(session_id)
+        if not runtime or not runtime.provider:
+            raise HTTPException(409, "Reconnect the live session before reviewing this action.")
+        return await runtime.decide(tool_id, payload)
+
+    @router.post("/sessions/{session_id}/tools/{tool_id}/cancel")
+    async def cancel(session_id: str, tool_id: str, request: Request):
+        service.repository.owned(session_id, actor(request), active=True)
+        runtime = service.runtimes.get(session_id)
+        if not runtime:
+            raise HTTPException(409, "AI session is not active.")
+        return await runtime.cancel(tool_id, notify_provider=True)
+
+    @router.post("/sessions/{session_id}/messages")
+    async def old_message(session_id: str, request: Request):
+        service.repository.owned(session_id, actor(request), active=True)
+        # Old HTTP callers must never mistake a deterministic response for inference.
+        raise HTTPException(409, "Start a live assistant session and send text through its connection. The HTTP stub is retired.")
+
+    @router.websocket("/sessions/{session_id}/live")
+    async def live(websocket: WebSocket, session_id: str):
+        try:
+            if websocket.headers.get("origin") not in service.platform.allowed_origins:
+                raise HTTPException(403, "Origin required.")
+            claims = actor(websocket)
+            await service.attach(websocket, session_id, claims)
+        except HTTPException as error:
+            await websocket.close(code=4401 if error.status_code == 401 else 4403,
+                                  reason="AI session is unavailable or unauthorized.")
+        except Exception:
+            # Never let provider URLs, tokens or request contents enter ASGI logs.
+            try:
+                await websocket.close(code=1011, reason="AI connection ended.")
+            except Exception:
+                pass
+
+    return router

@@ -341,6 +341,35 @@ export type AISidebarModelLane = {
   modelId?: string | null;
 };
 
+export type AISidebarProvider = {
+  id: "gemini" | "openai";
+  label: string;
+  modelId: string;
+  availability: "configured" | "unavailable" | "disabled";
+  reason: string;
+  inputSampleRate: 16000 | 24000;
+  outputSampleRate: 24000;
+  screen: boolean;
+  tools: boolean;
+};
+
+export type AIProviderCredentialStatus = {
+  id: "gemini" | "openai";
+  label: string;
+  configured: boolean;
+  source: "saved" | "environment" | "none";
+  environmentConfigured: boolean;
+};
+
+/** Status only: saved key values and fragments are never returned. */
+export type AICredentialStatusResponse = {
+  storageAvailable: boolean;
+  providers: AIProviderCredentialStatus[];
+};
+
+/** Write-only input; never persist this request in browser state or history. */
+export type AICredentialSaveRequest = { apiKey: string };
+
 export type AISidebarCapabilities = {
   backendBound: boolean;
   voiceFirst: boolean;
@@ -351,6 +380,11 @@ export type AISidebarCapabilities = {
   audioInputModes: string[];
   modelLanes: AISidebarModelLane[];
   safetyNote: string;
+  availability: "configured" | "unavailable" | "disabled";
+  modelId: string;
+  reason: string;
+  defaultProviderId: "gemini" | "openai";
+  providers: AISidebarProvider[];
 };
 
 export type AISidebarViewerContext = {
@@ -359,21 +393,35 @@ export type AISidebarViewerContext = {
   sopInstanceUID?: string | null;
   route?: string | null;
   privacyClass?: "local-only" | "deidentified" | "phi-bearing" | "unknown";
+  targetId?: string;
+  captureTarget?: "viewer";
+  state?: Record<string, unknown>;
 };
 
 export type AISidebarSessionCreateRequest = {
+  providerId?: "gemini" | "openai";
   viewerContext?: AISidebarViewerContext | null;
   traceId?: string | null;
+  attestation?: "synthetic" | "deidentified" | null;
 };
 
 export type AISidebarSessionResponse = {
   sessionId: string;
-  status: "ready" | "fallback";
+  status: "allocated" | "ready" | "unavailable" | "closed" | "interrupted" | "connecting" | "reconnecting" | "fallback" | "failed";
   createdAt: string;
   backendBound: boolean;
   voiceFirst: boolean;
   orchestrationMode: AISidebarOrchestrationMode;
   message: string;
+  contextVersion: number;
+  expiresAt: string | null;
+  liveUrl: string | null;
+  attestation: "synthetic" | "deidentified" | null;
+  viewerContext: AISidebarViewerContext | null;
+  modelId: string;
+  providerId: "gemini" | "openai";
+  inputSampleRate: 16000 | 24000;
+  outputSampleRate: 24000;
 };
 
 export type AISidebarAttachment = {

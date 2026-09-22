@@ -3,13 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { publicChildEnvironment } from "../src/environment.mjs";
+import { inspectAiDependencies } from "./ai-dependencies.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, "..");
 const workspaceRoot = path.resolve(desktopRoot, "..");
 const checkOnly = process.argv.includes("--check");
 const venvDir = path.join(workspaceRoot, ".venv");
-const requirementsPath = path.join(workspaceRoot, "backend", "requirements-clinical.txt");
+const requirementsPath = path.join(workspaceRoot, "backend", "requirements-ai.txt");
 
 async function main() {
   const python = findPython();
@@ -24,7 +26,8 @@ async function main() {
     return;
   }
 
-  await run("python", python.command, [...python.args, "-m", "venv", ".venv"]);
+  // Preserve a working repo interpreter when the host's default Python changes.
+  if (!fs.existsSync(venvPython())) await run("python", python.command, [...python.args, "-m", "venv", ".venv"]);
   await run("pip", venvPython(), ["-m", "pip", "install", "--upgrade", "pip"]);
   await run("python-deps", venvPython(), ["-m", "pip", "install", "-r", requirementsPath]);
   await run("npm", npmCommand(), ["install", "--legacy-peer-deps"]);
@@ -37,13 +40,15 @@ async function main() {
 
 async function checkBootstrap(python) {
   console.log(`Python candidate: ${python.label}`);
-  assertFile(requirementsPath, "Clinical requirements file");
+  assertFile(requirementsPath, "Desktop AI and clinical requirements file");
   assertFile(venvPython(), "Virtualenv Python");
   assertDirectory(path.join(workspaceRoot, "node_modules"), "Workspace node_modules");
   assertDirectory(path.join(workspaceRoot, "node_modules", "electron"), "Electron dependency");
+  const { mismatches } = inspectAiDependencies(venvPython(), workspaceRoot);
+  if (mismatches.length) throw new Error(`Python AI dependencies do not match the repository pins: ${mismatches.join("; ")}. Run npm run desktop:bootstrap.`);
   await run("python-imports", venvPython(), [
     "-c",
-    "import fastapi, pydicom, sqlalchemy, uvicorn; print('clinical Python imports ready')",
+    "import fastapi, pydicom, sqlalchemy, uvicorn, deepagents; from google import genai; print('clinical and AI Python imports ready')",
   ]);
   await run("npm-version", npmCommand(), ["--version"]);
   console.log("RadSysX desktop bootstrap check passed.");
@@ -64,6 +69,7 @@ function findPython() {
     );
   } else {
     candidates.push(
+      { command: "python3.12", args: [], label: "python3.12" },
       { command: "python3", args: [], label: "python3" },
       { command: "python", args: [], label: "python" },
     );
@@ -113,7 +119,7 @@ function run(label, command, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: workspaceRoot,
-      env: process.env,
+      env: label === "doctor" ? process.env : publicChildEnvironment(process.env),
       stdio: "inherit",
     });
     child.once("error", reject);

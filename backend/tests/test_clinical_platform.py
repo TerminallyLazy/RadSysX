@@ -998,76 +998,24 @@ def test_active_ai_mode_is_rejected_by_default() -> None:
     assert "disabled" in response.json()["detail"].lower()
 
 
-def test_ai_sidebar_backend_session_and_turn_are_audited() -> None:
+def test_ai_sidebar_sessions_are_owned_and_http_stub_is_retired() -> None:
     isolated_client = TestClient(app)
-
-    unauthenticated = isolated_client.get("/api/ai/sidebar/capabilities")
-    assert unauthenticated.status_code == 401
-
-    login_response = isolated_client.post(
-        "/api/auth/local-login",
-        json={"username": "demo-radiologist"},
-    )
-    assert login_response.status_code == 200
-
-    capabilities = isolated_client.get("/api/ai/sidebar/capabilities")
-    assert capabilities.status_code == 200
-    capability_body = capabilities.json()
-    assert capability_body["backendBound"] is True
-    assert capability_body["voiceFirst"] is True
-    assert capability_body["orchestrationMode"] == "stub"
-
-    study_uid = "7.7.7.7.20260613.1"
-    session_response = isolated_client.post(
-        "/api/ai/sidebar/sessions",
-        json={
-            "viewerContext": {
-                "studyInstanceUID": study_uid,
-                "route": "/viewer/dicomlocal",
-                "privacyClass": "local-only",
-            }
-        },
-    )
-    assert session_response.status_code == 200
-    session_body = session_response.json()
-    assert session_body["sessionId"].startswith("ais-")
-    assert session_body["backendBound"] is True
-
-    turn_response = isolated_client.post(
-        f"/api/ai/sidebar/sessions/{session_body['sessionId']}/messages",
-        json={
-            "text": "Segment the liver if the loaded study supports it.",
-            "inputSource": "voice",
-            "viewerContext": {
-                "studyInstanceUID": study_uid,
-                "route": "/viewer/dicomlocal",
-                "privacyClass": "local-only",
-            },
-            "attachments": [
-                {
-                    "id": "segmentation-1",
-                    "kind": "segmentation",
-                    "label": "segmentation",
-                    "metadata": {},
-                }
-            ],
-        },
-    )
-    assert turn_response.status_code == 200
-    turn_body = turn_response.json()
-    assert turn_body["turnId"].startswith("aiturn-")
-    assert turn_body["persisted"] is False
-    assert turn_body["assistantMessage"]["modelId"] == "radsysx-ai-sidebar-orchestrator"
-    assert "Nemotron ASR" in turn_body["assistantMessage"]["text"]
-    assert "BioMedParse" in turn_body["assistantMessage"]["text"]
-
-    workspace_response = isolated_client.get(f"/api/studies/{study_uid}/workspace")
-    assert workspace_response.status_code == 200
-    audit = workspace_response.json()["audit"]
-    assert any(
-        event["action"] == "RUN_AI" and event["resourceId"] == turn_body["turnId"]
-        for event in audit
-    )
+    assert isolated_client.get("/api/ai/sidebar/capabilities").status_code == 401
+    assert isolated_client.post("/api/auth/local-login", json={"username": "demo-radiologist"}).status_code == 200
+    capabilities = isolated_client.get("/api/ai/sidebar/capabilities").json()
+    assert capabilities["orchestrationMode"] == "api"
+    assert capabilities["eventTransport"] == "websocket"
+    created = isolated_client.post("/api/ai/sidebar/sessions", json={"viewerContext": {"targetId": "synthetic-case"}})
+    assert created.status_code == 200
+    session = created.json()
+    assert session["status"] in {"allocated", "unavailable"}
+    assert session["attestation"] is None
+    assert isolated_client.get(f"/api/ai/sidebar/sessions/{session['sessionId']}").status_code == 200
+    turn = isolated_client.post(f"/api/ai/sidebar/sessions/{session['sessionId']}/messages", json={"text": "Hello"})
+    assert turn.status_code == 409
+    assert "stub is retired" in turn.json()["detail"]
+    isolated_client.post("/api/auth/local-login", json={"username": "attending-radiologist"})
+    assert isolated_client.get(f"/api/ai/sidebar/sessions/{session['sessionId']}").status_code == 404
 
 
 def test_workspace_round_trip_persists_report_ai_job_and_internal_derived_result() -> None:

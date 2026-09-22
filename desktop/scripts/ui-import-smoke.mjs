@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { publicChildEnvironment } from "../src/environment.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const desktopRoot = path.resolve(path.dirname(__filename), "..");
@@ -17,6 +19,11 @@ const dbPath = path.join(tmpRoot, "clinical.db");
 const maxStartupMs = Number.parseInt(process.env.RADSYSX_UI_IMPORT_SMOKE_STARTUP_MS ?? "120000", 10);
 const manyDicomCount = 32;
 const smokeMode = resolveSmokeMode();
+const aiViewerSmoke = smokeMode === "local-start" && process.argv.includes("--ai-live");
+const audioPlaybackSmoke = process.argv.includes("--audio-playback");
+const credentialsSmoke = process.argv.includes("--credentials");
+const realOpenAiAcceptance = process.argv.includes("--real-openai");
+const aiProviderId = process.argv.includes("--openai") || realOpenAiAcceptance ? "openai" : "gemini";
 const pickerSmokeModes = new Set([
   "local-start-nondicom",
   "picker-files",
@@ -58,6 +65,10 @@ function resolveSmokeMode() {
 
 async function main() {
   try {
+    if (audioPlaybackSmoke && (smokeMode !== "local-start" || realOpenAiAcceptance)) throw new Error("--audio-playback requires --local-start and is synthetic-only.");
+    if (credentialsSmoke && (!aiViewerSmoke || realOpenAiAcceptance)) throw new Error("--credentials requires --local-start --ai-live and is synthetic-only.");
+    if (realOpenAiAcceptance && smokeMode !== "viewer-launch") throw new Error("--real-openai requires --viewer-launch and uses a real provider with synthetic data.");
+    if (aiProviderId === "openai" && !aiViewerSmoke && !realOpenAiAcceptance) throw new Error("--openai requires --local-start --ai-live.");
     fs.mkdirSync(fixtureRoot, { recursive: true });
     fs.mkdirSync(storageRoot, { recursive: true });
 
@@ -66,6 +77,8 @@ async function main() {
       manyDicomCount: smokeMode === "picker-many-folder" ? manyDicomCount : 0,
     });
     const runtime = await startDesktopRuntime();
+    if (aiViewerSmoke) await compileAdapterProbe();
+    if (audioPlaybackSmoke) await compileAudioProbe();
     const result = await runUiImportSmoke(runtime.publicBaseUrl, runtime.debugPort);
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {
@@ -354,16 +367,23 @@ async function startDesktopRuntime() {
   );
 
   const env = {
-    ...process.env,
+    ...(aiViewerSmoke || audioPlaybackSmoke || realOpenAiAcceptance ? publicChildEnvironment(process.env) : process.env),
     RADSYSX_DESKTOP_PORT: String(appPort),
     RADSYSX_DESKTOP_FRONTEND_PORT: String(frontendPort),
     RADSYSX_DESKTOP_BACKEND_PORT: String(backendPort),
     RADSYSX_LOCAL_IMAGING_ENABLED: "true",
     RADSYSX_LOCAL_IMAGING_STORAGE_DIR: storageRoot,
     RADSYSX_CLINICAL_DATABASE_URL: `sqlite:///${asFileUrlPath(dbPath)}`,
+    RADSYSX_AI_KEY_STORE_DIR: path.join(fs.realpathSync(tmpRoot), ".ai-secrets"),
     RADSYSX_SESSION_COOKIE_SECURE: "false",
     RADSYSX_DESKTOP_ALLOW_TEST_SHUTDOWN: "1",
     RADSYSX_DESKTOP_REBUILD_FRONTEND: process.env.RADSYSX_DESKTOP_REBUILD_FRONTEND ?? "1",
+    ...(aiViewerSmoke || audioPlaybackSmoke ? {
+      RADSYSX_APP_MODE: "pilot", RADSYSX_AI_ENABLED: "true", RADSYSX_GEMINI_API_KEY: "synthetic-unused-key",
+      RADSYSX_OPENAI_API_KEY: "synthetic-unused-key",
+      RADSYSX_DESKTOP_BACKEND_APP: "backend.clinical.ai_fixture_server:app",
+    } : {}),
+    ...(realOpenAiAcceptance ? { RADSYSX_APP_MODE: "pilot", RADSYSX_AI_ENABLED: "true", RADSYSX_DESKTOP_BACKEND_APP: "backend.server:app" } : {}),
     ...(pickerSmokeModes.has(smokeMode)
       ? { RADSYSX_DESKTOP_PICKER_TEST_PATHS: JSON.stringify(pickerTestPathsForSmokeMode()) }
       : {}),
@@ -372,7 +392,8 @@ async function startDesktopRuntime() {
   return new Promise((resolve, reject) => {
     desktopProcess = spawn(
       electronCommand(),
-      ["--no-sandbox", `--remote-debugging-port=${debugPort}`, desktopRoot],
+      ["--no-sandbox", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${path.join(tmpRoot, "profile")}`,
+        ...(aiViewerSmoke || audioPlaybackSmoke || realOpenAiAcceptance ? ["--use-fake-device-for-media-stream"] : []), desktopRoot],
       {
         cwd: workspaceRoot,
         detached: process.platform !== "win32",
@@ -438,6 +459,30 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
   try {
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    const cloudMedia = { audioBytes: 0, audioFrames: 0, audioMarkers: 0, assistantTranscripts: 0, screenFrames: 0 };
+    if (realOpenAiAcceptance) {
+      const liveSockets = new Set();
+      cdp.on("Network.webSocketCreated", event => {
+        if (new URL(event.url).pathname.startsWith('/api/ai/sidebar/sessions/')) liveSockets.add(event.requestId);
+      });
+      cdp.on("Network.webSocketFrameReceived", event => {
+        if (!liveSockets.has(event.requestId)) return;
+        const { opcode, payloadData } = event.response;
+        if (opcode === 2) {
+          // Count transient PCM without retaining, printing or writing its payload.
+          cloudMedia.audioFrames++;
+          cloudMedia.audioBytes += Math.floor(payloadData.length * 3 / 4) - (payloadData.endsWith('==') ? 2 : payloadData.endsWith('=') ? 1 : 0);
+        } else if (opcode === 1) {
+          const message = JSON.parse(payloadData);
+          if (message.kind === 'audio_chunk') cloudMedia.audioMarkers++;
+          if (message.kind === 'transcript' && message.role === 'assistant' && message.text) cloudMedia.assistantTranscripts++;
+        }
+      });
+      cdp.on("Network.webSocketFrameSent", event => {
+        if (liveSockets.has(event.requestId) && event.response.opcode === 1 && JSON.parse(event.response.payloadData).kind === 'screen') cloudMedia.screenFrames++;
+      });
+      await cdp.send("Network.enable");
+    }
     cdp.on("Runtime.exceptionThrown", (params) => {
       const details = params.exceptionDetails;
       const location = details?.url
@@ -457,11 +502,45 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
 
     if (smokeMode === "local-start") {
       const localStartResult = await runLocalStartSmoke(cdp, publicBaseUrl);
+      if (credentialsSmoke) await evaluateInRenderer(cdp, `(${exerciseCredentials.toString()})("before")`, 45000);
+      let credentialScreenshotPath;
+      if (credentialsSmoke && process.env.RADSYSX_KEEP_UI_IMPORT_SMOKE_TMP === "1") {
+        await evaluateInRenderer(cdp, `document.querySelector('radsysx-ai-chat-panel [data-action="credentials"]').click()`);
+        await waitForRendererCondition(cdp, `!document.querySelector('radsysx-ai-chat-panel [data-action="reload-credentials"]').disabled`, "settled credential settings");
+        credentialScreenshotPath = path.join(tmpRoot, "synthetic-api-key-settings.png");
+        const screenshot = await cdp.send("Page.captureScreenshot", { format: "png" });
+        fs.writeFileSync(credentialScreenshotPath, Buffer.from(screenshot.data, "base64"));
+        await evaluateInRenderer(cdp, `document.querySelector('radsysx-ai-chat-panel [data-action="close-credentials"]').click()`);
+      }
+      const aiLiveState = aiViewerSmoke ? await evaluateInRenderer(cdp, `(${exerciseLiveViewer.toString()})(${JSON.stringify(aiProviderId)})`, 45000) : undefined;
+      const credentialsState = credentialsSmoke ? await evaluateInRenderer(cdp, `(${exerciseCredentials.toString()})("after")`, 45000) : undefined;
+      let adapterState;
+      if (aiViewerSmoke) {
+        await evaluateInRenderer(cdp, fs.readFileSync(path.join(tmpRoot, "adapter-probe.js"), "utf8"), 30000);
+        adapterState = await evaluateInRenderer(cdp, `(${exerciseAdapter.toString()})()`, 45000);
+      }
+      let audioPlaybackState;
+      if (audioPlaybackSmoke) {
+        await evaluateInRenderer(cdp, fs.readFileSync(path.join(tmpRoot, "audio-probe.js"), "utf8"), 30000);
+        audioPlaybackState = await evaluateInRenderer(cdp, `(${exerciseAudioPlayback.toString()})()`, 60000, true);
+      }
+      let screenshotPath;
+      if (process.env.RADSYSX_KEEP_UI_IMPORT_SMOKE_TMP === "1") {
+        screenshotPath = path.join(tmpRoot, "synthetic-viewer-sidebar.png");
+        const screenshot = await cdp.send("Page.captureScreenshot", { format: "png" });
+        fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
+      }
       return {
         ok: true,
         smokeMode,
         publicBaseUrl,
         ...localStartResult,
+        ...(screenshotPath ? { screenshotPath } : {}),
+        ...(credentialScreenshotPath ? { credentialScreenshotPath } : {}),
+        ...(aiLiveState ? { aiLiveState } : {}),
+        ...(credentialsState ? { credentialsState } : {}),
+        ...(adapterState ? { adapterState } : {}),
+        ...(audioPlaybackState ? { audioPlaybackState } : {}),
       };
     }
     if (smokeMode === "local-start-drop") {
@@ -519,6 +598,20 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
     const viewerLaunch = smokeMode === "viewer-launch"
       ? await verifyImportedDicomViewerLaunch(cdp, result.dicomStudyUid)
       : null;
+    let liveAcceptance;
+    if (realOpenAiAcceptance) {
+      await verifyAiChatPanel(cdp);
+      liveAcceptance = await evaluateInRenderer(cdp, `(${exerciseRealOpenAiViewer.toString()})()`, 180000);
+      liveAcceptance.approvalScreenshotPath = path.join(tmpRoot, 'real-openai-report-approval.png');
+      const approvalScreenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(liveAcceptance.approvalScreenshotPath, Buffer.from(approvalScreenshot.data, 'base64'));
+      Object.assign(liveAcceptance, await evaluateInRenderer(cdp, `(${approveRealOpenAiReport.toString()})(${JSON.stringify(liveAcceptance.reportProposalId)})`, 90000));
+      if (!cloudMedia.audioBytes || cloudMedia.audioMarkers !== cloudMedia.audioFrames || !cloudMedia.assistantTranscripts || !cloudMedia.screenFrames) throw new Error(`Real OpenAI media evidence incomplete: ${JSON.stringify(cloudMedia)}`);
+      liveAcceptance.media = cloudMedia;
+      liveAcceptance.screenshotPath = path.join(tmpRoot, 'real-openai-synthetic-viewer.png');
+      const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(liveAcceptance.screenshotPath, Buffer.from(screenshot.data, 'base64'));
+    }
 
     return {
       ok: true,
@@ -526,6 +619,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
       publicBaseUrl,
       ...result,
       ...(viewerLaunch ? { viewerLaunch } : {}),
+      ...(liveAcceptance ? { liveAcceptance } : {}),
     };
   } finally {
     cdp.close();
@@ -859,6 +953,405 @@ async function verifyStandaloneLocalDicomViewer(cdp) {
   };
 }
 
+async function compileAdapterProbe() {
+  return compileLiveProbe('ohif', 'adapter-probe.js', '__RadSysXSmokeAdapter');
+}
+
+async function compileAudioProbe() {
+  return compileLiveProbe('audio', 'audio-probe.js', '__RadSysXSmokeAudio');
+}
+
+async function compileLiveProbe(moduleName, filename, library) {
+  // Bundle the same compiled module as production solely into this test workspace.
+  // The application itself exposes no controller/adapter/audio debug global.
+  const webpack = createRequire(path.join(workspaceRoot, "viewer/package.json"))("webpack");
+  await new Promise((resolve, reject) => {
+    const compiler = webpack({ mode: "production", target: "web", devtool: false,
+      entry: path.join(workspaceRoot, `viewer/.cache/live-runtime/${moduleName}.js`),
+      output: { path: tmpRoot, filename, library: { name: library, type: "var" } },
+    });
+    compiler.run((error, stats) => compiler.close(() => error || stats?.hasErrors()
+      ? reject(error ?? new Error(stats.toString({ errors: true, warnings: false }))) : resolve()));
+  });
+}
+
+async function exerciseAudioPlayback() {
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const audio = new window.__RadSysXSmokeAudio.LiveAudio();
+  audio.configure(24000, 24000);
+  const overflows = [], receipts = [], sources = [];
+  audio.onOverflow = reason => overflows.push(String(reason ?? 'overflow'));
+  audio.onPlaybackStopped = items => receipts.push(...items);
+  let allocations = 0;
+  await audio.prepare();
+  const context = audio.context;
+  assert(context?.state === 'running', 'The real Electron AudioContext did not start');
+  const createBuffer = context.createBuffer.bind(context), createSource = context.createBufferSource.bind(context);
+  context.createBuffer = (...args) => { allocations++; return createBuffer(...args); };
+  context.createBufferSource = (...args) => {
+    const node = createSource(...args), record = { ended: false, stopped: false };
+    sources.push(record);
+    node.addEventListener('ended', () => { record.ended = true; }, { once: true });
+    const stop = node.stop.bind(node);
+    node.stop = (...values) => { record.stopped = true; return stop(...values); };
+    return node;
+  };
+  const burst = (seconds, itemId) => {
+    const began = performance.now();
+    for (let index = 0; index < seconds * 10; index++) audio.play(new ArrayBuffer(4800), { itemId, contentIndex: 0 });
+    return performance.now() - began;
+  };
+  try {
+    const fullStart = performance.now();
+    const twentySecondBurstMs = burst(20, 'complete-twenty');
+    assert(twentySecondBurstMs < 1000, 'Twenty seconds of PCM did not arrive within one second');
+    assert(overflows.length === 0, 'A normal twenty-second model burst triggered playback overflow');
+    assert(audio.queuedMilliseconds > 19000, 'Normal speech was not buffered completely');
+    while (audio.queuedMilliseconds > 0 && performance.now() - fullStart < 25000) await sleep(100);
+    await sleep(200);
+    const fullElapsedMs = performance.now() - fullStart;
+    const fullPosition = audio.playbackPosition().find(item => item.itemId === 'complete-twenty');
+    assert(fullElapsedMs >= 19500 && fullElapsedMs < 23000, 'Twenty-second PCM did not play at its normal duration');
+    assert(audio.queuedMilliseconds === 0 && sources.every(source => source.ended), 'Natural playback did not finish every real audio source');
+    assert(fullPosition?.audioEndMs >= 19900 && fullPosition.audioEndMs <= 20000, 'Completed audible position did not match twenty seconds');
+    audio.stopOutput();
+
+    const interruptStart = performance.now(), firstLongSource = sources.length;
+    const fortyFiveSecondBurstMs = burst(45, 'interrupt-forty-five');
+    assert(fortyFiveSecondBurstMs < 1000, 'Forty-five seconds of PCM did not arrive within one second');
+    assert(overflows.length === 0, 'A normal forty-five-second model burst triggered playback overflow');
+    const queuedAtArrivalMs = audio.queuedMilliseconds;
+    assert(queuedAtArrivalMs > 44000, 'The complete forty-five-second speech burst was not queued');
+    await sleep(2200);
+    const actualElapsedMs = performance.now() - interruptStart, queuedBeforeStopMs = audio.queuedMilliseconds;
+    audio.stopOutput();
+    const interrupted = receipts.find(item => item.itemId === 'interrupt-forty-five');
+    assert(interrupted?.audioEndMs > 1500 && interrupted.audioEndMs < actualElapsedMs + 100 && Math.abs(interrupted.audioEndMs - actualElapsedMs) < 600, 'Interruption acknowledged queued speech instead of actual audible time');
+    assert(queuedBeforeStopMs > 41000 && audio.queuedMilliseconds === 0, 'Interruption did not clear queued speech immediately');
+    assert(sources.slice(firstLongSource).every(source => source.ended || source.stopped), 'Interruption left a real audio source running');
+
+    const beforeOversize = allocations;
+    audio.play(new ArrayBuffer(61 * 24000 * 2), { itemId: 'reject-sixty-one', contentIndex: 0 });
+    assert(allocations === beforeOversize && overflows.length === 1, 'More than sixty seconds must be rejected before AudioBuffer allocation');
+    const beforeInclusive = allocations;
+    audio.play(new ArrayBuffer(59 * 24000 * 2), { itemId: 'reject-inclusive', contentIndex: 0 });
+    assert(allocations === beforeInclusive + 1 && audio.queuedMilliseconds > 58000, 'A bounded fifty-nine-second buffer should be accepted');
+    audio.play(new ArrayBuffer(2 * 24000 * 2), { itemId: 'reject-inclusive', contentIndex: 0 });
+    assert(allocations === beforeInclusive + 1 && overflows.length === 2, 'The sixty-second limit must include the incoming chunk before allocation');
+    assert(audio.queuedMilliseconds === 0 && sources.every(source => source.ended || source.stopped), 'Hard-limit handling left audio sources running');
+    return { source: 'Actual compiled LiveAudio in Electron with silent synthetic PCM; no cloud or microphone', pcmSampleRate: 24000,
+      outputDeviceContextSampleRate: context.sampleRate, twentySecondBurstMs: Math.round(twentySecondBurstMs),
+      fullPlaybackElapsedMs: Math.round(fullElapsedMs), fullAudibleMs: fullPosition.audioEndMs,
+      fortyFiveSecondBurstMs: Math.round(fortyFiveSecondBurstMs), queuedAtArrivalMs: Math.round(queuedAtArrivalMs),
+      actualElapsedBeforeStopMs: Math.round(actualElapsedMs), acknowledgedAudibleMs: interrupted.audioEndMs,
+      unplayedBeforeStopMs: Math.round(queuedBeforeStopMs), normalBurstOverflows: 0, allSourcesStopped: true,
+      oversizeRejectedBeforeAllocation: true, incomingChunkIncludedInLimit: true };
+  } finally { audio.close(); await context.close(); }
+}
+
+async function exerciseAdapter() {
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const waitFor = async (predicate, message) => {
+    const deadline = Date.now() + 5000;
+    while (!predicate() && Date.now() < deadline) await sleep(50);
+    assert(predicate(), message);
+  };
+  const managers = window.__RADSYSX_OHIF_MANAGERS__;
+  const adapter = new window.__RadSysXSmokeAdapter.OHIFAdapter();
+  adapter.bind(managers);
+  const services = managers.servicesManager.services;
+  const viewport = () => services.cornerstoneViewportService.getCornerstoneViewport(services.viewportGridService.getActiveViewportId());
+  const close = (a, b) => Math.abs(a - b) < 0.1;
+  const results = [];
+  await adapter.execute('viewer_set_view', { zoom: 2, panX: 25, panY: -15, rotation: 90, invert: true, flipHorizontal: true, flipVertical: true });
+  let state = adapter.context().state;
+  assert(close(state.zoom, 2) && close(state.panX, 25) && close(state.panY, -15) && close(state.rotation, 90) && state.invert && state.flipHorizontal && state.flipVertical, 'Actual zoom/pan/rotation/flip/invert did not match: ' + JSON.stringify(state));
+  results.push('zoom', 'pan', 'rotation', 'flip', 'invert');
+  await adapter.execute('viewer_set_view', { reset: true });
+  state = adapter.context().state;
+  assert(close(state.zoom, 1) && close(state.panX, 0) && close(state.panY, 0) && close(state.rotation, 0) && !state.invert && !state.flipHorizontal && !state.flipVertical, 'Actual viewport reset failed: ' + JSON.stringify(state));
+  results.push('reset');
+  await adapter.execute('viewer_jump_to_slice', { index: 0 });
+  assert(adapter.context().state.index === 0, 'Synthetic single slice jump failed');
+  results.push('slice');
+  await adapter.execute('viewer_set_tool', { tool: 'Length' });
+  const group = services.toolGroupService.getToolGroupForViewport(viewport().id);
+  assert(group.getActivePrimaryMouseButtonTool() === 'Length', 'Actual Length tool did not become active');
+  await adapter.execute('viewer_set_tool', { tool: 'WindowLevel' });
+  results.push('active-tool');
+  await adapter.execute('viewer_set_layout', { rows: 1, columns: 2 });
+  await waitFor(() => services.viewportGridService.getState().layout.numCols === 2, 'Actual two-column layout failed');
+  await adapter.execute('viewer_set_layout', { rows: 1, columns: 1 });
+  await waitFor(() => services.viewportGridService.getState().layout.numCols === 1 && viewport()?.element?.isConnected && viewport()?.getImageIds?.()?.length === 1, 'Actual layout restore failed');
+  results.push('layout-restore');
+  for (const type of ['Length', 'RectangleROI']) {
+    const previous = services.measurementService.getMeasurements().length;
+    await adapter.execute('viewer_measurement', { operation: 'create', type, points: [[0.25, 0.25], [0.7, 0.7]], label: 'Synthetic ' + type });
+    await waitFor(() => services.measurementService.getMeasurements().length === previous + 1, type + ' registration failed');
+    let attachment = adapter.attachments().find(item => item.summary.type === type);
+    assert(attachment, type + ' attachment unavailable');
+    if (type === 'Length') {
+      await adapter.execute('viewer_undo', {});
+      await waitFor(() => services.measurementService.getMeasurements().length === previous, 'Measurement undo failed');
+      await adapter.execute('viewer_redo', {});
+      await waitFor(() => services.measurementService.getMeasurements().length === previous + 1, 'Measurement redo failed');
+      attachment = adapter.attachments().find(item => item.summary.type === type);
+      results.push('measurement-undo-redo');
+    }
+    await adapter.execute('viewer_measurement', { operation: 'update', measurementId: attachment.id, label: 'Updated synthetic ' + type });
+    assert(services.measurementService.getMeasurements().some(item => item.label === 'Updated synthetic ' + type), type + ' label update failed');
+    await adapter.execute('viewer_measurement', { operation: 'jump', measurementId: attachment.id });
+    await adapter.execute('viewer_measurement', { operation: 'delete', measurementId: attachment.id });
+    await waitFor(() => services.measurementService.getMeasurements().length === previous, type + ' delete failed');
+    results.push(type + '-create-update-jump-delete');
+  }
+  await adapter.execute('report_draft', { findings: 'Synthetic draft', impression: 'Synthetic impression' });
+  assert(adapter.draftReport?.findings === 'Synthetic draft', 'Local report draft failed');
+  await adapter.execute('viewer_undo', {});
+  assert(!adapter.draftReport, 'Local draft undo failed');
+  await adapter.execute('viewer_redo', {});
+  assert(adapter.draftReport?.findings === 'Synthetic draft', 'Local draft redo failed');
+  results.push('draft-undo-redo');
+  const previous = services.measurementService.getMeasurements().length;
+  await adapter.execute('viewer_measurement', { operation: 'create', type: 'Length', points: [[0.2, 0.3], [0.8, 0.6]], label: 'Synthetic mixed history' });
+  await waitFor(() => services.measurementService.getMeasurements().length === previous + 1, 'Mixed-history annotation creation failed');
+  await adapter.execute('viewer_undo', {});
+  await waitFor(() => services.measurementService.getMeasurements().length === previous, 'Mixed-history undo must remove the latest annotation first');
+  assert(adapter.draftReport?.findings === 'Synthetic draft', 'Undoing the latest annotation changed the earlier draft');
+  await adapter.execute('viewer_undo', {}); assert(!adapter.draftReport, 'Second mixed-history undo did not remove draft');
+  await adapter.execute('viewer_redo', {}); assert(adapter.draftReport?.findings === 'Synthetic draft', 'First mixed-history redo did not restore draft');
+  await adapter.execute('viewer_redo', {});
+  await waitFor(() => services.measurementService.getMeasurements().length === previous + 1, 'Second mixed-history redo did not restore annotation');
+  await adapter.execute('viewer_measurement', { operation: 'delete', measurementId: adapter.attachments().find(item => item.summary.type === 'Length').id });
+  await waitFor(() => services.measurementService.getMeasurements().length === previous, 'Mixed-history cleanup failed');
+  results.push('draft-annotation-shared-history');
+  await adapter.execute('viewer_set_window_level', { windowWidth: 400, windowCenter: 40 });
+  return { actions: results, measurementsRemaining: services.measurementService.getMeasurements().length, segmentation: 'No segmentation fixture; not verified' };
+}
+
+async function exerciseRealOpenAiViewer() {
+  const panel = document.querySelector('radsysx-ai-chat-panel');
+  const button = action => panel.querySelector(`[data-action="${action}"]`);
+  const status = () => panel.querySelector('[data-role="status"]')?.textContent;
+  const waitFor = async (predicate, reason, timeout = 60000) => {
+    const deadline = Date.now() + timeout;
+    do { const result = await predicate(); if (result) return result; await new Promise(resolve => setTimeout(resolve, 150)); } while (Date.now() < deadline);
+    throw new Error(`${reason}: ${status()}`);
+  };
+  if (panel.querySelector('.radsysx-ai-mention-menu').dataset.open === 'true') button('toggle-mention').click();
+  const provider = panel.querySelector('[data-role="provider"]');
+  if (!provider.options.length) {
+    if (button('connect').textContent !== 'Retry assistant setup') throw new Error('Provider setup unavailable');
+    button('connect').click(); await waitFor(() => provider.options.length && !provider.disabled, 'Provider setup retry failed');
+  }
+  provider.value = 'openai'; provider.dispatchEvent(new Event('change', { bubbles: true }));
+  await waitFor(() => provider.value === 'openai' && panel.state.backendStatus === 'disconnected', 'OpenAI selection did not become available');
+  const attestation = panel.querySelector('#radsysx-live-attestation');
+  if (attestation.value) throw new Error('OpenAI selection did not reset data confirmation');
+  attestation.value = 'synthetic'; attestation.dispatchEvent(new Event('change', { bubbles: true }));
+  button('connect').click();
+  await waitFor(() => panel.state.backendStatus === 'ready', 'Real OpenAI session did not become ready');
+  const sessionId = panel.state.backendSessionId;
+  const history = async () => (await fetch(`/api/ai/sidebar/sessions/${sessionId}`, { credentials: 'include' })).json();
+  const allocation = await history();
+  if (allocation.session.providerId !== 'openai' || allocation.session.modelId !== 'gpt-realtime-2.1-mini' ||
+      allocation.session.inputSampleRate !== 24000 || allocation.session.outputSampleRate !== 24000) throw new Error('Unexpected real OpenAI session profile');
+  try {
+    button('share').click();
+    await waitFor(() => button('share').getAttribute('aria-pressed') === 'true', 'Synthetic active image sharing did not start');
+    await new Promise(resolve => setTimeout(resolve, 1400));
+    const services = window.__RADSYSX_OHIF_MANAGERS__.servicesManager.services;
+    const viewport = () => services.cornerstoneViewportService.getCornerstoneViewport(services.viewportGridService.getActiveViewportId());
+    const beforeZoom = viewport().getZoom();
+    const expectedZoom = Math.abs(beforeZoom - 1.5) > 0.1 ? 1.5 : 1.25;
+    const sendText = text => {
+      const input = panel.querySelector('textarea'); input.value = text; input.dispatchEvent(new Event('input', { bubbles: true }));
+      panel.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    };
+    sendText(`This is a synthetic integration test, not a clinical interpretation. Use viewer_set_view to set the active viewport zoom to exactly ${expectedZoom}. After the tool completes, say only "Zoom test complete." Do not research or change any other setting.`);
+    const zoomHistory = await waitFor(async () => {
+      const saved = await history();
+      return saved.tools.some(tool => tool.name === 'viewer_set_view' && tool.status === 'completed' && tool.args.zoom === expectedZoom) &&
+        saved.events.some(event => event.kind === 'transcript' && event.role === 'assistant' && event.text) &&
+        saved.events.at(-1)?.kind === 'interaction' && saved.events.at(-1)?.status === 'IDLE' ? saved : null;
+    }, 'Real model did not complete the zoom tool and spoken transcript');
+    const afterZoom = viewport().getZoom();
+    if (Math.abs(afterZoom - expectedZoom) > 0.01 || Math.abs(afterZoom - beforeZoom) < 0.05) throw new Error('Actual OHIF zoom did not change as requested');
+    sendText('Invoke the report_save tool now for this synthetic imported study, with findings exactly "Synthetic integration test only" and impression exactly "Synthetic integration test only". This tool opens the app\'s mandatory approval card; it cannot persist anything until I click Approve. I want that approval card now, not just report_draft. Do not research. Keep your spoken response to "Ready for approval."');
+    const proposal = await waitFor(async () => {
+      const saved = await history();
+      return saved.tools.find(tool => tool.name === 'report_save' && tool.status === 'awaiting_approval');
+    }, 'Real model did not propose a report save for review');
+    if (proposal.args.findings !== 'Synthetic integration test only' || proposal.args.impression !== 'Synthetic integration test only') throw new Error('Report proposal did not match the authorized exact synthetic text');
+    await waitFor(() => panel.querySelector(`[data-action="approve"][data-id="${CSS.escape(proposal.toolCallId)}"]`), 'Report review button did not render');
+    panel.querySelector(`[data-action="approve"][data-id="${CSS.escape(proposal.toolCallId)}"]`).scrollIntoView({ block: 'center' });
+    return { provider: 'openai', modelId: allocation.session.modelId, source: 'real OpenAI API through normal backend.server', sessionReady: true,
+      inputSampleRate: allocation.session.inputSampleRate, outputSampleRate: allocation.session.outputSampleRate,
+      beforeZoom, afterZoom, zoomToolCompleted: true, reportProposalId: proposal.toolCallId, reportProposal: proposal.args,
+      assistantTranscript: zoomHistory.events.filter(event => event.kind === 'transcript' && event.role === 'assistant').map(event => event.text).join(''),
+      microphone: 'Not activated; no physical microphone used' };
+  } catch (error) { button('end').click(); throw error; }
+}
+
+async function approveRealOpenAiReport(toolCallId) {
+  const panel = document.querySelector('radsysx-ai-chat-panel');
+  const sessionId = panel.state.backendSessionId;
+  const history = async () => (await fetch(`/api/ai/sidebar/sessions/${sessionId}`, { credentials: 'include' })).json();
+  try {
+    const proposal = (await history()).tools.find(tool => tool.toolCallId === toolCallId);
+    if (proposal?.name !== 'report_save' || proposal.status !== 'awaiting_approval' ||
+        proposal.args.findings !== 'Synthetic integration test only' || proposal.args.impression !== 'Synthetic integration test only') throw new Error('Review proposal changed before approval');
+    const approve = panel.querySelector(`[data-action="approve"][data-id="${CSS.escape(toolCallId)}"]`);
+    if (!approve || approve.disabled || !approve.getBoundingClientRect().height) throw new Error('Exact proposal approval control is not visible');
+    approve.click();
+    const deadline = Date.now() + 45000;
+    let receipt;
+    do {
+      receipt = (await history()).tools.find(tool => tool.toolCallId === toolCallId);
+      if (receipt?.status === 'completed') break;
+      if (['failed', 'denied', 'cancelled'].includes(receipt?.status)) throw new Error(`Approved report save ended as ${receipt.status}`);
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } while (Date.now() < deadline);
+    if (receipt?.status !== 'completed' || receipt.result?.status !== 'draft_saved') throw new Error('Approved report save did not return a saved-draft receipt');
+    const studyUid = window.__RADSYSX_LAUNCH__.context.studyInstanceUID;
+    const workspace = await (await fetch(`/api/studies/${encodeURIComponent(studyUid)}/workspace`, { credentials: 'include' })).json();
+    const report = workspace.reports.find(item => item.reportId === receipt.result.reportId);
+    if (!report || report.findingsSummary !== 'Synthetic integration test only' || report.impression !== 'Synthetic integration test only' || report.status !== 'draft') throw new Error('Backend workspace did not contain the exact approved synthetic draft');
+    return { reportApprovedThroughVisibleButton: true, reportSaved: true, reportStatus: report.status, reportId: report.reportId };
+  } finally {
+    const share = panel.querySelector('[data-action="share"]'); if (share.getAttribute('aria-pressed') === 'true') share.click();
+    panel.querySelector('[data-action="end"]').click();
+    const deadline = Date.now() + 10000;
+    while (panel.state.backendStatus !== 'disconnected' && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+    if (panel.state.backendStatus !== 'disconnected') throw new Error('Real OpenAI session did not end cleanly');
+  }
+}
+
+async function exerciseLiveViewer(providerId) {
+  const panel = document.querySelector('radsysx-ai-chat-panel');
+  const button = action => panel.querySelector(`[data-action="${action}"]`);
+  if (panel.querySelector('.radsysx-ai-mention-menu').dataset.open === 'true') button('toggle-mention').click();
+  const layout = () => {
+    const rect = selector => panel.querySelector(selector).getBoundingClientRect();
+    const setup = rect('[data-role="setup"]'), mic = rect('.radsysx-ai-voice-card');
+    const controls = rect('.radsysx-live-controls'), status = rect('[data-role="status"]');
+    const conversation = rect('[data-role="conversation"]'), composer = rect('.radsysx-ai-composer'), shell = rect('.radsysx-live-shell');
+    if ((!panel.querySelector('[data-role="setup"]').hidden && setup.bottom > mic.top + 2) ||
+        controls.bottom > status.top + 2 || conversation.bottom > composer.top + 2 ||
+        composer.bottom > Math.min(innerHeight, shell.bottom) + 2 || composer.top < shell.top || composer.width < 150) {
+      throw new Error('Live sidebar controls overlap or overflow');
+    }
+    return { shellWidth: Math.round(shell.width), shellHeight: Math.round(shell.height), conversationHeight: Math.round(conversation.height), composerHeight: Math.round(composer.height) };
+  };
+  const waitFor = async (predicate, reason) => {
+    const deadline = Date.now() + 18000;
+    while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    if (!predicate()) throw new Error(`${reason}: ${panel.querySelector('[data-role="status"]')?.textContent}`);
+  };
+  const media = async () => {
+    const response = await fetch('/api/ai/_fixture/media', { credentials: 'include' });
+    if (!response.ok) throw new Error('Synthetic media counters unavailable');
+    return response.json();
+  };
+  const waitMedia = async (predicate, reason) => {
+    const deadline = Date.now() + 10000;
+    let counters;
+    do {
+      counters = await media();
+      if (predicate(counters)) return counters;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    } while (Date.now() < deadline);
+    throw new Error(`${reason}: ${JSON.stringify(counters)}`);
+  };
+  const expectedRate = providerId === 'openai' ? 24000 : 16000;
+  const expectedModel = providerId === 'openai' ? 'gpt-realtime-2.1-mini' : 'gemini-3.8-live-extended-thinking';
+  const expectedPacketBytes = expectedRate / 50 * 2;
+  const capabilities = await (await fetch('/api/ai/sidebar/capabilities', { credentials: 'include' })).json();
+  const profile = capabilities.providers?.find(item => item.id === providerId);
+  if (!profile || profile.availability !== 'configured' || profile.modelId !== expectedModel ||
+      profile.inputSampleRate !== expectedRate || profile.outputSampleRate !== 24000 || !profile.screen || !profile.tools) {
+    throw new Error('Synthetic provider profile did not match the selected audio/action contract');
+  }
+  const providerSelect = panel.querySelector('[data-role="provider"]');
+  if (providerSelect && !providerSelect.options.length) {
+    if (button('connect').textContent !== 'Retry assistant setup') throw new Error('Initial setup failure did not expose an actionable retry');
+    button('connect').click();
+    await waitFor(() => providerSelect.options.length > 0 && !providerSelect.disabled, 'Provider setup retry did not recover after local authentication');
+    if (panel.state.backendSessionId) throw new Error('Retrying provider setup unexpectedly allocated a conversation');
+  }
+  if (!providerSelect || providerSelect.disabled || !Array.from(providerSelect.options).some(option => option.value === providerId)) throw new Error(`Provider dropdown unavailable: ${JSON.stringify({ present: Boolean(providerSelect), disabled: providerSelect?.disabled, values: providerSelect ? Array.from(providerSelect.options).map(option => option.value) : [], status: panel.state.backendStatus, message: panel.querySelector('[data-role="status"]')?.textContent })}`);
+  providerSelect.value = providerId; providerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  await waitFor(() => providerSelect.value === providerId && panel.state.backendStatus === 'disconnected' &&
+    panel.querySelector('[data-role="disclosure"]').textContent.includes(profile.label), 'Provider selection did not update the sidebar');
+  const select = panel.querySelector('#radsysx-live-attestation');
+  if (select.value !== '') throw new Error('Provider selection did not require fresh data confirmation');
+  select.value = 'synthetic'; select.dispatchEvent(new Event('change', { bubbles: true }));
+  button('connect').click();
+  await waitFor(() => panel.state.backendStatus === 'ready', 'Synthetic provider did not connect through sidebar');
+  const connectedLayout = layout();
+  const sessionId = panel.state.backendSessionId;
+  const allocation = await (await fetch(`/api/ai/sidebar/sessions/${sessionId}`, { credentials: 'include' })).json();
+  if (allocation.session.providerId !== providerId || allocation.session.modelId !== expectedModel ||
+      allocation.session.inputSampleRate !== expectedRate || allocation.session.outputSampleRate !== 24000) {
+    throw new Error('Live session did not preserve the selected provider/model/audio profile');
+  }
+  const beforeMicrophone = await media();
+  if (beforeMicrophone.audioBytes !== 0) throw new Error('Microphone sent bytes before explicit activation');
+  button('voice').click();
+  await waitFor(() => button('voice').getAttribute('aria-pressed') === 'true', 'Fake microphone did not start through sidebar');
+  const firstAudio = await waitMedia(value => value.audioFrames >= 5, 'Actual AudioWorklet PCM did not reach the provider fixture');
+  if (firstAudio.audioMimeTypes.join() !== `audio/pcm;rate=${expectedRate}` || firstAudio.audioFrameSizes.join() !== String(expectedPacketBytes)) throw new Error(`Microphone input was not 20 ms mono PCM16 at ${expectedRate} Hz`);
+  button('voice').click();
+  await waitFor(() => button('voice').getAttribute('aria-pressed') === 'false', 'Mute did not stop the sidebar microphone');
+  await waitMedia(value => value.audioEnds > beforeMicrophone.audioEnds, 'Mute did not send audio_stream_end');
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const mutedAudio = await media();
+  await new Promise(resolve => setTimeout(resolve, 500));
+  if ((await media()).audioBytes !== mutedAudio.audioBytes) throw new Error('Microphone PCM continued after mute');
+  button('voice').click();
+  await waitMedia(value => value.audioBytes >= mutedAudio.audioBytes + expectedPacketBytes * 5, 'Fake microphone did not restart after mute');
+  button('share').click();
+  await waitFor(() => button('share').getAttribute('aria-pressed') === 'true', 'Actual selected OHIF image could not be shared');
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  await waitMedia(value => value.videoFrames > 0, 'Selected OHIF capture did not reach provider fixture');
+  await waitFor(() => panel.querySelector('[data-role="status"]').textContent.includes('image sharing on · image sent'), 'Backend image receipt did not update the visible sharing status');
+  const captureScope = panel.querySelector('[data-role="capture-scope"]')?.textContent;
+  if (!captureScope?.includes('Active image only') || !captureScope.includes('Image 1 of 1')) throw new Error('The selected-image sharing scope was not visible');
+  const textarea = panel.querySelector('textarea');
+  textarea.value = 'Adjust the synthetic image window'; textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  panel.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await waitFor(() => panel.textContent.includes('Synthetic viewer action completed.'), 'Synthetic async action did not return to conversation');
+  const services = window.__RADSYSX_OHIF_MANAGERS__.servicesManager.services;
+  const viewport = services.cornerstoneViewportService.getCornerstoneViewport(services.viewportGridService.getActiveViewportId());
+  const range = viewport.getProperties().voiRange;
+  // DICOM LINEAR VOI follows Cornerstone's inclusive-pixel window convention.
+  const windowWidth = Math.abs(range.upper - range.lower) + 1;
+  const windowCenter = (range.upper + range.lower + 1) / 2;
+  if (Math.abs(windowWidth - 400) > 0.1 || Math.abs(windowCenter - 40) > 0.1) throw new Error('Real OHIF window/level did not change');
+  const history = await (await fetch(`/api/ai/sidebar/sessions/${sessionId}`, { credentials: 'include' })).json();
+  if (!history.tools.some(tool => tool.name === 'viewer_set_window_level' && tool.status === 'completed')) throw new Error('Actual viewer action was not recorded as completed');
+  if (button('share').getAttribute('aria-pressed') !== 'true') throw new Error('Image sharing stopped unexpectedly');
+  button('share').click();
+  await waitFor(() => button('share').getAttribute('aria-pressed') === 'false', 'Image sharing did not stop');
+  await waitFor(() => panel.querySelector('[data-role="status"]').textContent.includes('image sharing off'), 'Visible sharing status did not clear after stop');
+  button('end').click();
+  await waitFor(() => panel.state.backendStatus === 'disconnected', 'Live session did not end');
+  await waitMedia(value => value.activeProviders === 0, 'Session end did not close the provider fixture');
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const endedAudio = await media();
+  await new Promise(resolve => setTimeout(resolve, 500));
+  if ((await media()).audioBytes !== endedAudio.audioBytes || button('voice').getAttribute('aria-pressed') !== 'false') throw new Error('Microphone PCM continued after session end');
+  const endedLayout = layout();
+  if (panel.querySelector('[data-role="interaction"]').textContent !== 'Ready when you are') throw new Error('Ended session retained a stale working indicator');
+  return { provider: providerId, modelId: expectedModel, source: 'synthetic fixture (no cloud call)',
+    inputSampleRate: expectedRate, outputSampleRate: allocation.session.outputSampleRate, windowWidth, windowCenter,
+    completedTools: history.tools.filter(tool => tool.status === 'completed').length, sharingStopped: true, sessionEnded: true, captureScope, imageReceiptVisible: true, connectedLayout, endedLayout,
+    microphone: { source: 'Chromium fake device through actual AudioWorklet', audioBytes: endedAudio.audioBytes, audioFrames: endedAudio.audioFrames,
+      audioMimeTypes: endedAudio.audioMimeTypes, audioFrameSizes: endedAudio.audioFrameSizes, audioEnds: endedAudio.audioEnds, stoppedAfterMute: true, stoppedAfterEnd: true } };
+}
+
 async function verifyAiChatPanel(cdp) {
   const openState = await evaluateInRenderer(
     cdp,
@@ -882,7 +1375,7 @@ async function verifyAiChatPanel(cdp) {
   );
   await waitForRendererCondition(
     cdp,
-    `document.querySelector("radsysx-ai-chat-panel")?.state?.backendStatus !== "connecting"`,
+    `["disconnected", "unavailable"].includes(document.querySelector("radsysx-ai-chat-panel")?.state?.backendStatus)`,
     "RadSysX AI backend binding",
     30000,
   );
@@ -902,13 +1395,17 @@ async function verifyAiChatPanel(cdp) {
         composerPresent: Boolean(textarea),
         mentionButtonPresent: Boolean(mentionButton),
         voiceButtonPresent: Boolean(voiceButton),
+        voiceDisabled: voiceButton?.disabled === true,
         voiceCardPresent: Boolean(voiceCard),
         sendButtonPresent: Boolean(sendButton),
+        connectButtonPresent: Boolean(panel?.querySelector("[data-action='connect']")),
+        attestationRequired: panel?.querySelector("#radsysx-live-attestation")?.value === "",
+        sharingDisabled: panel?.querySelector("[data-action='share']")?.disabled === true,
         backendStatus: panel?.state?.backendStatus ?? null,
         backendSessionPresent: Boolean(panel?.state?.backendSessionId),
         mentionMenuOpen: panel?.querySelector(".radsysx-ai-mention-menu")?.getAttribute("data-open") === "true",
-        roiOptionPresent: Boolean(panel?.querySelector("[data-attachment-kind='roi']")),
-        segmentationOptionPresent: Boolean(panel?.querySelector("[data-attachment-kind='segmentation']"))
+        attachmentCount: panel?.querySelectorAll("[data-attachment-kind]").length ?? 0,
+        attachmentEmptyState: Boolean(panel?.querySelector(".radsysx-ai-mention-menu .radsysx-live-empty"))
       };
     })()`,
     30000,
@@ -921,11 +1418,15 @@ async function verifyAiChatPanel(cdp) {
     !chatState.voiceButtonPresent ||
     !chatState.voiceCardPresent ||
     !chatState.sendButtonPresent ||
-    chatState.backendStatus !== "ready" ||
-    !chatState.backendSessionPresent ||
+    !["disconnected", "unavailable"].includes(chatState.backendStatus) ||
+    chatState.backendSessionPresent ||
+    !chatState.connectButtonPresent ||
+    !chatState.attestationRequired ||
+    !chatState.voiceDisabled ||
+    !chatState.sharingDisabled ||
     !chatState.mentionMenuOpen ||
-    !chatState.roiOptionPresent ||
-    !chatState.segmentationOptionPresent
+    chatState.attachmentCount !== 0 ||
+    !chatState.attachmentEmptyState
   ) {
     throw new Error(`RadSysX AI chat composer was incomplete: ${JSON.stringify(chatState)}`);
   }
@@ -1468,13 +1969,14 @@ async function waitForRendererCondition(cdp, expression, label, timeoutMs = 6000
   throw new Error(`${label} did not become ready. Last renderer state: ${JSON.stringify(lastState)}`);
 }
 
-async function evaluateInRenderer(cdp, expression, timeoutMs = 30000) {
+async function evaluateInRenderer(cdp, expression, timeoutMs = 30000, userGesture = false) {
   const evaluation = await cdp.send(
     "Runtime.evaluate",
     {
       expression,
       awaitPromise: true,
       returnByValue: true,
+      userGesture,
     },
     timeoutMs,
   );
@@ -1847,3 +2349,70 @@ function terminateProcessGroup(child, signal) {
 }
 
 await main();
+
+// Credentials are deliberately synthetic and used only with the guarded fake provider.
+async function exerciseCredentials(stage) {
+  const panel = document.querySelector('radsysx-ai-chat-panel');
+  const button = action => panel.querySelector(`[data-action="${action}"]`);
+  const settings = panel.querySelector('[data-role="credentials"]');
+  const input = id => settings.querySelector(`[data-key-provider="${id}"]`);
+  const form = id => settings.querySelector(`[data-credential-provider="${id}"]`);
+  const assert = (value, reason) => { if (!value) throw new Error(reason); };
+  const waitFor = async (predicate, reason) => {
+    const deadline = Date.now() + 12000;
+    while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    assert(predicate(), reason);
+  };
+  const fill = (id, suffix = '') => {
+    input(id).value = `synthetic-settings-smoke-unused-${id}${suffix}`;
+    input(id).dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const status = async () => {
+    const response = await fetch('/api/ai/sidebar/credentials', { credentials: 'include' });
+    assert(response.ok, 'Credential status endpoint unavailable');
+    const result = await response.json();
+    assert(!JSON.stringify(result).includes('synthetic-settings-smoke-unused'), 'Credential status exposed entered secret');
+    return result;
+  };
+  const submit = async id => {
+    form(id).dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    assert(input('gemini').value === '' && input('openai').value === '', 'Submission did not clear all transient password inputs immediately');
+    await waitFor(() => settings.querySelector('[data-role="credential-message"]').textContent.startsWith('Key saved.'), 'Synthetic key did not save through UI');
+    assert((await status()).providers.find(provider => provider.id === id)?.source === 'saved', 'Saved status did not match backend');
+  };
+  if (stage === 'before') {
+    assert(!button('credentials').disabled && button('credentials').getBoundingClientRect().height > 0, 'API keys affordance unavailable before connection');
+    button('credentials').click();
+    await waitFor(() => !settings.hidden && !input('gemini').disabled && !input('openai').disabled, 'Secure key settings did not load');
+    assert(input('gemini').type === 'password' && input('openai').type === 'password', 'Key entry is not masked');
+    assert(!input('gemini').value && !input('openai').value, 'Stored keys were prefilled');
+    fill('gemini'); const original = input('gemini');
+    button('reload-credentials').click();
+    await waitFor(() => !button('reload-credentials').disabled, 'Credential status refresh did not finish');
+    assert(input('gemini') === original && input('gemini').value.length > 0, 'A status render replaced or cleared the edited password');
+    await submit('gemini'); fill('openai'); await submit('openai');
+    fill('gemini', '-discard'); button('close-credentials').click();
+    assert(settings.hidden && !input('gemini').value && !input('openai').value, 'Closing settings retained key entry');
+    assert(panel.querySelector('#radsysx-live-attestation').value === '', 'Saving keys did not clear attestation');
+    return { savedBothProviders: true, stablePasswordInput: true };
+  }
+  const select = panel.querySelector('#radsysx-live-attestation');
+  select.value = 'synthetic'; select.dispatchEvent(new Event('change', { bubbles: true })); button('connect').click();
+  await waitFor(() => panel.state.backendStatus === 'ready', 'Synthetic session did not reconnect before key replacement');
+  const sessionId = panel.state.backendSessionId;
+  button('credentials').click(); await waitFor(() => !settings.hidden && !input('openai').disabled, 'Replacement settings did not load');
+  fill('openai', '-replacement'); await submit('openai');
+  assert(panel.state.backendStatus === 'disconnected' && !panel.state.backendSessionId, 'Key replacement retained the active session');
+  assert(select.value === '' && button('voice').disabled && button('share').disabled, 'Replacement retained attestation or enabled media');
+  const previous = await (await fetch(`/api/ai/sidebar/sessions/${sessionId}`, { credentials: 'include' })).json();
+  assert(previous.session.status === 'closed', 'Key replacement did not close the backend session');
+  for (const id of ['gemini', 'openai']) {
+    assert(settings.querySelector(`[data-role="credential-fallback-${id}"]`).hidden === false, 'Environment fallback was not disclosed before removal');
+    form(id).querySelector('[data-action="remove-key"]').click();
+    await waitFor(() => settings.querySelector('[data-role="credential-message"]').textContent.includes('app-configured key will be used'), 'Removal did not disclose restored environment key');
+    assert((await status()).providers.find(provider => provider.id === id)?.source === 'environment', 'Saved key removal did not restore environment fallback');
+  }
+  assert(!input('gemini').value && !input('openai').value, 'Credential operation left key entry in DOM');
+  button('close-credentials').click();
+  return { savedBothProviders: true, stablePasswordInput: true, maskedInputs: true, inputsCleared: true, replacedDuringActiveSession: true, sessionClosed: true, attestationCleared: true, removedBothSavedKeys: true, environmentFallbackDisclosed: true, providerAccessVerified: false, cloudCalls: false };
+}

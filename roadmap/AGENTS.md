@@ -1,6 +1,6 @@
 # Roadmap DOX
 
-Last updated: 2026-06-13
+Last updated: 2026-09-22
 
 ## Purpose
 
@@ -13,6 +13,8 @@ Last updated: 2026-06-13
 - Owns roadmap files under `roadmap/`, including AI backend plans, model evaluation notes, future architecture sketches, and implementation runbooks.
 - The AI backend plan for the OHIF sidebar lives at `roadmap/ai-backend/PLAN.md`; the realtime voice/chat research synthesis lives at `roadmap/ai-backend/REALTIME_VOICE_RESEARCH.md`; first GPU bring-up evidence lives at `roadmap/ai-backend/GPU_EVAL_LOG.md`; the opt-in BioMedParse integration demo runbook lives at `roadmap/ai-backend/BIOMEDPARSE_DEMO.md`.
 - Runtime code remains owned by the nearest applicable subtree such as `backend/`, `viewer/`, `frontend/`, `desktop/`, or `packages/`.
+
+- `ai-backend/LIVE_IMPLEMENTATION.md` owns the Gemini/OpenAI implementation contract, canonical map/ticket links, dated verification evidence, and the NVIDIA VoiceChat deployment assessment. The user deferred VoiceChat; it is not implemented or enabled. Distinguish downloadable model access from a running provider endpoint. Its current decisions supersede the June prototype assumptions.
 
 ## Local Contracts
 

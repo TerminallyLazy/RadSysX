@@ -1,6 +1,6 @@
 # RadSysX Agent Guidance
 
-Last updated: 2026-08-08
+Last updated: 2026-09-22
 
 ## Purpose
 
@@ -8,7 +8,7 @@ Last updated: 2026-08-08
 - RadSysX has two parallel product surfaces:
   - `research`: rapid experimentation, legacy viewer flows, browser-side AI prototypes, and agent/MCP exploration.
   - `clinical`: governed FastAPI contracts, worklist-driven launch, opaque viewer sessions, OHIF reading, audited reporting, AI workflow state, and backend-mediated derived DICOM writeback.
-- RadSysX now also has a `desktop` runtime path: an Electron fast path that starts the local backend, Next.js shell, and OHIF viewer bridge under one localhost origin without Docker; by default it opens directly into OHIF's native local DICOM route at `/viewer/local`, keeps the visible app name as RadSysX, and exposes a voice-first RadSysX AI sidebar that binds to backend session/message stub contracts when authenticated while preserving local fallback.
+- RadSysX now also has a `desktop` runtime path: an Electron fast path that starts the local backend, Next.js shell, and OHIF viewer bridge under one localhost origin without Docker; by default it opens directly into OHIF's native local DICOM route at `/viewer/local`, keeps the visible app name as RadSysX, and exposes a voice-first RadSysX AI sidebar with explicitly selected Gemini Live or OpenAI Realtime for attested synthetic/deidentified content while preserving an unsent local draft.
 - The OHIF app also exposes `/viewer/fhir-viewer` for FHIR R4 imaging discovery through SMART on FHIR. That route has its own SMART authorization context and is not a shortcut around the governed RadSysX launch/report/writeback contracts.
 - Do not treat the research and clinical surfaces as equivalent.
 
@@ -54,7 +54,7 @@ Last updated: 2026-08-08
   - This checks the desktop bootstrap, runs the cross-platform bootstrap helper if setup is incomplete, then opens Electron directly to OHIF local mode at `/viewer/local`.
   - Use `npm run desktop:bootstrap -- --check` for a non-mutating setup preflight, and `npm run desktop:run` only when intentionally bypassing the launcher after setup.
 - `backend/requirements.txt` is the broader research/agent dependency set. Use it only when intentionally working on the research surface and its extra dependencies.
-- Use Python `3.12` if one interpreter must install both clinical and broader research dependency sets.
+- Use Python `3.12` for the desktop AI runtime. Desktop installs `backend/requirements-ai.txt` over the clinical base; the legacy full research manifest must use a separate environment because its older agent pins are incompatible.
 - If the host is missing a required system dependency, surface that explicitly instead of patching around it with host-local hacks.
 
 ## Project Operating Rules
@@ -236,12 +236,12 @@ Last updated: 2026-08-08
 - Fast local desktop path:
   - Run `npm run desktop` from the repo root.
   - The user-facing desktop launcher first runs the non-mutating bootstrap check, runs `npm run desktop:bootstrap` if setup is incomplete, then opens the Electron app.
-  - `npm run desktop:bootstrap` remains the explicit cross-platform Node helper that creates/uses `.venv`, installs clinical Python requirements, runs workspace `npm install --legacy-peer-deps`, and then runs desktop doctor; use `npm run desktop:bootstrap -- --check` or `npm run desktop -- --check-only` to verify an existing bootstrap without reinstalling dependencies.
+  - `npm run desktop:bootstrap` remains the explicit cross-platform Node helper that creates/uses `.venv`, installs the clinical plus AI requirements, runs workspace `npm install --legacy-peer-deps`, and then runs desktop doctor; use `npm run desktop:bootstrap -- --check` or `npm run desktop -- --check-only` to verify an existing bootstrap without reinstalling dependencies.
   - Use `npm run desktop:run` only for a lower-level direct Electron run after setup is known good.
   - Electron exposes one local origin, usually `http://127.0.0.1:3000`, and internally supervises FastAPI, a stamped production Next.js standalone shell, and the generated OHIF viewer bridge.
   - Desktop runtime, doctor, bootstrap, and smoke helpers resolve the repo-local venv Python using platform-specific paths (`.venv/bin/python` on Unix-like hosts, `.venv/Scripts/python.exe` on Windows) and may be overridden with `RADSYSX_DESKTOP_PYTHON` or `PYTHON`.
   - Electron opens `/viewer/local` by default so OHIF's native local DICOM loader is the first visible screen. The viewer bootstrap no longer requires a governed launch for local OHIF routes, suppresses the clinical workspace panel in standalone local mode, rewrites local DICOM navigation to `/viewer/dicomlocal`, and keeps the window/document title as `RadSysX`; use `RADSYSX_DESKTOP_START_PATH` only when intentionally validating a different first route.
-  - Standalone and governed OHIF viewer layouts include a voice-first RadSysX AI right-sidebar panel. It creates an authenticated backend AI sidebar session when possible, sends voice/composer turns through `/api/ai/sidebar/*` stub contracts, keeps a local fallback when the backend session is unavailable, and lets users attach ROI/segmentation/measurement context chips through `@`. These endpoints are orchestration stubs only: no diagnostic model inference, no report persistence, and no DICOM SEG writeback occur through them yet.
+  - The RadSysX AI sidebar uses `/api/ai/sidebar/*` owned session/history/approval contracts and a same-origin Live WebSocket. Gemini Developer API credentials come from backend-only `.env.ai` (`RADSYSX_GEMINI_API_KEY`) or exported settings. The default Gemini model is `gemini-3.8-live-extended-thinking` with LOW thinking; custom tools are NON_BLOCKING and `serverContent.interactionStatus` controls completion. Enable microphone and selected-viewport sharing explicitly after synthetic/deidentified attestation. Raw media and private reasoning are transient. Real OHIF context chips, reversible drafts, reviewed backend report saves, and bounded Gemini research delegates replace the deterministic stub. Separate segmentation inference and real-patient clinical use remain deferred; `clinical` mode disables this cloud feature. Provider readiness requires setup acknowledgment and must expose quota/auth failures honestly.
   - `/viewer/fhir-viewer` activates the pinned FHIR R4 data source and supports SMART EHR launch with PKCE. The browser calls the configured FHIR origin directly, so that server must allow the RadSysX origin through CORS. Set the public SMART client with `RADSYSX_FHIR_CLIENT_ID` before building the viewer or pass `client_id` on the launch URL; optional build settings are `RADSYSX_FHIR_SERVER_URL` and `RADSYSX_FHIR_SCOPE`.
   - The desktop launcher builds or refreshes the frontend production shell when the expected desktop build stamp is missing or mismatched; the default public frontend API/viewer settings are same-origin so the build is not tied to a specific localhost port. Use `npm run desktop:dev-frontend` or `RADSYSX_DESKTOP_FRONTEND_MODE=development npm run desktop` only when intentionally doing live Next.js UI development.
   - This path validates local login, native local file/folder selection, local imaging import, imported-study asset summaries/previews/technical analysis, worklist, launch, workspace, report, AI job, and audit contracts without Docker.
@@ -302,5 +302,26 @@ Last updated: 2026-08-08
 
 ## Security verification
 
-- CI runs security regression tests, dependency audits, frontend/viewer builds, and existing CodeQL analysis. Do not dismiss alerts or suppress advisories to obtain a passing result.
+- CI installs and audits the layered AI requirements, runs clinical/security/Live/research regressions and pip consistency checks, type-checks/builds the frontend and viewer, runs viewer/desktop protocol tests, and preserves existing CodeQL analysis. Do not dismiss alerts or suppress advisories to obtain a passing result. Hosted CI is distinct from locally run checks.
 - `npm audit` checks the RadSysX workspace; `npm run audit:ohif --workspace viewer` checks the pinned upstream build.
+
+## Live assistant workflow
+
+- Canonical map: https://github.com/TerminallyLazy/RadSysX/issues/75; prototype acceptance: issue #76. `roadmap/ai-backend/LIVE_IMPLEMENTATION.md` records the contract and verification evidence.
+- `npm run desktop:smoke:ai-live` uses a guarded synthetic provider through the real Electron bridge, including two delayed research tasks while audio continues. `npm run desktop:smoke:ai-viewer` exercises the real sidebar and OHIF actions on synthetic DICOM. Neither contacts Google. `npm run test:live --workspace viewer` verifies the typed runtime.
+- Session ownership, `ai.run`, same-origin WebSocket authorization, context/attestation binding, action idempotency and review gates are enforced in `backend/clinical/ai_*`. Only backend-resolved imported/governed studies can save reports.
+- Users may enter personal Gemini/OpenAI keys through the sidebar's API-key settings. Keep these write-only inputs out of browser persistence, provider prompts, logs, errors and history. The backend stores per-actor encrypted credentials and returns status only; saved credentials override operator `.env.ai`/environment configuration only for their owner. Changing or removing credentials ends that actor's live sessions/jobs. Never commit `.env.ai`, private `.ai-secrets/` master-key files or local databases, and never derive credential encryption from the known desktop signing defaults.
+- History stays local until user deletion. Backend restarts invalidate attestation and mark unfinished work interrupted; never replay media or mutations.
+- Desktop bootstrap/doctor validate AI dependencies separately from provider connection. Never call configured credentials proof of provider/model availability or hardware audio acceptance.
+
+## OpenAI Realtime provider
+
+- The sidebar also supports the explicitly selected `gpt-realtime-2.1-mini`, with backend-only `RADSYSX_OPENAI_API_KEY`, low reasoning, and a GA Realtime WebSocket. Gemini remains the default choice; never silently substitute providers or model IDs. NVIDIA VoiceChat remains deferred.
+- The persisted exact model ID freezes each session's provider and audio profile. Selecting another provider ends the prior session, pauses media and requires renewed attestation. OpenAI uses 24 kHz PCM16 input/output; Gemini input remains 16 kHz.
+- OpenAI transport lives in `backend/clinical/ai_openai.py`; the shared broker retains all ownership, action-scope, approval and idempotency authority. Only completed function calls execute. Browser playback receipts truncate unheard output on interruption; audio-chunk metadata is transient.
+- Provider audio may arrive faster than real time. Preserve normal playback speed while buffering ordinary replies; the shared viewer output queue caps duration at 60 seconds plus scheduling lead and scheduled sources at 3,000, including incoming audio before allocation. Barge-in must clear the entire queue immediately and receipts must count only heard audio. Use the synthetic Electron `--local-start --audio-playback` smoke for burst timing without cloud calls.
+- Research workers continue to use the separately configured Gemini Flash lane. No OpenAI research-model substitution is implied by selecting OpenAI conversation. Primary OpenAI WebSocket reconnection uses fresh bounded text context, never media or mutation replay.
+- A lost OpenAI browser connection also resets the upstream conversation and cancels pending work because final playback is unknown. Fresh OpenAI context includes prior user text; unconfirmed generated assistant speech remains local history only. Detachment and replacement acceptance serialize; queued input must match the ready provider instance after every awaited boundary.
+- The provider catalog can be retried explicitly if desktop authentication was not ready on the first fetch. Runtime readiness follows acknowledged setup and successful initial context delivery, never key presence alone.
+- Image sharing remains a separate opt-in from microphone use. Show backend-confirmed waiting/image-sent/off states and the selected image scope. Tell the model explicitly when no image is available or prior images are historical; `viewer_get_state` alone is not pixel awareness. Never infer historical sharing from journals that intentionally omit frame activity.
+- `backend/tests/test_ai_openai.py`, `test_ai_providers.py` and `test_ai_connection_races.py` cover transport, provider/session boundaries and reconnect authority. `node desktop/scripts/ai-live-smoke.mjs --openai` is synthetic Electron bridge validation, not live-provider acceptance.
