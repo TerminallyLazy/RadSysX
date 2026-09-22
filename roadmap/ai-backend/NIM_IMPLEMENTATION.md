@@ -20,7 +20,7 @@ RADSYSX_NIM_RESEARCH_MODEL=z-ai/glm-5.3-flash
 
 The user selected `z-ai/glm-5.3-flash` (exact authenticated catalog ID). Its documented endpoint default is maximum reasoning, so these bounded research/evaluation paths explicitly request `reasoning_effort=low` and `chat_template_kwargs.clear_thinking=true`. NVIDIA documents text/image input and text output; current RadSysX NIM requests remain text-only.
 
-Gemini remains the default when `RADSYSX_RESEARCH_PROVIDER` is omitted. NIM requires an exact model and NVIDIA key; no automatic model/provider fallback exists. Personal Gemini/OpenAI credentials remain separate. NIM has no voice profile or browser credential setting. This extension does not edit the operator's `.env.ai`.
+Gemini remains the default when `RADSYSX_RESEARCH_PROVIDER` is omitted. NIM requires an exact model and NVIDIA key; no automatic model/provider fallback exists. Personal Gemini/OpenAI credentials remain separate. NIM has no voice profile or browser credential setting. At the user's request, the original checkout's private `.env.ai` selects NIM research and `z-ai/glm-5.3-flash`; existing credentials remain untouched. These settings take effect when this implementation branch is run and the backend is restarted. The isolated implementation worktree does not contain a credential-file copy; probes used explicit `--env-file` or loaded the original backend file into the selected worker.
 
 NIM research offers PubMed abstracts and existing virtual scratch/todo tools. Gemini's Google-grounded web/source tools stay in the Gemini lane. Both prohibit shell, MCP and subagents, enforce 16 actual tool calls and 12 model calls, and normalize citations against retrieved sources. Clinical mode disables cloud research. The evidence CLI likewise rejects clinical/unknown network modes and accepts only designated public/synthetic snapshots.
 
@@ -40,16 +40,20 @@ Evaluation failures distinguish auth, overload, timeout, malformed/truncated res
 
 ## Validation on 2026-09-22
 
+- Independent scope review (`01686f9..9269cbc`): no Critical, Important or Minor findings; 55 focused offline tests passed in the review. Live receipts below remain separate.
+- Desktop dependency inspector: NVIDIA adapter 1.4.3 present and no version mismatches.
 - Native dependency compatibility: `pip check` clean; `pip-audit -r backend/requirements-ai.txt` reported no known vulnerabilities.
 - Mocked HTTP tests verify fixed endpoints, byte/timeout limits, safe errors, strict response/model/usage validation, catalog mode/cancellation gates and resume without repeat inference.
 - Actual compiled DeepAgents graphs with mocked NVIDIA calls verify PubMed dispatch, structured synthesis, citation filtering, absent Google/shell/subagent tools and shared tool budgets. Broker tests verify selected-key routing and personal Google-key isolation.
-- Current regression tranche: 422 passed across evidence review, research, live broker, credential/security, OpenAI transport, connection-race and screen-awareness tests. These are local checks, not hosted CI.
+- Current regression tranche: 452 passed across evidence review, research, live broker, credential/security, OpenAI transport, connection-race and screen-awareness and clinical-platform tests. These are local checks, not hosted CI.
 - Authenticated hosted catalog: 82 model IDs, including Lightning and GPT-OSS-20B.
 - One synthetic evidence case with `openai/gpt-oss-20b`: completed in 2.532 seconds overall; exact resolved ID matched; 301 prompt, 113 completion, 414 total tokens. No probabilities or cost claim.
 - Same case with `nvidia/nemotron-3.5-lightning-30b-a3b`: two 10-second timeouts, correctly recorded as failed with unknown usage/billing.
 - First broader Lightning PubMed query failed after search progress. A targeted public PMID 21714641 query completed through the actual DeepAgents/LangGraph worker with one verified source, 2 model calls and 2 tool calls (8,899 input / 581 output / 9,480 total tokens). These probes do not establish comparative quality or consistent latency.
 
 - Selected `z-ai/glm-5.3-flash`, explicit low reasoning: synthetic evaluator completed in 2.003 seconds overall, exact resolved ID, 245 prompt / 7 completion / 252 total tokens. Initial maximum-reasoning probe timed out twice at 10 seconds; those receipts are retained.
+
+- Selected GLM actual isolated supervisor/worker: completed in 43.917 seconds, one retrieved PubMed source, 2 model calls and 2 tool calls, 7,844 input / 420 output / 8,264 total tokens. The earlier 30-second socket deadline failed during a later model call; the final 60-second NIM call allowance completed inside the unchanged job budget. No answer text or reasoning was stored for this connectivity probe.
 
 Human Jev-study labels, held-out comparison, visual reports, physical audio and clinical acceptance remain separate. No hosted CI, deployment or default-provider change is implied.
 
