@@ -51,3 +51,11 @@ No abstract bodies, source claims, model labels, reviewer notes or credentials a
 Two qualified people must label independently and attest blinding; a separate qualified adjudicator must resolve disagreements or leave them unresolved. Check five-label coverage in both partitions after adjudication. The packet's constructed cases need human relevance/ambiguity review, and successful natural assistant-answer capture would strengthen representativeness before freezing the final study.
 
 Only then freeze development choices, practical margins, exact resolved models/configurations and dated pricing; evaluate the held-out corpus unchanged; compare paired cases and whole-workload coverage with uncertainty. No reviewer identities, qualifications or labels have been manufactured. No benefit, clinical accuracy or rollout approval is claimed.
+
+## Independent software review and fixes
+
+A fresh `gpt-6-astra` reviewer examined the complete implementation range `70020b0..2a86a73`. No Critical findings were reported. Two Important findings were fixed: paired statistics now separate development and held-out estimates/intervals/denominators, and tests cannot load operator dotenv credentials. The export-error finding was promoted from Minor to Important because returning an input-error status without a saved-run locator misdirects recovery; it now returns storage failure/exit 3 and retains the locator.
+
+Each reported behavior was reproduced by a failing regression before its fix. The partition regression also exposed unstable integer defaults in float-valued limit serialization; explicit float defaults now preserve frozen experiment identity across JSON loading. The combined relevant suite passed **296 tests** after the single review-fix pass. Existing framework deprecations remain. No second reviewer was used; the fixes were verified by regressions and the combined suite. Human-quality and browser acceptance remain pending as stated above.
+
+NVIDIA NIM scope is separately requested for evaluation and DeepAgents research. Read-only authenticated discovery at `https://integrate.api.nvidia.com/v1/models` succeeded and returned 82 model IDs on this date. Catalog presence does not prove tool-calling, JSON output, free entitlement or inference readiness. No NIM implementation or inference is included in this Jev acceptance record.

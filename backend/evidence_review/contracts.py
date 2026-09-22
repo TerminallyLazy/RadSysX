@@ -51,10 +51,10 @@ def _json_value(value):
 
 class Limits(Record):
     concurrency: int = Field(default=2, ge=1, le=2)
-    attempt_seconds: float = Field(default=10, gt=0, le=10)
+    attempt_seconds: float = Field(default=10.0, gt=0, le=10)
     retries: int = Field(default=1, ge=0, le=1)
-    snapshot_seconds: float = Field(default=60, gt=0, le=60)
-    cleanup_seconds: float = Field(default=5, gt=0, le=5)
+    snapshot_seconds: float = Field(default=60.0, gt=0, le=60)
+    cleanup_seconds: float = Field(default=5.0, gt=0, le=5)
     evidence_records: int = Field(default=20, ge=1, le=20)
     abstract_chars: int = Field(default=10000, ge=1, le=10000)
     answer_chars: int = Field(default=12000, ge=1, le=12000)
@@ -250,7 +250,7 @@ class AttemptOutcome(Record):
     submitted: bool = False
     retry_after_seconds: float | None = Field(default=None, ge=0, le=86400)
     usage: dict[str, TokenCount] | None = None
-    elapsed_seconds: float = Field(default=0, ge=0)
+    elapsed_seconds: float = Field(default=0.0, ge=0)
 
     @model_validator(mode="after")
     def outcome(self):
@@ -284,7 +284,7 @@ class Assessment(Record):
     reason: Identifier | None = None
     judgment: Judgment | None = None
     attempt_ids: tuple[Identifier, ...] = ()
-    elapsed_seconds: float = Field(default=0, ge=0)
+    elapsed_seconds: float = Field(default=0.0, ge=0)
     reused_from: str | None = None
 
     @model_validator(mode="after")
@@ -312,7 +312,7 @@ class RunResult(Record):
     attempts: tuple[AttemptRecord, ...] = ()
     evaluator_failure: str | None = None
     elapsed_seconds: float = Field(ge=0)
-    finalization_seconds: float = Field(default=0, ge=0)
+    finalization_seconds: float = Field(default=0.0, ge=0)
 
 
 class CaptureResult(Record):

@@ -73,16 +73,19 @@ def _create(services,root,prefix):
 
 
 def _save(store,values):
-    """Commit exports' source objects before materializing readable private files."""
-    refs = [(store.put_bytes(data,kind=kind),name) for kind,name,data in values]
     try:
-        manifest = store.load_run().manifest
-    except FileNotFoundError:
-        manifest = {'schema_version':1,'objects':[]}
-    for ref,name in refs:
-        if ref not in manifest['objects']: manifest['objects'].append(ref)
-    store.commit_manifest(manifest)
-    return [str(store.export(ref,name=name)) for ref,name in refs]
+        """Commit exports' source objects before materializing readable private files."""
+        refs = [(store.put_bytes(data,kind=kind),name) for kind,name,data in values]
+        try:
+            manifest = store.load_run().manifest
+        except FileNotFoundError:
+            manifest = {'schema_version':1,'objects':[]}
+        for ref,name in refs:
+            if ref not in manifest['objects']: manifest['objects'].append(ref)
+        store.commit_manifest(manifest)
+        return [str(store.export(ref,name=name)) for ref,name in refs]
+    except (OSError, ValueError):
+        raise LocalStorageFailure(store.run_path) from None
 
 
 def _adapter(services,evaluator,settings,client,*,config=None,expected_resolved_model=None):
@@ -257,8 +260,10 @@ def main(argv=None, *, services=None):
             for item in (signal.SIGINT,signal.SIGTERM): loop.remove_signal_handler(item)
     try:
         return asyncio.run(invoke())
-    except LocalStorageFailure:
-        _print({'error':'local_storage_failure'}); return 3
+    except LocalStorageFailure as error:
+        receipt = {'error':'local_storage_failure'}
+        if error.run_path is not None: receipt['run'] = error.run_path
+        _print(receipt); return 3
     except (ValueError,TypeError,KeyError,OSError):
         reason = 'evaluation_disabled' if args.command in {'capture','replay','resume'} and os.environ.get('RADSYSX_APP_MODE','research') not in {'research','pilot'} else 'input_or_configuration_rejected'
         _print({'error':reason}); return 2

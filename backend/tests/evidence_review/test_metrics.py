@@ -79,3 +79,43 @@ def test_held_out_comparison_requires_frozen_experiment(snapshot_factory):
     refs=freeze_references(manifest,(review(case,'a'),review(case,'b')),())
     with pytest.raises(ValueError,match='held_out_experiment_required'):
         compare_runs(manifest,refs,(),snapshots=snapshots)
+
+
+def test_paired_comparison_separates_opposing_partitions(snapshot_factory):
+    from datetime import datetime,timezone
+    from backend.evidence_review.contracts import Limits,Assessment,Judgment,RunResult,LABELS
+    from backend.evidence_review.units import build_review_plan
+    from backend.evidence_review.study import StudyCase,StudyManifest,ExperimentConfig,freeze_references
+    from backend.evidence_review.metrics import compare_runs
+    from backend.evidence_review.rubric import RUBRIC_SHA256
+    from backend.tests.evidence_review.test_study import review
+    snapshots={};cases=[];plans=[]
+    for i in range(4):
+        snap=snapshot_factory(answer=f'Claim {i} [s1].');snapshots[snap.snapshot_sha256]=snap
+        pair=build_review_plan(snap,limits=Limits()).pairs[0];plans.append(pair)
+        cases.append(StudyCase(case_id=f'case-{i}',snapshot_sha256=snap.snapshot_sha256,unit_id=pair.unit.unit_id,
+            evidence_id=pair.evidence.evidence_id,pair_id=pair.pair_id,pmid=None,topic_family=f'family-{i}',
+            partition='development' if i<2 else 'held_out',origin='constructed'))
+    models={'jev':'jev-1.13.0','gemini':'gemini-3.8-flash'}
+    experiment=ExperimentConfig(version='v1',frozen_at=datetime(2026,1,1,tzinfo=timezone.utc),models=models,resolved_models=models,
+        rubric_sha256=RUBRIC_SHA256,config_hashes={e:'a'*64 for e in models},limits=Limits(),comparison_margins={'accuracy':.05})
+    manifest=StudyManifest(version='v1',cases=tuple(cases),experiment=experiment,experiment_sha256=experiment.sha256)
+    refs=freeze_references(manifest,tuple(review(c,r) for c in cases for r in ('a','b')),())
+    runs=[]
+    for evaluator,model in models.items():
+        for i,pair in enumerate(plans):
+            label='supported' if (i<2)==(evaluator=='jev') else 'contradicted'
+            judgment=Judgment(label=label,requested_model=model,resolved_model=model,
+                probabilities={l:float(l==label) for l in LABELS} if evaluator=='jev' else None,confidence=1.0 if evaluator=='jev' else None)
+            assessment=Assessment(pair_id=pair.pair_id,snapshot_sha256=pair.snapshot_sha256,unit_id=pair.unit.unit_id,
+                evidence_id=pair.evidence.evidence_id,evidence_sha256=pair.evidence.text_sha256,evaluator=evaluator,model=model,
+                rubric_sha256=RUBRIC_SHA256,request_sha256='b'*64,status='completed',judgment=judgment)
+            runs.append(RunResult(run_id=f'{evaluator}-{i}',snapshot_sha256=pair.snapshot_sha256,evaluator=evaluator,model=model,
+                limits=Limits(),assessments=(assessment,),coverage=(),elapsed_seconds=1,started_at=datetime(2026,9,22,tzinfo=timezone.utc),
+                experiment_sha256=experiment.sha256,evaluator_config_sha256='a'*64))
+    comparison=compare_runs(manifest,refs,tuple(runs),snapshots=snapshots)
+    # Sorted provider order is Gemini minus Jev: development negative, held-out positive.
+    paired=next(iter(comparison.paired.values()))
+    assert paired['development']['differences']['accuracy']['difference']==-1
+    assert paired['held_out']['differences']['accuracy']['difference']==1
+    assert paired['held_out']['completion']['eligible_shared']==2

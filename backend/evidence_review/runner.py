@@ -21,8 +21,9 @@ class Evaluator(Protocol):
 
 
 class LocalStorageFailure(ValueError):
-    def __init__(self):
+    def __init__(self, run_path=None):
         super().__init__("local_storage_failure")
+        self.run_path = str(run_path) if run_path is not None else None
 
 
 def resume_key(snapshot_sha256: str, pair: ReviewPair, request: PreparedRequest) -> str:

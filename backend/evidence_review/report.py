@@ -145,7 +145,13 @@ def render_comparison(comparison):
         body += '<tr>'+''.join(f'<td>{text_node(value)}</td>' for value in [name,metrics['completed_reference_cases'],fraction(metrics['classification']['accuracy']),
             fraction(metrics['classification']['incorrect_support']),metrics['unreviewed_reference_contradictions']])+'</tr>'
     body += '</tbody></table></div></section>'
-    body += _details('Paired differences and uncertainty intervals',data['paired'])
+    body += '<section class="card"><h2>Held-out paired results</h2><p>Development cases are excluded from these estimates.</p>'
+    for name,partitions in data['paired'].items():
+        held = partitions['held_out']
+        body += f'<h3>{text_node(name)}</h3><p>{held["completion"]["eligible_shared"]} eligible shared cases / {held["completion"]["planned"]} planned held-out cases.</p>'
+        body += _details('Held-out differences and uncertainty',held)
+    body += '</section>'
+    body += _details('Development paired results (not held-out evidence)',{name:parts['development'] for name,parts in data['paired'].items()})
     body += _details('Per-evaluator metrics, workload, latency and cost',data['evaluators'])
     body += _details('Aligned cases and unresolved references',{'cases':data['rows'],'unresolved':data['unresolved_exclusions']})
     body += _details('Frozen study and experiment',{'reference_sha256':data['reference_sha256'],'experiment_sha256':data['experiment_sha256'],**data['metadata']})

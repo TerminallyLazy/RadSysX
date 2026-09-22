@@ -60,3 +60,6 @@ None.
 - `python -m backend.evidence_review` exposes capture, replay, resume, blind, freeze-references, validate-suite and compare. See `README.md` for private input formats and destinations. Input files are bounded, owner-only regular files; suite/run-list paths cannot escape their private directory.
 - Network mode is checked before settings/clients. Local commands never read credentials. SIGINT/SIGTERM signal cancellation; exit codes are 0 completed operation, 2 rejected configuration/input, 3 partial/provider/storage failure and 130 cancellation.
 - CLI resume reconstructs the original configuration and rejects changed request bytes. Experiment generation configurations are retained alongside their hashes so replay/resume can enforce the same declared request.
+
+- Paired estimates and their completion denominators are computed separately for development and held-out partitions; development performance never enters the held-out interval. Reports identify the held-out comparison explicitly.
+- Output export failures return a storage failure and preserve the already-created run locator. Tests block operator dotenv reads; only temporary fixture files may exercise dotenv parsing.

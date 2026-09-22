@@ -166,11 +166,18 @@ def compare_runs(manifest, references, runs, *, snapshots, bootstrap_seed=202609
         }
     paired = {}
     for left,right in combinations(sorted(indexed),2):
-        shared = [dict(topic_family=r['topic_family'],left=r['evaluators'][left]['label'],right=r['evaluators'][right]['label'],reference=r['reference'])
-            for r in rows if r['reference'] is not None and r['evaluators'][left]['label'] is not None and r['evaluators'][right]['label'] is not None]
-        paired[left+' minus '+right] = {'differences':paired_bootstrap(shared,seed=bootstrap_seed),
-            'left':classification_metrics([r['left'] for r in shared],[r['reference'] for r in shared]),
-            'right':classification_metrics([r['right'] for r in shared],[r['reference'] for r in shared])}
+        partitions = {}
+        for partition in ('development','held_out'):
+            workload = [r for r in rows if r['partition'] == partition]
+            shared = [dict(topic_family=r['topic_family'],left=r['evaluators'][left]['label'],right=r['evaluators'][right]['label'],reference=r['reference'])
+                for r in workload if r['reference'] is not None and r['evaluators'][left]['label'] is not None and r['evaluators'][right]['label'] is not None]
+            partitions[partition] = {'differences':paired_bootstrap(shared,seed=bootstrap_seed),
+                'left':classification_metrics([r['left'] for r in shared],[r['reference'] for r in shared]),
+                'right':classification_metrics([r['right'] for r in shared],[r['reference'] for r in shared]),
+                'completion':{'planned':len(workload),'resolved_references':sum(r['reference'] is not None for r in workload),
+                    'left_completed':sum(r['evaluators'][left]['label'] is not None for r in workload),
+                    'right_completed':sum(r['evaluators'][right]['label'] is not None for r in workload),'eligible_shared':len(shared)}}
+        paired[left+' minus '+right] = partitions
     return Comparison(reference_sha256=references.sha256,experiment_sha256=manifest.experiment_sha256,rows=tuple(rows),
         evaluators=metrics,paired=paired,unresolved_exclusions=tuple(r.case_id for r in references.cases if r.label is None),
         metadata={'study_version':manifest.version,'experiment':experiment.model_dump(mode='json') if experiment else None,

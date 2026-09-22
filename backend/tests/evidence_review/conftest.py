@@ -6,9 +6,17 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def no_live_secrets_or_network(monkeypatch):
+def no_live_secrets_or_network(monkeypatch, tmp_path):
     for name in ("RADSYSX_TYPESAFE_AI_API_KEY", "RADSYSX_GEMINI_API_KEY", "RADSYSX_NVIDIA_API_KEY", "GEMINI_API_KEY"):
         monkeypatch.delenv(name, raising=False)
+    import dotenv
+    from pathlib import Path
+    original_dotenv = dotenv.dotenv_values
+    def fixture_dotenv(path, *args, **kwargs):
+        if not Path(path).resolve().is_relative_to(tmp_path.resolve()):
+            raise AssertionError("Operator dotenv reads are forbidden in evidence tests")
+        return original_dotenv(path, *args, **kwargs)
+    monkeypatch.setattr(dotenv, "dotenv_values", fixture_dotenv)
     original = socket.socket.connect
     def connect(sock, address):
         if sock.family in (socket.AF_INET, socket.AF_INET6):

@@ -9,6 +9,12 @@ import pytest
 from backend.evidence_review.serialization import canonical_json
 
 
+def synthetic_services(**kwargs):
+    from backend.evidence_review.cli import CLIServices
+    from backend.evidence_review.settings import load_settings
+    return CLIServices(settings_loader=lambda **ignored:load_settings(environ={},env_file=None),**kwargs)
+
+
 def private_json(path,value):
     path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
     path.write_bytes(canonical_json(value)); path.chmod(0o600)
@@ -39,7 +45,7 @@ def test_replay_resume_capture_and_offline_blind(snapshot_factory,tmp_path,monke
     snap=snapshot_factory(); adapter=ScriptedEvaluator()
     async def capture(*a,**kw):
         return CaptureResult(result=snap.result,evidence=snap.evidence,capture_exclusions=(),generation=dict(snap.generation))
-    services=cli.CLIServices(adapter_factory=lambda *a,**kw:adapter,capture=capture)
+    services=synthetic_services(adapter_factory=lambda *a,**kw:adapter,capture=capture)
     query=private_json(tmp_path/'inputs'/'queries.json',{'schema_version':1,'data_class':'synthetic','queries':['Synthetic public query']})
     assert cli.main(['capture','--input',str(query),'--output-root',str(tmp_path/'capture')],services=services)==0
     receipt=json.loads(capsys.readouterr().out)
@@ -91,7 +97,7 @@ def test_sigint_returns_durable_cancellation(snapshot_factory,tmp_path,capsys):
     async def interrupt():
         os.kill(os.getpid(),signal.SIGINT)
         await asyncio.Event().wait()
-    services=cli.CLIServices(adapter_factory=lambda *a,**kw:ScriptedEvaluator([interrupt]))
+    services=synthetic_services(adapter_factory=lambda *a,**kw:ScriptedEvaluator([interrupt]))
     path=private_json(tmp_path/'input'/'snap.json',snapshot_factory().model_dump(mode='json'))
     assert cli.main(['replay','--snapshot',str(path),'--evaluator','jev','--output-root',str(tmp_path/'runs')],services=services)==130
     receipt=json.loads(capsys.readouterr().out)
@@ -108,7 +114,7 @@ def test_reference_freeze_and_comparison_are_offline(snapshot_factory,tmp_path,m
     base.mkdir(mode=0o700)
     snapshot=private_json(base/'study'/'snapshot.json',snap.model_dump(mode='json'))
     suite_path=private_json(base/'study'/'suite.json',suite.model_dump(mode='json'))
-    services=cli.CLIServices(adapter_factory=lambda *a,**kw:ScriptedEvaluator())
+    services=synthetic_services(adapter_factory=lambda *a,**kw:ScriptedEvaluator())
     assert cli.main(['replay','--snapshot',str(snapshot),'--evaluator','jev','--output-root',str(base)],services=services)==0
     run=Path(json.loads(capsys.readouterr().out)['run'])
     monkeypatch.setattr(cli,'load_settings',lambda **kw: pytest.fail('key read'))
@@ -122,3 +128,31 @@ def test_reference_freeze_and_comparison_are_offline(snapshot_factory,tmp_path,m
     outputs=json.loads(capsys.readouterr().out)['exports']
     comparison=json.loads(Path(outputs[0]).read_bytes())
     assert comparison['evaluators']['jev:jev-1.13.0']['classification']['accuracy']['value']==1.0
+
+
+def test_cli_network_test_defaults_never_read_operator_dotenv(snapshot_factory,tmp_path,monkeypatch,capsys):
+    from backend.evidence_review import cli
+    from backend.tests.evidence_review.test_runner import ScriptedEvaluator
+    import dotenv
+    monkeypatch.chdir(tmp_path)
+    private_json(tmp_path/'.env.ai',{'not':'dotenv'})
+    def forbidden(*args,**kwargs): raise AssertionError('operator dotenv read')
+    monkeypatch.setattr(dotenv,'dotenv_values',forbidden)
+    path=private_json(tmp_path/'input'/'snap.json',snapshot_factory().model_dump(mode='json'))
+    # Use the same synthetic service builder as the other network CLI tests.
+    services=synthetic_services(adapter_factory=lambda *a,**kw:ScriptedEvaluator())
+    assert cli.main(['replay','--snapshot',str(path),'--evaluator','jev','--output-root',str(tmp_path/'runs')],services=services)==0
+
+
+def test_export_failure_is_storage_failure_with_run_locator(snapshot_factory,tmp_path,monkeypatch,capsys):
+    from backend.evidence_review import cli
+    from backend.evidence_review.artifacts import ArtifactStore
+    from backend.tests.evidence_review.test_runner import ScriptedEvaluator
+    path=private_json(tmp_path/'input'/'snap.json',snapshot_factory().model_dump(mode='json'))
+    def fail(*args,**kwargs): raise OSError('PRIVATE_STORAGE_CANARY')
+    monkeypatch.setattr(ArtifactStore,'export',fail)
+    services=synthetic_services(adapter_factory=lambda *a,**kw:ScriptedEvaluator())
+    assert cli.main(['replay','--snapshot',str(path),'--evaluator','jev','--output-root',str(tmp_path/'runs')],services=services)==3
+    receipt=json.loads(capsys.readouterr().out)
+    assert receipt['error']=='local_storage_failure' and Path(receipt['run']).is_dir()
+    assert 'PRIVATE_STORAGE_CANARY' not in json.dumps(receipt)
