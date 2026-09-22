@@ -30,3 +30,5 @@ Last updated: 2026-09-22
 ## Child DOX Index
 
 - None.
+
+- `superpowers/specs/2026-09-22-jev-sidebar-evidence-review-design.md`: proposed next-stage app integration for explicit public PubMed review, owned jobs and visible receipts. User approved the feature direction; this written specification awaits review. It does not change the implemented offline evaluator contract until subsequent implementation is approved.
