@@ -399,6 +399,7 @@ async def shutdown_ai_live():
 async def startup_event():
     """Initialize services on startup."""
     ai_live_service.repository.recover()
+    ai_live_service.evidence_reviews.recover()
     if not RESEARCH_RUNTIME:
         return
     if RADSYSX_IMPORT_ERROR is not None:

@@ -112,6 +112,8 @@ def live(tmp_path, monkeypatch):
     monkeypatch.setenv("RADSYSX_GEMINI_API_KEY", "synthetic-not-a-real-key")
     monkeypatch.setenv("RADSYSX_RESEARCH_PROVIDER", "gemini")
     monkeypatch.delenv("RADSYSX_NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("RADSYSX_TYPESAFE_AI_API_KEY", raising=False)
+    monkeypatch.setenv("RADSYSX_AI_EVIDENCE_DIR", str(tmp_path / ".ai-evidence"))
     monkeypatch.setenv("RADSYSX_AI_ENABLED", "true")
     monkeypatch.setenv("RADSYSX_APP_MODE", "pilot")
     monkeypatch.setenv("RADSYSX_CLINICAL_API_SECRET", "synthetic-clinical-test-signing-secret")

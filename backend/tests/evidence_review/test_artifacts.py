@@ -106,3 +106,34 @@ def test_failed_object_fsync_does_not_replace_manifest(tmp_path,monkeypatch):
         monkeypatch.setattr(os,'fsync',fail)
         with pytest.raises(OSError): store.put_bytes(b'new',kind='request')
         assert store.load_run().request_refs==()
+
+
+def test_explicit_delete_is_locked_and_does_not_follow_symlinks(tmp_path):
+    from backend.evidence_review.artifacts import ArtifactStore
+    root=tmp_path/'private'
+    with ArtifactStore.create(root,run_id='delete') as store:
+        store.put_bytes(b'fixture',kind='test')
+        with pytest.raises(ValueError,match='run_busy'):
+            ArtifactStore.delete_run(root,run_id='delete')
+    outside=tmp_path/'outside'; outside.write_text('untouched')
+    (root/'delete'/'objects'/'hostile').symlink_to(outside)
+    with pytest.raises((ValueError,OSError)):
+        ArtifactStore.delete_run(root,run_id='delete')
+    assert outside.read_text()=='untouched'
+    (root/'delete'/'objects'/'hostile').unlink()
+    ArtifactStore.delete_run(root,run_id='delete')
+    assert not (root/'delete').exists()
+
+
+def test_review_preview_keeps_large_valid_unicode_sources_readable(snapshot_factory,tmp_path):
+    from backend.clinical.ai_evidence_artifacts import ReviewArtifacts
+    from backend.evidence_review.units import build_review_plan
+    from backend.evidence_review.contracts import Limits
+    citations=' '.join(f'[s{i}]' for i in range(1,21))
+    snap=snapshot_factory(answer=(('𠀀'*5800)+' '+citations+'. ')*2,abstract='🧪'*10000,evidence_count=20)
+    plan=build_review_plan(snap,limits=Limits())
+    assert len(plan.pairs)==40
+    artifacts=ReviewArtifacts(tmp_path/'private','large-preview')
+    ref,digest=artifacts.create_preview(snap,plan,{'providerId':None,'modelId':None,'recordedAt':None})
+    restored=artifacts.read_preview(ref)
+    assert restored['snapshot']==snap and restored['preview_hash']==digest

@@ -73,6 +73,8 @@ class AILiveService:
         self.owner_locks: dict[str, asyncio.Lock] = {}
         self.research_catalog_lock = asyncio.Lock()
         self.research_catalog_cache = None
+        from .ai_evidence_review import EvidenceReviewService
+        self.evidence_reviews = EvidenceReviewService(self)
 
     def _openai_provider(self, settings):
         from .ai_openai import OpenAIRealtimeProvider
@@ -284,11 +286,13 @@ class AILiveService:
             self.repository.change(session_id, status=status, attestation=None)
 
     async def stop_owner(self, actor):
+        await self.evidence_reviews.stop_owner(actor.sub, reason="account_work_stopped")
         for row in self.repository.active_sessions(actor):
             if row["status"] != "closed":
                 await self.stop(row["sessionId"])
 
     async def shutdown(self):
+        await self.evidence_reviews.shutdown()
         for session_id in list(self.runtimes):
             await self.stop(session_id, status="interrupted")
 

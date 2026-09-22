@@ -72,6 +72,7 @@ npm-debug.log*
 # Local provider credentials must never be committed.
 .env.ai
 .ai-secrets/
+.ai-evidence/
 # Other environment files
 .env*
 

@@ -61,7 +61,7 @@ def _sentences(text, offset):
 
 def _candidates(answer):
     candidates = []
-    for paragraph in re.finditer(r"\S(?:[\s\S]*?\S)?(?=\n\s*\n|\Z)", answer):
+    for paragraph in re.finditer(r"\S(?:[\s\S]*?\S)?(?=\n\s*\n|\s*\Z)", answer):
         text, offset = paragraph.group(), paragraph.start()
         chunks = [(offset,text)]
         if re.search(r"(?m)^\s*(?:[-*]\s+|\d+\.\s+)", text):

@@ -134,6 +134,65 @@ class RunView:
 
 class ArtifactStore:
     @classmethod
+    def delete_run(cls, root: Path, *, run_id: str) -> None:
+        """Explicit locked removal of one private run, without following links."""
+        if not NAME.fullmatch(run_id):
+            raise ValueError("invalid_run_id")
+        fds = []
+        try:
+            try:
+                root_fd, _ = _root(root, create=False)
+                fds.append(root_fd)
+                run = _directory(root_fd, run_id)
+                fds.append(run)
+            except FileNotFoundError:
+                return
+            lock = os.open(".lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=run)
+            fds.append(lock)
+            _check(lock)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError("run_busy") from None
+
+            def remove_contents(directory, level):
+                for name in os.listdir(directory):
+                    info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                    if stat.S_ISDIR(info.st_mode):
+                        allowed = (level == "run" and name in {"objects", "exports"}) or (
+                            level == "exports" and re.fullmatch(r"[a-f0-9]{32}", name))
+                        if not allowed:
+                            raise ValueError("unsafe_artifact_type")
+                        child = _directory(directory, name)
+                        try:
+                            remove_contents(child, name if level == "run" else "export")
+                        finally:
+                            os.close(child)
+                        os.rmdir(name, dir_fd=directory)
+                    else:
+                        allowed = (level == "run" and name in {"HEAD", ".lock"}) or (
+                            level == "objects" and (REF.fullmatch(name) or re.fullmatch(r"\.pending-[a-f0-9]{32}", name))) or (
+                            level == "export" and name in EXPORTS)
+                        if not allowed:
+                            raise ValueError("unsafe_artifact_type")
+                        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+                        try:
+                            _check(fd)
+                        finally:
+                            os.close(fd)
+                        if not (level == "run" and name == ".lock"):
+                            os.unlink(name, dir_fd=directory)
+            remove_contents(run, "run")
+            if os.stat(run_id, dir_fd=root_fd, follow_symlinks=False).st_ino != os.fstat(run).st_ino:
+                raise ValueError("artifact_identity_changed")
+            os.unlink(".lock", dir_fd=run)
+            os.rmdir(run_id, dir_fd=root_fd)
+            os.fsync(root_fd)
+        finally:
+            for fd in reversed(fds):
+                os.close(fd)
+
+    @classmethod
     def create(cls, root: Path, *, run_id: str):
         return cls(root, run_id, create=True)
 

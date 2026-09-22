@@ -105,3 +105,11 @@ def test_progress_storage_failure_stops_dispatch(snapshot_factory, tmp_path):
             assert not adapter.bodies
             assert store.load_run().interrupted_attempt_ids
     asyncio.run(scenario())
+
+
+def test_terminal_whitespace_preserves_original_claim_offsets(snapshot_factory):
+    snap=snapshot_factory(answer='  First [s1]. Second [s1].  \n')
+    plan=build_review_plan(snap,limits=Limits())
+    assert len(plan.pairs)==2
+    assert [u.text for u in plan.units]==['First [s1].','Second [s1].']
+    assert all(u.text==snap.result.summary[u.start:u.end] for u in plan.units)

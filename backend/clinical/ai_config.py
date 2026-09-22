@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.metadata
 import os
 from pathlib import Path
+from pydantic import SecretStr
 
 PROVIDER_PROFILES = {
     "gemini": {"id": "gemini", "label": "Gemini Live", "modelId": "gemini-3.8-live-extended-thinking",
@@ -45,6 +46,9 @@ class AISettings:
         self.research_model = setting("RADSYSX_NIM_RESEARCH_MODEL") if self.research_provider == "nvidia_nim" else "gemini-3.8-flash"
         self.enabled = setting("RADSYSX_AI_ENABLED", "true").lower() in {"1", "true", "yes"}
         self.app_mode = app_mode
+        self.typesafe_api_key = SecretStr(setting("RADSYSX_TYPESAFE_AI_API_KEY")
+            if self.enabled and app_mode in {"research", "pilot"} else "")
+        self.evidence_dir = setting("RADSYSX_AI_EVIDENCE_DIR")
         self.voice = setting("RADSYSX_GEMINI_VOICE", "Puck")
 
     def research_configuration(self):

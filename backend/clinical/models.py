@@ -31,6 +31,38 @@ class AIResearchGenerationModel(Base):
     recorded_at: Mapped[str] = mapped_column(String(64))
 
 
+class AIJevReviewModel(Base):
+    __tablename__ = "ai_jev_reviews"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    tool_id: Mapped[str] = mapped_column(String(128))
+    context_version: Mapped[int] = mapped_column()
+    source_hash: Mapped[str] = mapped_column(String(64))
+    run_id: Mapped[str] = mapped_column(String(80))
+    preview_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    preview_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32))
+    selection: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    confirmation: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    generation: Mapped[int] = mapped_column(default=1)
+    deleting: Mapped[bool] = mapped_column(Boolean, default=False)
+    progress_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[str] = mapped_column(String(64))
+    updated_at: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class AIJevOperationModel(Base):
+    __tablename__ = "ai_jev_operations"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    operation: Mapped[str] = mapped_column(String(16))
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    review_id: Mapped[str] = mapped_column(String(128), index=True)
+
+
 class AILiveSessionModel(Base):
     __tablename__ = "ai_live_sessions"
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
