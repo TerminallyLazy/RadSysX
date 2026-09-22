@@ -74,3 +74,9 @@ Saving persists a signed-account preference over the environment default and end
 The large sidebar slogan/microphone card is removed. A single header row and inline confirmation/connect leave conversation space available; active media controls remain explicit in a compact toolbar. Data attestation and provider disclosure are preserved.
 
 Browser preview verification used the actual production bundle with simulated session/settings responses and a freshly fetched real catalog: all 82 model options visible, alternate-model save/reopen verified, and selected GLM restored. At a 384-pixel panel width the disconnected controls occupy about 153 pixels. This preview is separate from backend persistence tests and real Electron/OHIF acceptance.
+
+Settings verification on 2026-09-22:
+
+- 464 local backend regressions passed, including new signed-owner preference/persistence/catalog failure tests. 31 viewer runtime tests passed; frontend/viewer typechecks and production viewer build passed.
+- Actual Electron/OHIF `node desktop/scripts/ui-import-smoke.mjs --local-start --ai-live --openai` passed with synthetic DICOM, guarded provider and fake microphone. It verified fresh attestation, exact OpenAI audio profile, 960-byte PCM frames, mute/end cessation, active-image sharing/receipt, completed viewer actions and draft/annotation undo/redo. No cloud inference or physical microphone was used.
+- The 280-pixel-wide connected sidebar retained 503 pixels of conversation height within an 852-pixel panel; ended layout retained 453 pixels. Composer bounds passed in both states. Before connecting, media controls were hidden/disabled and no session was allocated.
