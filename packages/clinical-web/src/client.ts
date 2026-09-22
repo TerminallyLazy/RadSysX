@@ -1,5 +1,6 @@
 import { getBackendBaseUrl } from "./env";
 import type {
+  EvidencePrepareRequest, EvidenceStartRequest, EvidenceRetryRequest, EvidenceReviewDetail, EvidenceReviewList,
   AIJobRecord,
   AIJobRequest,
   AICredentialSaveRequest,
@@ -66,6 +67,14 @@ async function requestJson<T>(
     throw new Error(payload || `Request failed: ${response.status}`);
   }
 
+  return response.json() as Promise<T>;
+}
+
+async function requestEvidence<T>(path: string, init: RequestInit, options?: ClinicalApiOptions): Promise<T> {
+  const response = await fetch(resolveClinicalApiUrl(`/api/ai/sidebar${path}`, options), {
+    ...init, credentials: "include", cache: "no-store", headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) throw new Error("Evidence review request failed. Refresh the review or sign in again.");
   return response.json() as Promise<T>;
 }
 
@@ -191,6 +200,25 @@ export function createClinicalApi(options?: ClinicalApiOptions) {
         method: "POST",
         body: JSON.stringify(payload),
       }, options);
+    },
+
+    prepareAIEvidenceReview(sessionId: string, toolCallId: string, request: EvidencePrepareRequest): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(toolCallId)}/evidence-reviews`, { method: 'POST', body: JSON.stringify(request) }, options);
+    },
+    listAIEvidenceReviews(sessionId: string): Promise<EvidenceReviewList> {
+      return requestEvidence(`/sessions/${encodeURIComponent(sessionId)}/evidence-reviews`, { method: 'GET' }, options);
+    },
+    getAIEvidenceReview(reviewId: string, signal?: AbortSignal): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/evidence-reviews/${encodeURIComponent(reviewId)}`, { method: 'GET', signal }, options);
+    },
+    startAIEvidenceReview(reviewId: string, request: EvidenceStartRequest): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/evidence-reviews/${encodeURIComponent(reviewId)}/start`, { method: 'POST', body: JSON.stringify(request) }, options);
+    },
+    retryAIEvidenceReview(reviewId: string, request: EvidenceRetryRequest): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/evidence-reviews/${encodeURIComponent(reviewId)}/retry`, { method: 'POST', body: JSON.stringify(request) }, options);
+    },
+    cancelAIEvidenceReview(reviewId: string): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/evidence-reviews/${encodeURIComponent(reviewId)}/cancel`, { method: 'POST' }, options);
     },
 
     getAISidebarCapabilities(): Promise<AISidebarCapabilities> {

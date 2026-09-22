@@ -213,7 +213,7 @@ class AILiveService:
             research_available = True
         except ValueError:
             research_available = False
-        return AISidebarCapabilities(backend_bound=True, voice_first=True, text_composer=True,
+        return AISidebarCapabilities(evidence_review=self.evidence_reviews.availability(), backend_bound=True, voice_first=True, text_composer=True,
             context_attachments=True, orchestration_mode="api", event_transport="websocket",
             audio_input_modes=["pcm16_16000", "pcm16_24000"], model_lanes=[
                 AISidebarModelLane(lane="live", status="available" if availability == "configured" else "disabled",

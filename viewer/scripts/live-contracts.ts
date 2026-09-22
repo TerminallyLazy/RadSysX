@@ -21,3 +21,14 @@ import type { AIResearchSettings as ViewerResearchSettings, AIResearchModels as 
 type ResearchSettingsMatches = Assert<AIResearchSettings extends ViewerResearchSettings ? true : false>;
 type ResearchSettingsComplete = Assert<ViewerResearchSettings extends AIResearchSettings ? true : false>;
 type ResearchModelsMatches = Assert<AIResearchModels extends ViewerResearchModels ? true : false>;
+
+import type * as SharedEvidence from '@radsysx/clinical-web/contracts';
+import type * as ViewerEvidence from '../assets/live/protocol';
+type EvidenceReviewDetailMatches = Assert<SharedEvidence.EvidenceReviewDetail extends ViewerEvidence.EvidenceReviewDetail ? true : false>;
+type EvidenceReviewDetailComplete = Assert<ViewerEvidence.EvidenceReviewDetail extends SharedEvidence.EvidenceReviewDetail ? true : false>;
+type EvidenceStartRequestMatches = Assert<SharedEvidence.EvidenceStartRequest extends ViewerEvidence.EvidenceStartRequest ? true : false>;
+type EvidenceStartRequestComplete = Assert<ViewerEvidence.EvidenceStartRequest extends SharedEvidence.EvidenceStartRequest ? true : false>;
+type EvidenceRetryRequestMatches = Assert<SharedEvidence.EvidenceRetryRequest extends ViewerEvidence.EvidenceRetryRequest ? true : false>;
+type EvidenceRetryRequestComplete = Assert<ViewerEvidence.EvidenceRetryRequest extends SharedEvidence.EvidenceRetryRequest ? true : false>;
+type EvidenceReviewAvailabilityMatches = Assert<SharedEvidence.EvidenceReviewAvailability extends ViewerEvidence.EvidenceReviewAvailability ? true : false>;
+type EvidenceReviewAvailabilityComplete = Assert<ViewerEvidence.EvidenceReviewAvailability extends SharedEvidence.EvidenceReviewAvailability ? true : false>;

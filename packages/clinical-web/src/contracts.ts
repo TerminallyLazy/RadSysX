@@ -371,6 +371,7 @@ export type AICredentialStatusResponse = {
 export type AICredentialSaveRequest = { apiKey: string };
 
 export type AISidebarCapabilities = {
+  evidenceReview: EvidenceReviewAvailability;
   backendBound: boolean;
   voiceFirst: boolean;
   textComposer: boolean;
@@ -562,3 +563,40 @@ export type ClinicalPlatformConfig = {
 export type ResearchProviderId = 'gemini' | 'nvidia_nim';
 export type AIResearchSettings = { providerId: ResearchProviderId; modelId: string; source: 'saved' | 'environment'; providers: { id: ResearchProviderId; label: string; configured: boolean }[] };
 export type AIResearchModels = { providerId: ResearchProviderId; models: string[]; capabilitiesVerified: boolean };
+
+// Explicit saved-result review: independent of live voice and image attestation.
+export type EvidenceLabel = 'supported' | 'partially_supported' | 'contradicted' | 'mixed' | 'not_addressed';
+export type EvidenceStatus = 'preparing' | 'ready' | 'reviewing' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'interrupted' | 'unavailable';
+export type EvidenceConfirmation = 'public_literature' | 'synthetic';
+export type EvidencePrepareRequest = { idempotencyKey: string };
+export type EvidenceRetryRequest = EvidencePrepareRequest & { previewSha256: string; confirmation: EvidenceConfirmation };
+export type EvidenceStartRequest = EvidenceRetryRequest & { selectedUnitIds: string[] };
+export type EvidenceReviewAvailability = { modelId: 'jev-1.13.0'; availability: 'configured' | 'missing' | 'disabled' | 'unavailable'; reason: string };
+export type EvidenceGeneration = { providerId: string | null; modelId: string | null; recordedAt: string | null };
+export type EvidenceReviewSummary = {
+  reviewId: string; sessionId: string; toolCallId: string; sourceContextVersion: number;
+  status: EvidenceStatus; createdAt: string; updatedAt: string; modelId: 'jev-1.13.0'; generation: EvidenceGeneration;
+  totalPairs: number; completedPairs: number; settledPairs: number; submittedAttempts: number; unknownUsageAttempts: number; reason: string | null;
+};
+export type EvidenceClaim = { unitId: string; text: string; start: number; end: number; evidenceIds: string[]; eligible: boolean; exclusionReason: string | null };
+export type EvidenceAbstract = {
+  evidenceId: string; citationId: string; title: string; pmid: string | null; url: string; retrievedAt: string;
+  completeness: 'complete' | 'truncated' | 'absent' | 'unavailable'; sections: { label: string | null; text: string }[];
+  textSha256: string; extractionVersion: string;
+};
+export type EvidenceAttempt = {
+  attemptId: string; pairId: string; requestSha256: string; startedAt: string; endedAt: string | null;
+  submitted: boolean | null; reason: string | null; usage: Record<string, number> | null;
+};
+export type EvidenceAssessment = {
+  pairId: string; unitId: string; evidenceId: string; status: 'completed' | 'skipped' | 'failed' | 'cancelled'; reason: string | null;
+  label: EvidenceLabel | null; requestedModel: string; resolvedModel: string | null; rubricVersion: string; rubricSha256: string;
+  answerSha256: string; abstractSha256: string; requestSha256: string | null; attemptIds: string[]; reused: boolean;
+  probabilities: Record<EvidenceLabel, number> | null;
+};
+export type EvidenceReviewDetail = EvidenceReviewSummary & {
+  previewSha256: string | null; answerSha256: string | null; snapshotSha256: string | null; originalAnswer: string | null;
+  claims: EvidenceClaim[]; abstracts: EvidenceAbstract[]; exclusions: { unitId: string | null; citationId: string | null; reason: string }[];
+  selectedUnitIds: string[] | null; assessments: EvidenceAssessment[]; attempts: EvidenceAttempt[]; earlierAttemptCount: number;
+};
+export type EvidenceReviewList = { reviews: EvidenceReviewSummary[]; truncated: boolean };

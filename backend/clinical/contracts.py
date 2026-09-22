@@ -395,7 +395,11 @@ class AISidebarProvider(ClinicalModel):
     tools: bool
 
 
+from .ai_evidence_contracts import EvidenceReviewAvailability
+
+
 class AISidebarCapabilities(ClinicalModel):
+    evidence_review: EvidenceReviewAvailability = Field(alias="evidenceReview")
     backend_bound: bool = Field(alias="backendBound")
     voice_first: bool = Field(alias="voiceFirst")
     text_composer: bool = Field(alias="textComposer")

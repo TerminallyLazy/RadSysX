@@ -35,3 +35,4 @@
 ## Child DOX Index
 
 - `AIResearchSettings` and `AIResearchModels` mirror authenticated research preferences/catalog endpoints. `getAIResearchSettings`, `getAIResearchModels` and `saveAIResearchSettings` carry cookies and no-store requests; signed owner identity is never supplied by the browser. Provider/model selection is backend-persisted, with full catalog IDs and explicit capability-verification status.
+- `Evidence*` DTOs mirror `backend/clinical/ai_evidence_contracts.py`. Explicit prepare/list/detail/start/retry/cancel methods use signed cookies, no-store and fixed errors; only GET detail accepts a polling abort signal. Claim IDs and preview hashes refer to backend-frozen text, not browser-provided evidence. `AISidebarCapabilities.evidenceReview` reports configuration separately from saved completion receipts.
