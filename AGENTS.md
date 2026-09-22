@@ -289,6 +289,7 @@ Last updated: 2026-09-22
 ## Child DOX Index
 
 - `backend/AGENTS.md`: FastAPI backend, clinical/research backend split, Python dependencies, backend tests, MCP, skills, tools, and model utilities.
+- `docs/AGENTS.md`: written design specifications and implementation plans, with explicit review and implementation status; exploratory research remains under `roadmap/`.
 - `deploy/AGENTS.md`: deploy/runtime configuration, especially the clinical nginx and Orthanc stack.
 - `desktop/AGENTS.md`: Electron desktop fast path, local process supervision, one-origin bridge, and desktop preflight/smoke checks.
 - `dicom-test-files/AGENTS.md`: local DICOM fixtures and non-production imaging test assets.
