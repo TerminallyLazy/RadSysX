@@ -37,7 +37,7 @@ The AI sidebar uses a charcoal/slate reading-room palette with muted blue accent
 | Type checking and Python compilation | Frontend/viewer/shared contracts and affected Python modules passed |
 | Viewer production build | Passed; existing upstream bundle-size warnings remain |
 | Guarded actual Electron/OHIF smoke | Preview made zero Jev calls; one selected pair completed; excluded text absent; second submission cancelled with unknown usage; voice end independent; saved reopen made no inference; delayed old-history reply discarded; fresh preparation required new consent without inference; deleting source removed three private runs |
-| Narrow sidebar and settings | 280 × 852 px, 503 px conversation while connected; completed review at 280 × 867 px leaves 518 px for conversation; keyboard Tab and consent focus preserved; all 82 synthetic NVIDIA catalog entries retained |
+| Narrow sidebar and settings | Final repeat: 280 × 852 px, 503 px conversation; keyboard Tab and consent focus preserved; all 82 synthetic NVIDIA catalog entries retained |
 
 The smoke substitutes only guarded synthetic provider/HTTP fixtures. It does not contact Google, OpenAI, NVIDIA, TypeSafe or NCBI, and uses a fake microphone and generated DICOM. It also executes actual OHIF tools through the existing adapter acceptance harness. Development repeats exposed transient capture-geometry/focus timing failures and an assumption that the resizable dock always opens at 280 px. The final smoke explicitly sizes the real sidebar to 280 px before review assertions; capture boundaries, keyboard checks and geometry thresholds remain intact. The complete repeat passed, and its native screenshot was visually inspected after the palette update.
 
@@ -61,7 +61,7 @@ This is **live TypeSafe with synthetic source**, not live NCBI retrieval or a di
 
 ## Final code review
 
-A fresh read-only `gpt-6-astra` review covered `2f22e89..ae8c6cc`. It found no critical issues and two important recovery defects: stranded preparations after failure/cancellation and retry after shutdown before evaluator initialization. Both were reproduced by failing regression tests and fixed in one native pass. The final 520-test backend suite, 41-test viewer suite, compilation/type checks, build and actual Electron recovery scenario passed. The final fixes were verified by those tests, not a second reviewer. No minor findings were deferred.
+A fresh read-only `gpt-6-astra` review covered `2f22e89..ae8c6cc`. It found no critical issues and two important recovery defects: stranded preparations after failure/cancellation and retry after shutdown before evaluator initialization. Both were reproduced by failing regression tests and fixed in one native pass. The final 520-test backend suite, 41-test viewer suite, compilation/type checks, build and actual Electron recovery scenario passed. The final fixes were verified by those tests, not a second reviewer. No minor findings were deferred. The implementation branch was pushed and its remote ref verified; no merge or deployment was performed.
 
 The reviewer separately declined to establish diagnostic accuracy or repeat external-provider/hardware acceptance. The qualified human study, live NCBI and hardware limitations above remain explicit; the recorded synthetic-source TypeSafe receipt establishes only that bounded provider execution.
 
