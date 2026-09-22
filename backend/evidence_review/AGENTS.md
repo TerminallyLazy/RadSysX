@@ -33,3 +33,9 @@ None.
 - `artifacts.py` requires POSIX, rejects symlink paths and uses directory-relative descriptors. Storage roots/runs/directories are owner-only 0700, files 0600. Immutable content hashes are verified on every read; files are bounded and regular.
 - Each writer holds a nonblocking run lock. Objects precede immutable manifest generations and an atomic HEAD pointer. Unreferenced objects are never promoted automatically; an unfinished committed attempt means interrupted/unknown billing.
 - Exports use fresh private directories and allowlisted filenames. Retention and deletion remain operator-controlled; resume is always explicit.
+
+## Evaluation scheduling
+
+- `runner.py` validates the snapshot and rebuilds its annotated review plan before dispatch. At most two workers evaluate 40 pairs, with a 10-second attempt and 60-second snapshot ceiling, one identical-byte retry, interruptible backoff and five-second cleanup.
+- Requests and attempt-start records are committed before dispatch; outcomes precede assessments. Storage failures stop scheduling. Cancellation, expiry, provider failure and semantic labels remain distinct.
+- Explicit resume reuses completed assessments only when snapshot, unit, evidence, model, rubric and request identities match. Prior attempts remain auditable; unfinished/submitted attempts without usage retain unknown billing.
