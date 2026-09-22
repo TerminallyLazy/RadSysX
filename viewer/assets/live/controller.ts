@@ -1,6 +1,6 @@
 import { LiveAudio } from './audio.js';
 import { OHIFAdapter } from './ohif.js';
-import { EventGate, TranscriptStore, object, parseEvent, request, safeUrl, toolFromWire, type AICredentialStatusResponse, type Attestation, type ProviderId, type ProviderProfile, type AudioChunk, type CaptureRequest, type Citation, type DesktopCapture, type Json, type ServerEvent, type Session, type SavedConversation, type Tool } from './protocol.js';
+import { EventGate, TranscriptStore, object, parseEvent, request, safeUrl, toolFromWire, type AIResearchSettings, type AIResearchModels, type ResearchProviderId, type AICredentialStatusResponse, type Attestation, type ProviderId, type ProviderProfile, type AudioChunk, type CaptureRequest, type Citation, type DesktopCapture, type Json, type ServerEvent, type Session, type SavedConversation, type Tool } from './protocol.js';
 
 export class LiveController {
   status = 'loading';
@@ -16,6 +16,13 @@ export class LiveController {
   credentialsBusy = false;
   credentialInputEpoch = 0;
   credentialMessage = '';
+  researchSettings?: AIResearchSettings;
+  researchProviderId: ResearchProviderId = 'gemini';
+  researchModelId = '';
+  researchModels: string[] = [];
+  researchLoading = false;
+  researchMessage = '';
+  private researchEpoch = 0;
   private providerChange = 0;
   private initializing = false;
   private nextAudioChunk?: AudioChunk;
@@ -444,9 +451,59 @@ export class LiveController {
     }
   }
   private requireAttestation(): void { this.attestation = undefined; this.attestationEpoch += 1; this.credentialInputEpoch += 1; }
+  async loadResearchSettings(): Promise<void> {
+    const epoch = ++this.researchEpoch;
+    this.researchLoading = true; this.researchMessage = 'Loading research settings…'; this.emit();
+    try {
+      const settings = await request<AIResearchSettings>('/api/ai/sidebar/research-settings');
+      if (epoch !== this.researchEpoch) return;
+      if (!['gemini', 'nvidia_nim'].includes(settings.providerId) || !Array.isArray(settings.providers)) throw new Error();
+      this.researchSettings = settings;
+      this.researchProviderId = settings.providerId; this.researchModelId = settings.modelId;
+      await this.loadResearchModels();
+    } catch {
+      if (epoch === this.researchEpoch) {
+        this.researchModels = []; this.researchMessage = 'Research settings could not be loaded. Sign in and retry.';
+      }
+    } finally { if (epoch === this.researchEpoch) { this.researchLoading = false; this.emit(); } }
+  }
+  async selectResearchProvider(id: ResearchProviderId): Promise<void> {
+    if (this.credentialsBusy || !this.researchSettings?.providers.some(provider => provider.id === id)) return;
+    this.researchProviderId = id;
+    this.researchModelId = this.researchSettings.providerId === id ? this.researchSettings.modelId : '';
+    await this.loadResearchModels();
+  }
+  async loadResearchModels(refresh = false): Promise<void> {
+    const epoch = ++this.researchEpoch, provider = this.researchProviderId;
+    this.researchLoading = true; this.researchModels = []; this.researchMessage = 'Loading available models…'; this.emit();
+    try {
+      const catalog = await request<AIResearchModels>(`/api/ai/sidebar/research-settings/models/${provider}${refresh ? '?refresh=true' : ''}`);
+      if (epoch !== this.researchEpoch) return;
+      if (catalog.providerId !== provider || !Array.isArray(catalog.models) || !catalog.models.every(model => typeof model === 'string')) throw new Error();
+      this.researchModels = catalog.models;
+      this.researchMessage = catalog.models.length ? `${catalog.models.length} models available${provider === 'nvidia_nim' ? ' · full NVIDIA catalog' : ''}. Tool support and account access are not verified by a listing.` : 'No models are available. Retry the catalog.';
+    } catch {
+      if (epoch === this.researchEpoch) this.researchMessage = 'Could not load models. Check provider configuration and retry. Your saved selection is unchanged.';
+    } finally { if (epoch === this.researchEpoch) { this.researchLoading = false; this.emit(); } }
+  }
+  async saveResearchSettings(): Promise<void> {
+    if (this.credentialsBusy || this.researchLoading || !this.researchModels.includes(this.researchModelId)
+        || !this.researchSettings?.providers.find(provider => provider.id === this.researchProviderId)?.configured) return;
+    const payload = { providerId: this.researchProviderId, modelId: this.researchModelId };
+    this.credentialsBusy = true; this.credentialInputEpoch += 1;
+    this.researchMessage = 'Ending active sessions and saving your research model…'; this.requireAttestation(); this.emit();
+    try {
+      await this.end(); this.session = undefined; this.activeProvider = undefined;
+      this.researchSettings = await request<AIResearchSettings>('/api/ai/sidebar/research-settings', payload, 'PUT');
+      this.researchProviderId = this.researchSettings.providerId; this.researchModelId = this.researchSettings.modelId;
+      await this.initialize();
+      this.researchMessage = 'Research model saved for your account. Confirm the displayed data to start a new session.';
+    } catch { this.researchMessage = 'Research model could not be saved. Reload settings and retry.'; }
+    finally { this.credentialsBusy = false; this.emit(); }
+  }
   async showCredentials(): Promise<void> {
     this.credentialsOpen = true; this.emit();
-    await this.loadCredentials();
+    await Promise.all([this.loadCredentials(), this.loadResearchSettings()]);
   }
   closeCredentials(): void {
     this.credentialsOpen = false; this.credentialInputEpoch += 1; this.emit();
@@ -480,6 +537,11 @@ export class LiveController {
       this.session = undefined; this.activeProvider = undefined;
       this.credentials = await request<AICredentialStatusResponse>(`/api/ai/sidebar/credentials/${id}`, apiKey === undefined ? undefined : { apiKey: apiKey.trim() }, apiKey === undefined ? 'DELETE' : 'PUT');
       apiKey = undefined;
+      if (this.researchSettings) {
+        this.researchSettings.providers = this.researchSettings.providers.map(profile => profile.id === id
+          ? { ...profile, configured: this.credentials!.providers.find(item => item.id === id)?.configured ?? false }
+          : profile);
+      }
       await this.initialize();
       const provider = this.credentials.providers.find(profile => profile.id === id);
       this.credentialMessage = saving ? 'Key saved. Provider access has not been verified. Confirm the displayed data to connect.' : provider?.environmentConfigured ? 'Saved key removed. The app-configured key will be used for new sessions.' : 'Saved key removed. Add a key to use this provider.';

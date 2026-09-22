@@ -425,6 +425,25 @@ class AICredentialStatusResponse(ClinicalModel):
     providers: list[AIProviderCredentialStatus]
 
 
+class AIResearchProvider(ClinicalModel):
+    id: Literal["gemini", "nvidia_nim"]
+    label: str
+    configured: bool
+
+
+class AIResearchSettings(ClinicalModel):
+    provider_id: Literal["gemini", "nvidia_nim"] = Field(alias="providerId")
+    model_id: str = Field(alias="modelId")
+    source: Literal["saved", "environment"]
+    providers: list[AIResearchProvider]
+
+
+class AIResearchModels(ClinicalModel):
+    provider_id: Literal["gemini", "nvidia_nim"] = Field(alias="providerId")
+    models: list[str]
+    capabilities_verified: bool = Field(default=False, alias="capabilitiesVerified")
+
+
 class AICredentialSaveRequest(ClinicalModel):
     # The route validates bounded raw JSON itself so validation errors cannot
     # echo this field back to the browser or enter automatic error diagnostics.

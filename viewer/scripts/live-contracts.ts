@@ -15,3 +15,9 @@ type ScreenSharingMatches = Assert<Extract<AILiveClientEvent, { kind: 'screen_sh
 type CredentialStatusMatches = Assert<AICredentialStatusResponse extends ViewerCredentialStatus ? true : false>;
 type CredentialStatusComplete = Assert<ViewerCredentialStatus extends AICredentialStatusResponse ? true : false>;
 export type LiveContractChecks = [ProviderMatches, ViewerRequestMatches, SessionResponseMatches, ServerEventMatches, ClientKindsMatch, ScreenStatusMatches, ScreenSharingMatches, CredentialStatusMatches, CredentialStatusComplete];
+
+import type { AIResearchSettings, AIResearchModels } from '@radsysx/clinical-web/contracts';
+import type { AIResearchSettings as ViewerResearchSettings, AIResearchModels as ViewerResearchModels } from '../assets/live/protocol';
+type ResearchSettingsMatches = Assert<AIResearchSettings extends ViewerResearchSettings ? true : false>;
+type ResearchSettingsComplete = Assert<ViewerResearchSettings extends AIResearchSettings ? true : false>;
+type ResearchModelsMatches = Assert<AIResearchModels extends ViewerResearchModels ? true : false>;

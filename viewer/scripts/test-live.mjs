@@ -573,3 +573,74 @@ test('an unreadable saved key can be removed even when secure key storage is una
     assert.match(controller.credentialMessage, /app-configured key will be used/);
   } finally { controller.dispose(); globalThis.fetch = originalFetch; }
 });
+
+test('research settings load the saved model and save after ending the active session', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  const settings = { providerId: 'nvidia_nim', modelId: 'z-ai/glm-5.3-flash', source: 'environment', providers: [{ id: 'gemini', label: 'Gemini', configured: true }, { id: 'nvidia_nim', label: 'NVIDIA NIM', configured: true }] };
+  globalThis.fetch = async (url, init) => {
+    calls.push([url, init.method]);
+    if (url.includes('/models/')) return Response.json({ providerId: 'nvidia_nim', models: ['z-ai/glm-5.3-flash', 'openai/gpt-oss-20b'], capabilitiesVerified: false });
+    if (url.endsWith('/research-settings')) {
+      if (init.method === 'PUT') {
+        assert.equal(controller.session, undefined);
+        assert.equal(controller.attestation, undefined);
+        assert.deepEqual(JSON.parse(init.body), { providerId: 'nvidia_nim', modelId: 'openai/gpt-oss-20b' });
+        return Response.json({ ...settings, modelId: 'openai/gpt-oss-20b', source: 'saved' });
+      }
+      return Response.json(settings);
+    }
+    return Response.json({ availability: 'configured' });
+  };
+  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {} });
+  try {
+    await tick(); await controller.loadResearchSettings();
+    assert.equal(controller.researchModelId, 'z-ai/glm-5.3-flash');
+    controller.session = { sessionId: 'old', contextVersion: 1 }; controller.attestation = 'synthetic';
+    controller.researchModelId = 'openai/gpt-oss-20b';
+    await controller.saveResearchSettings();
+    assert.equal(controller.researchSettings.source, 'saved');
+    assert.equal(calls.findIndex(([url]) => url.endsWith('/close')) < calls.findIndex(([url, method]) => url.endsWith('/research-settings') && method === 'PUT'), true);
+    assert.match(controller.researchMessage, /saved/i);
+  } finally { controller.session = undefined; controller.dispose(); globalThis.fetch = originalFetch; }
+});
+
+test('late research catalog cannot replace another provider; catalog failure keeps the selected model', async () => {
+  const originalFetch = globalThis.fetch;
+  let release;
+  globalThis.fetch = async (url) => {
+    if (url.endsWith('/models/nvidia_nim')) return new Promise(resolve => { release = resolve; });
+    if (url.endsWith('/models/gemini')) return Response.json({ providerId: 'gemini', models: ['gemini-3.8-flash'], capabilitiesVerified: false });
+    return Response.json({ availability: 'configured' });
+  };
+  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {} });
+  try {
+    await tick();
+    controller.researchSettings = { providerId: 'nvidia_nim', modelId: 'z-ai/glm-5.3-flash', source: 'saved', providers: [{ id: 'gemini', configured: true }, { id: 'nvidia_nim', configured: true }] };
+    const first = controller.selectResearchProvider('nvidia_nim'); await tick();
+    await controller.selectResearchProvider('gemini');
+    release(Response.json({ providerId: 'nvidia_nim', models: ['wrong-model'] })); await first;
+    assert.equal(controller.researchProviderId, 'gemini'); assert.deepEqual(controller.researchModels, ['gemini-3.8-flash']);
+    globalThis.fetch = async () => new Response('failure', { status: 503 });
+    await controller.selectResearchProvider('nvidia_nim');
+    assert.equal(controller.researchModelId, 'z-ai/glm-5.3-flash');
+    assert.deepEqual(controller.researchModels, []); assert.match(controller.researchMessage, /retry/i);
+  } finally { controller.dispose(); globalThis.fetch = originalFetch; }
+});
+
+test('Gemini key changes immediately update research availability without replacing the pending model choice', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => Response.json(url.includes('/credentials') ? {
+    storageAvailable: true, providers: [{ id: 'gemini', configured: true, source: 'saved', environmentConfigured: false }],
+  } : { availability: 'configured' });
+  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {} });
+  try {
+    await tick();
+    controller.credentials = { storageAvailable: true, providers: [{ id: 'gemini', configured: false }] };
+    controller.researchSettings = { providerId: 'gemini', modelId: 'gemini-3.8-flash', source: 'environment', providers: [{ id: 'gemini', configured: false }, { id: 'nvidia_nim', configured: true }] };
+    controller.researchProviderId = 'nvidia_nim'; controller.researchModelId = 'openai/gpt-oss-20b';
+    await controller.saveCredential('gemini', 'synthetic-key');
+    assert.equal(controller.researchSettings.providers[0].configured, true);
+    assert.equal(controller.researchProviderId, 'nvidia_nim'); assert.equal(controller.researchModelId, 'openai/gpt-oss-20b');
+  } finally { controller.dispose(); globalThis.fetch = originalFetch; }
+});

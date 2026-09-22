@@ -112,3 +112,5 @@
 - Compare the generated viewer receipt against `ohifBuildFingerprint()` before reusing the viewer, including changes to the source patch and either dependency lockfile.
 
 - Software-canvas rendering probes must sample the entire DICOM image, not only a corner that can contain letterboxing or a valid black pixel. Preserve the nonblank-image assertion.
+
+- The actual-sidebar smoke checks the compact `[data-role="session-controls"]` toolbar, hidden before connection, instead of the retired large microphone card. Layout checks compare the visible setup/session/status blocks against conversation/composer bounds; synthetic media, attestation and capture assertions remain unchanged.

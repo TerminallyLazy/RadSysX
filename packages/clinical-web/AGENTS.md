@@ -33,3 +33,5 @@
 - `npm run type-check --workspace viewer`
 
 ## Child DOX Index
+
+- `AIResearchSettings` and `AIResearchModels` mirror authenticated research preferences/catalog endpoints. `getAIResearchSettings`, `getAIResearchModels` and `saveAIResearchSettings` carry cookies and no-store requests; signed owner identity is never supplied by the browser. Provider/model selection is backend-persisted, with full catalog IDs and explicit capability-verification status.

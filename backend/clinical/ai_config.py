@@ -64,11 +64,11 @@ class AISettings:
         if not self.enabled or self.app_mode == "clinical":
             return "disabled", f"{label} is disabled for this runtime. This release supports synthetic/deidentified pilot use."
         if provider_id in self.credential_errors:
-            return "unavailable", "Your saved API key could not be read. Restore private key storage or remove the saved key in API key settings."
+            return "unavailable", "Your saved API key could not be read. Restore private key storage or remove the saved key in Settings → API keys."
         key = self.api_key if provider_id == "gemini" else self.openai_api_key
         if not key:
             name = "RADSYSX_GEMINI_API_KEY" if provider_id == "gemini" else "RADSYSX_OPENAI_API_KEY"
-            return "unavailable", f"Open API keys in the assistant panel to save your key. Deployments may also set {name} in the backend environment."
+            return "unavailable", f"Open Settings → API keys in the assistant panel to save your key. Deployments may also set {name} in the backend environment."
         try:
             package, expected = ("google-genai", "2.24.0") if provider_id == "gemini" else ("websockets", "16.1.1")
             if importlib.metadata.version(package) != expected:

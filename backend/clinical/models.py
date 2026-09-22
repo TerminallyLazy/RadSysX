@@ -15,6 +15,13 @@ class AICredentialModel(Base):
     ciphertext: Mapped[str] = mapped_column(Text)
 
 
+class AIResearchPreferenceModel(Base):
+    __tablename__ = "ai_research_preferences"
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[str] = mapped_column(String(241))
+
+
 class AILiveSessionModel(Base):
     __tablename__ = "ai_live_sessions"
     id: Mapped[str] = mapped_column(String(128), primary_key=True)

@@ -40,3 +40,5 @@
 The evidence-review CLI tests exercise real private artifacts and mocked capture/providers, including capture/replay/resume, offline blind/reference/comparison flows, mode gates and SIGINT. They do not claim live inference, browser rendering, or qualified human review.
 
 - NIM tests cover bounded catalog/evaluator HTTP, cancellation, immutable CLI resume, provider configuration and key isolation, and actual DeepAgents graphs with synthetic NVIDIA model calls. Shared dispatch-budget tests run against both Gemini and NIM. Live NIM acceptance remains a separate public/synthetic probe.
+
+- `test_ai_research_settings.py` covers signed owner-only model preferences, persistence/runtime resolution, session invalidation, catalog membership, provider readiness, mode/auth/origin gates and fixed no-store failures. Mock discovery and provider keys; live catalog checks are separate from these network-isolated tests.

@@ -64,3 +64,13 @@ Human Jev-study labels, held-out comparison, visual reports, physical audio and 
 - [Native LangChain NVIDIA adapter source](https://github.com/langchain-ai/langchain-nvidia/blob/main/libs/ai-endpoints/langchain_nvidia_ai_endpoints/chat_models.py): model construction, async invocation and tool binding. Installed pinned source was also inspected.
 
 - [GLM-5.3-Flash model card](https://build.nvidia.com/z-ai/glm-5-3-flash/modelcard): multimodal input, text output, reasoning options and clear-thinking setting. The website slug uses hyphens; the API model ID uses `z-ai/glm-5.3-flash`.
+
+## Account model settings and compact sidebar
+
+**Settings → Research models** offers a provider dropdown and an exact-model dropdown. NVIDIA uses all IDs from the authenticated hosted catalog, never a curated shortlist; the current read-only check returned 82 IDs including `z-ai/glm-5.3-flash`. Refresh bypasses the three-minute backend cache. Catalog failure keeps the saved choice and disables saving until discovery recovers. Unsupported tools or inference endpoints fail explicitly without fallback; listing every model does not make embedding/vision-only models compatible with text research.
+
+Saving persists a signed-account preference over the environment default and ends that account's sessions/jobs before applying the change. Reconnect with fresh data confirmation. Other accounts, live voice profiles and explicit offline evaluator flags remain independent. NVIDIA credentials still come from backend configuration; Gemini/OpenAI key inputs are now under **Settings → API keys**.
+
+The large sidebar slogan/microphone card is removed. A single header row and inline confirmation/connect leave conversation space available; active media controls remain explicit in a compact toolbar. Data attestation and provider disclosure are preserved.
+
+Browser preview verification used the actual production bundle with simulated session/settings responses and a freshly fetched real catalog: all 82 model options visible, alternate-model save/reopen verified, and selected GLM restored. At a 384-pixel panel width the disconnected controls occupy about 153 pixels. This preview is separate from backend persistence tests and real Electron/OHIF acceptance.

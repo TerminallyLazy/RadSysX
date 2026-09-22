@@ -38,3 +38,5 @@
 - Audit with `npm run audit:ohif --workspace viewer`; keep all advisory severities enabled.
 
 - `test-security-dependencies.mjs` checks actual resolved query-string behavior, the validation ReDoS fix, absence of the retired OIDC asset, and generated build provenance.
+
+- Live tests cover research-selection save/attestation boundaries, stale catalog response suppression, preserved selection on catalog failure, and credential changes updating research availability without replacing a pending dropdown selection. Shared compile checks include research settings and catalog response shapes.

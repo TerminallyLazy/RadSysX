@@ -1143,7 +1143,7 @@ async function exerciseRealOpenAiViewer() {
   if (panel.querySelector('.radsysx-ai-mention-menu').dataset.open === 'true') button('toggle-mention').click();
   const provider = panel.querySelector('[data-role="provider"]');
   if (!provider.options.length) {
-    if (button('connect').textContent !== 'Retry assistant setup') throw new Error('Provider setup unavailable');
+    if (button('connect').textContent !== 'Retry setup') throw new Error('Provider setup unavailable');
     button('connect').click(); await waitFor(() => provider.options.length && !provider.disabled, 'Provider setup retry failed');
   }
   provider.value = 'openai'; provider.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1235,11 +1235,11 @@ async function exerciseLiveViewer(providerId) {
   if (panel.querySelector('.radsysx-ai-mention-menu').dataset.open === 'true') button('toggle-mention').click();
   const layout = () => {
     const rect = selector => panel.querySelector(selector).getBoundingClientRect();
-    const setup = rect('[data-role="setup"]'), mic = rect('.radsysx-ai-voice-card');
-    const controls = rect('.radsysx-live-controls'), status = rect('[data-role="status"]');
+    const setup = rect('[data-role="setup"]'), controls = rect('[data-role="session-controls"]');
+    const status = rect('[data-role="status"]');
     const conversation = rect('[data-role="conversation"]'), composer = rect('.radsysx-ai-composer'), shell = rect('.radsysx-live-shell');
-    if ((!panel.querySelector('[data-role="setup"]').hidden && setup.bottom > mic.top + 2) ||
-        controls.bottom > status.top + 2 || conversation.bottom > composer.top + 2 ||
+    const lastControlBottom = Math.max(setup.bottom, controls.bottom, status.bottom);
+    if (lastControlBottom > conversation.top + 2 || conversation.bottom > composer.top + 2 ||
         composer.bottom > Math.min(innerHeight, shell.bottom) + 2 || composer.top < shell.top || composer.width < 150) {
       throw new Error('Live sidebar controls overlap or overflow');
     }
@@ -1276,7 +1276,7 @@ async function exerciseLiveViewer(providerId) {
   }
   const providerSelect = panel.querySelector('[data-role="provider"]');
   if (providerSelect && !providerSelect.options.length) {
-    if (button('connect').textContent !== 'Retry assistant setup') throw new Error('Initial setup failure did not expose an actionable retry');
+    if (button('connect').textContent !== 'Retry setup') throw new Error('Initial setup failure did not expose an actionable retry');
     button('connect').click();
     await waitFor(() => providerSelect.options.length > 0 && !providerSelect.disabled, 'Provider setup retry did not recover after local authentication');
     if (panel.state.backendSessionId) throw new Error('Retrying provider setup unexpectedly allocated a conversation');
@@ -1344,7 +1344,7 @@ async function exerciseLiveViewer(providerId) {
   await new Promise(resolve => setTimeout(resolve, 500));
   if ((await media()).audioBytes !== endedAudio.audioBytes || button('voice').getAttribute('aria-pressed') !== 'false') throw new Error('Microphone PCM continued after session end');
   const endedLayout = layout();
-  if (panel.querySelector('[data-role="interaction"]').textContent !== 'Ready when you are') throw new Error('Ended session retained a stale working indicator');
+  if (panel.querySelector('[data-role="interaction"]').textContent !== '' || !panel.querySelector('[data-role="session-controls"]').hidden) throw new Error('Ended session retained a stale working indicator');
   return { provider: providerId, modelId: expectedModel, source: 'synthetic fixture (no cloud call)',
     inputSampleRate: expectedRate, outputSampleRate: allocation.session.outputSampleRate, windowWidth, windowCenter,
     completedTools: history.tools.filter(tool => tool.status === 'completed').length, sharingStopped: true, sessionEnded: true, captureScope, imageReceiptVisible: true, connectedLayout, endedLayout,
@@ -1387,7 +1387,7 @@ async function verifyAiChatPanel(cdp) {
       const textarea = panel?.querySelector("textarea");
       const mentionButton = panel?.querySelector("[data-action='toggle-mention']");
       const voiceButton = panel?.querySelector("[data-action='voice']");
-      const voiceCard = panel?.querySelector(".radsysx-ai-voice-card");
+      const mediaControls = panel?.querySelector("[data-role='session-controls']");
       const sendButton = panel?.querySelector("button[type='submit']");
       mentionButton?.click();
       return {
@@ -1396,7 +1396,8 @@ async function verifyAiChatPanel(cdp) {
         mentionButtonPresent: Boolean(mentionButton),
         voiceButtonPresent: Boolean(voiceButton),
         voiceDisabled: voiceButton?.disabled === true,
-        voiceCardPresent: Boolean(voiceCard),
+        mediaControlsPresent: Boolean(mediaControls),
+        mediaControlsHidden: mediaControls?.hidden === true,
         sendButtonPresent: Boolean(sendButton),
         connectButtonPresent: Boolean(panel?.querySelector("[data-action='connect']")),
         attestationRequired: panel?.querySelector("#radsysx-live-attestation")?.value === "",
@@ -1416,7 +1417,8 @@ async function verifyAiChatPanel(cdp) {
     !chatState.composerPresent ||
     !chatState.mentionButtonPresent ||
     !chatState.voiceButtonPresent ||
-    !chatState.voiceCardPresent ||
+    !chatState.mediaControlsPresent ||
+    !chatState.mediaControlsHidden ||
     !chatState.sendButtonPresent ||
     !["disconnected", "unavailable"].includes(chatState.backendStatus) ||
     chatState.backendSessionPresent ||

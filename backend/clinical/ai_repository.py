@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select, update
 
 from .contracts import SessionClaims, to_iso_z, utc_now, parse_iso_z
-from .models import AILiveEventModel, AILiveSessionModel, AILiveToolModel
+from .models import AILiveEventModel, AILiveSessionModel, AILiveToolModel, AIResearchPreferenceModel
 from .ai_config import profile_for_model
 
 TERMINAL_TOOLS = {"completed", "failed", "cancelled", "interrupted", "outcome_unknown", "denied"}
@@ -17,6 +17,20 @@ TERMINAL_TOOLS = {"completed", "failed", "cancelled", "interrupted", "outcome_un
 class AILiveRepository:
     def __init__(self, clinical_repository):
         self.factory = clinical_repository._session_factory
+
+    def research_preference(self, owner):
+        with self.factory() as db:
+            row = db.get(AIResearchPreferenceModel, owner)
+            return (row.provider, row.model_id) if row else None
+
+    def save_research_preference(self, owner, provider, model):
+        with self.factory() as db:
+            row = db.get(AIResearchPreferenceModel, owner)
+            if row is None:
+                db.add(AIResearchPreferenceModel(owner=owner, provider=provider, model_id=model))
+            else:
+                row.provider, row.model_id = provider, model
+            db.commit()
 
     def recover(self):
         with self.factory() as db:

@@ -1,12 +1,24 @@
 import { LiveController } from './controller.js';
-import { escape, object, safeUrl, type Attestation, type Json, type ProviderId } from './protocol.js';
+import { escape, object, safeUrl, type Attestation, type Json, type ProviderId, type ResearchProviderId } from './protocol.js';
 
 const MIC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>';
 
 /** Inputs are created once; live transcript updates must never replace an edited password field. */
 export function credentialSettingsMarkup(): string {
-  return `<section class="radsysx-live-credentials" data-role="credentials" role="dialog" aria-modal="true" aria-label="API keys" hidden>
-    <header><div><span class="radsysx-panel-kicker">ASSISTANT SETTINGS</span><h3>API keys</h3></div><button type="button" data-action="close-credentials" aria-label="Close API key settings">×</button></header>
+  return `<section class="radsysx-live-credentials" data-role="credentials" role="dialog" aria-modal="true" aria-label="Assistant settings" hidden>
+    <header><div><span class="radsysx-panel-kicker">ASSISTANT SETTINGS</span><h3>Settings</h3></div><button type="button" data-action="close-credentials" aria-label="Close assistant settings">×</button></header>
+    <form data-role="research-settings-form">
+      <h4>Research models</h4>
+      <p>Choose the model for background literature research. Saving ends your active assistant sessions and tasks; reconnect to use your selection.</p>
+      <label for="radsysx-research-provider">Research provider</label>
+      <select id="radsysx-research-provider" data-role="research-provider"></select>
+      <label for="radsysx-research-model">Research model</label>
+      <select id="radsysx-research-model" data-role="research-model"></select>
+      <p data-role="research-current"></p>
+      <p role="status" aria-live="polite" data-role="research-message"></p>
+      <div><button type="submit" data-action="save-research-model">Save research model</button><button type="button" data-action="refresh-research-models">Refresh models</button><button type="button" data-action="reload-research-settings">Reload settings</button></div>
+    </form>
+    <h4>API keys</h4>
     <p>Add your own provider keys. Changing a key ends all your active assistant sessions and background tasks. Your next conversation requires fresh data confirmation.</p>
     ${(['gemini', 'openai'] as const).map(id => `<form data-credential-provider="${id}" autocomplete="off">
       <h4>${id === 'gemini' ? 'Gemini' : 'OpenAI'}</h4><p data-role="credential-status-${id}">Status not loaded</p>
@@ -53,25 +65,29 @@ export function registerPanel(controller: LiveController): void {
         this.innerHTML = `
           <div class="radsysx-ai-shell radsysx-live-shell">
             <header class="radsysx-live-header">
-              <div><span class="radsysx-panel-kicker">RADSYSX AI</span><h2>Talk it through.</h2></div>
-              <div class="radsysx-live-header-actions"><button type="button" class="radsysx-live-settings-button" data-action="credentials" aria-haspopup="dialog">API keys</button><button type="button" class="radsysx-live-icon" data-action="history" title="Conversation history" aria-label="Conversation history">↺</button></div>
+              <div class="radsysx-live-brand"><span class="radsysx-live-dot"></span><span class="radsysx-panel-kicker">RADSYSX AI</span></div>
+              <select data-role="provider" aria-label="AI provider"></select>
+              <div class="radsysx-live-header-actions"><button type="button" class="radsysx-live-settings-button" data-action="credentials" aria-haspopup="dialog">Settings</button><button type="button" class="radsysx-live-icon" data-action="history" title="Conversation history" aria-label="Conversation history">↺</button></div>
             </header>
-            <div class="radsysx-live-model"><span class="radsysx-live-dot"></span><select data-role="provider" aria-label="AI provider" style="max-width:6.5rem;background:#102523;color:#dffcf4;border:1px solid #46625e;border-radius:4px;padding:3px"></select><span data-role="model"></span></div>
             <section class="radsysx-live-setup" data-role="setup">
-              <label for="radsysx-live-attestation">The displayed data is</label>
+              <div class="radsysx-live-connect-row">
               <select id="radsysx-live-attestation" aria-label="Displayed data confirmation">
-                <option value="">Choose before connecting</option><option value="synthetic">Synthetic / test data</option><option value="deidentified">Deidentified data</option>
+                <option value="">Confirm displayed data…</option><option value="synthetic">Synthetic / test data</option><option value="deidentified">Deidentified data</option>
               </select>
+              <button type="button" class="radsysx-live-primary" data-action="connect">Connect</button>
+              </div>
               <p data-role="disclosure"></p>
-              <button type="button" class="radsysx-live-primary" data-action="connect">Connect assistant</button>
             </section>
-            <section class="radsysx-ai-voice-card radsysx-live-voice" data-listening="false">
-              <button type="button" class="radsysx-ai-voice-button" data-action="voice" title="Enable microphone" aria-label="Enable microphone">${MIC}</button>
-              <div class="radsysx-ai-voice-copy"><strong data-role="voice-label">Microphone off</strong><div data-role="interaction">Ready when you are</div></div>
-              <button type="button" class="radsysx-live-icon" data-action="stop-speaking" title="Stop speaking" aria-label="Stop speaking">■</button>
+            <section class="radsysx-live-session" data-role="session-controls" hidden>
+              <div class="radsysx-live-controls" data-role="media-controls" data-listening="false">
+                <button type="button" data-action="voice" title="Enable microphone" aria-label="Enable microphone">${MIC}<span data-role="voice-label">Mic off</span></button>
+                <button type="button" data-action="share">Share image</button>
+                <button type="button" data-action="stop-speaking" title="Stop speaking" aria-label="Stop speaking">■</button>
+                <button type="button" data-action="end" title="End session">End</button>
+              </div>
+              <p class="radsysx-live-status" data-role="interaction"></p>
+              <p class="radsysx-live-status" data-role="capture-scope" title="Shares the selected image viewport, not the whole app screen or other windows."></p>
             </section>
-            <div class="radsysx-live-controls"><button type="button" data-action="share">Share active image</button><button type="button" data-action="end">End session</button></div>
-            <p class="radsysx-live-status" data-role="capture-scope" title="Shares the selected image viewport, not the whole app screen or other windows."></p>
             <p class="radsysx-live-status" role="status" aria-live="polite" data-role="status"></p>
             <div class="radsysx-live-conversation" data-role="conversation">
             <section class="radsysx-live-history" data-role="history" hidden></section>
@@ -100,6 +116,8 @@ export function registerPanel(controller: LiveController): void {
           else if (action === 'end') void controller.end();
           else if (action === 'credentials') { void controller.showCredentials(); this.button('close-credentials').focus(); }
           else if (action === 'close-credentials') { this.clearKeyInputs(); controller.closeCredentials(); this.button('credentials').focus(); }
+          else if (action === 'refresh-research-models') void controller.loadResearchModels(true);
+          else if (action === 'reload-research-settings') void controller.loadResearchSettings();
           else if (action === 'reload-credentials') void controller.loadCredentials();
           else if (action === 'remove-key') { this.clearKeyInputs(); void controller.removeCredential(button.dataset.provider as ProviderId); }
           else if (action === 'undo-draft') void controller.adapter.execute('viewer_undo', {}).then(() => controller.emit());
@@ -116,6 +134,9 @@ export function registerPanel(controller: LiveController): void {
             if (window.confirm('Clear this saved conversation and its tool history?')) void controller.clearHistory(button.dataset.id!);
           }
         });
+        this.node<HTMLSelectElement>('research-provider').addEventListener('change', event => void controller.selectResearchProvider((event.target as HTMLSelectElement).value as ResearchProviderId));
+        this.node<HTMLSelectElement>('research-model').addEventListener('change', event => { controller.researchModelId = (event.target as HTMLSelectElement).value; controller.emit(); });
+        this.node<HTMLFormElement>('research-settings-form').addEventListener('submit', event => { event.preventDefault(); void controller.saveResearchSettings(); });
         this.node<HTMLSelectElement>('provider').addEventListener('change', event => void controller.selectProvider((event.target as HTMLSelectElement).value as ProviderId));
         this.querySelector('#radsysx-live-attestation')!.addEventListener('change', event => { this.attestation = (event.target as HTMLSelectElement).value as Attestation || undefined; });
         this.querySelector('textarea')!.addEventListener('input', event => { controller.draft = (event.target as HTMLTextAreaElement).value; if (/(^|\s)@$/.test(controller.draft)) { this.mentionOpen = true; this.render(); } });
@@ -135,7 +156,7 @@ export function registerPanel(controller: LiveController): void {
         this.node('credentials').addEventListener('keydown', event => {
           if (event.key === 'Escape') { event.stopPropagation(); this.clearKeyInputs(); controller.closeCredentials(); this.button('credentials').focus(); }
           if (event.key === 'Tab') {
-            const controls = Array.from(this.node('credentials').querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')).filter(node => !node.hidden && !node.closest('[hidden]'));
+            const controls = Array.from(this.node('credentials').querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)')).filter(node => !node.hidden && !node.closest('[hidden]'));
             const first = controls[0], last = controls.at(-1);
             if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -152,6 +173,21 @@ export function registerPanel(controller: LiveController): void {
       this.querySelectorAll<HTMLElement>('.radsysx-live-shell > *').forEach(node => { if (node !== this.node('credentials')) node.inert = controller.credentialsOpen; });
       this.button('credentials').setAttribute('aria-expanded', String(controller.credentialsOpen));
       this.node('credential-message').textContent = controller.credentialMessage;
+      const provider = this.node<HTMLSelectElement>('research-provider'), model = this.node<HTMLSelectElement>('research-model');
+      const providerOptions = (controller.researchSettings?.providers ?? []).map(item => `<option value="${escape(item.id)}">${escape(item.label)}${item.configured ? '' : ' · not configured'}</option>`).join('');
+      if (provider.innerHTML !== providerOptions) provider.innerHTML = providerOptions;
+      provider.value = controller.researchProviderId;
+      const choices = controller.researchModels;
+      const modelOptions = '<option value="">Choose a model</option>' + (controller.researchModelId && !choices.includes(controller.researchModelId) ? `<option value="${escape(controller.researchModelId)}" disabled>${escape(controller.researchModelId)} · catalog unavailable</option>` : '') + choices.map(id => `<option value="${escape(id)}">${escape(id)}</option>`).join('');
+      if (model.innerHTML !== modelOptions) model.innerHTML = modelOptions;
+      model.value = controller.researchModelId;
+      provider.disabled = controller.credentialsBusy || controller.researchLoading || !controller.researchSettings;
+      model.disabled = controller.credentialsBusy || controller.researchLoading || !choices.length;
+      this.button('save-research-model').disabled = model.disabled || !choices.includes(controller.researchModelId) || !controller.researchSettings?.providers.find(item => item.id === controller.researchProviderId)?.configured;
+      this.button('refresh-research-models').disabled = controller.credentialsBusy || controller.researchLoading || !controller.researchSettings;
+      this.button('reload-research-settings').disabled = controller.credentialsBusy || controller.researchLoading;
+      this.node('research-message').textContent = controller.researchMessage;
+      this.node('research-current').textContent = controller.researchSettings ? `${controller.researchSettings.source === 'saved' ? 'Saved for your account' : 'App default'}: ${controller.researchSettings.modelId}` : '';
       const busy = controller.credentialsBusy || controller.credentialsLoading;
       this.button('reload-credentials').disabled = busy;
       this.querySelectorAll<HTMLFormElement>('form[data-credential-provider]').forEach(form => {
@@ -185,21 +221,26 @@ export function registerPanel(controller: LiveController): void {
       }
       providerSelect.value = controller.providerId;
       providerSelect.disabled = controller.credentialsBusy || controller.status === 'loading' || !controller.providers.length;
-      this.node('model').textContent = controller.model.replace('gemini-', '').replace(/-/g, ' ');
-      this.node('disclosure').textContent = `Voice, text and shared images are sent to ${controller.provider?.label ?? 'the selected provider'}. Audio and screen frames are not saved to history.`;
+      providerSelect.title = controller.model;
+      this.node('disclosure').textContent = `Voice, text and shared images go to ${controller.provider?.label ?? 'the selected provider'}. Audio and images are not saved to history.`;
       this.dataset.connection = controller.status;
-      this.node('setup').hidden = ['connecting', 'ready', 'reconnecting'].includes(controller.status);
+      const active = ['connecting', 'ready', 'reconnecting'].includes(controller.status);
+      this.node('setup').hidden = active;
+      this.node('session-controls').hidden = !active;
       this.button('connect').disabled = controller.credentialsBusy || controller.status === 'loading';
-      this.button('connect').textContent = controller.providers.length ? 'Connect assistant' : 'Retry assistant setup';
+      this.button('connect').textContent = controller.providers.length ? 'Connect' : 'Retry setup';
       this.node('status').textContent = controller.message;
-      this.node('voice-label').textContent = controller.audio.listening ? 'Listening to you' : 'Microphone off';
-      this.node('interaction').textContent = controller.ready && controller.interaction === 'IN_PROGRESS' ? 'Thinking and working with you' : controller.ready ? 'Connected · interrupt anytime' : 'Ready when you are';
-      this.querySelector('.radsysx-ai-voice-card')!.setAttribute('data-listening', String(controller.audio.listening));
+      this.node('status').hidden = !controller.message || controller.message === 'Confirm the displayed data to begin.';
+      this.node('voice-label').textContent = controller.audio.listening ? 'Mic on' : 'Mic off';
+      this.node('interaction').textContent = controller.ready && controller.interaction === 'IN_PROGRESS' ? 'Thinking and working…' : controller.ready ? 'Connected · interrupt anytime' : active ? 'Connecting…' : '';
+      this.node('media-controls').setAttribute('data-listening', String(controller.audio.listening));
       this.button('voice').disabled = !controller.ready;
       this.button('voice').setAttribute('aria-pressed', String(controller.audio.listening));
       this.button('voice').setAttribute('aria-label', controller.audio.listening ? 'Pause microphone' : 'Enable microphone');
       this.button('share').disabled = !controller.ready || !controller.activeProvider?.screen;
-      this.button('share').textContent = controller.sharing ? '● Stop image sharing' : 'Share active image';
+      this.button('voice').title = controller.audio.listening ? 'Pause microphone' : 'Enable microphone';
+      this.button('share').textContent = controller.sharing ? '● Stop sharing' : 'Share image';
+      this.button('share').title = controller.sharing ? 'Stop sharing the active image' : 'Share the active image viewport';
       this.button('share').setAttribute('aria-pressed', String(controller.sharing));
       this.node('capture-scope').textContent = controller.captureScope;
       this.button('end').disabled = !controller.session || controller.status === 'disconnected';

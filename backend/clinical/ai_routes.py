@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from .ai_config import PROVIDER_PROFILES
 from .ai_credentials import validate_api_key
-from .contracts import (AICredentialStatusResponse, AILiveContextUpdate, AILiveDecision,
+from .contracts import (AIResearchSettings, AIResearchModels, AICredentialStatusResponse, AILiveContextUpdate, AILiveDecision,
                         AISidebarSessionCreateRequest)
 
 
@@ -41,6 +41,43 @@ def live_router(service, session_manager):
         # Exception responses do not inherit a normal Response's headers.
         error.headers = {**(error.headers or {}), "Cache-Control": "no-store"}
         return error
+
+    @router.get("/research-settings", response_model=AIResearchSettings)
+    async def research_settings(request: Request):
+        try:
+            return JSONResponse(service.research_settings(actor(request)), headers={"Cache-Control":"no-store"})
+        except HTTPException as error:
+            raise private_error(error)
+
+    @router.get("/research-settings/models/{provider_id}", response_model=AIResearchModels)
+    async def research_models(provider_id: str, request: Request, refresh: bool = False):
+        try:
+            result = await service.research_models(actor(request), provider_id, refresh=refresh)
+            return JSONResponse(result, headers={"Cache-Control":"no-store"})
+        except HTTPException as error:
+            raise private_error(error)
+
+    @router.put("/research-settings", response_model=AIResearchSettings)
+    async def save_research_settings(request: Request):
+        try:
+            claims = actor(request)
+            if request.headers.get("origin") not in service.platform.allowed_origins:
+                raise HTTPException(403, "An allowed Origin is required to change research settings.")
+            try:
+                body = bytearray()
+                async for chunk in request.stream():
+                    if len(body) + len(chunk) > 1024: raise ValueError()
+                    body.extend(chunk)
+                payload = json.loads(body)
+                if not isinstance(payload, dict) or set(payload) != {"providerId", "modelId"}: raise ValueError()
+                provider, model = payload["providerId"], payload["modelId"]
+                if not isinstance(provider, str) or not isinstance(model, str): raise ValueError()
+            except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+                raise HTTPException(422, "Choose a supported research provider and model.") from None
+            result = await service.change_research_settings(claims, provider, model)
+            return JSONResponse(result, headers={"Cache-Control":"no-store"})
+        except HTTPException as error:
+            raise private_error(error)
 
     @router.get("/credentials", response_model=AICredentialStatusResponse)
     async def credentials(request: Request):

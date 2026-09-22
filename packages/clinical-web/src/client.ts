@@ -3,6 +3,9 @@ import type {
   AIJobRecord,
   AIJobRequest,
   AICredentialSaveRequest,
+  AIResearchSettings,
+  AIResearchModels,
+  ResearchProviderId,
   AICredentialStatusResponse,
   AIProviderCredentialStatus,
   AISidebarCapabilities,
@@ -192,6 +195,18 @@ export function createClinicalApi(options?: ClinicalApiOptions) {
 
     getAISidebarCapabilities(): Promise<AISidebarCapabilities> {
       return requestJson("/api/ai/sidebar/capabilities", undefined, options);
+    },
+
+    getAIResearchSettings(): Promise<AIResearchSettings> {
+      return requestJson("/api/ai/sidebar/research-settings", { cache: "no-store" }, options);
+    },
+
+    getAIResearchModels(providerId: ResearchProviderId, refresh = false): Promise<AIResearchModels> {
+      return requestJson(`/api/ai/sidebar/research-settings/models/${encodeURIComponent(providerId)}${refresh ? '?refresh=true' : ''}`, { cache: "no-store" }, options);
+    },
+
+    saveAIResearchSettings(payload: Pick<AIResearchSettings, "providerId" | "modelId">): Promise<AIResearchSettings> {
+      return requestJson("/api/ai/sidebar/research-settings", { method: "PUT", body: JSON.stringify(payload), cache: "no-store" }, options);
     },
 
     getAICredentials(): Promise<AICredentialStatusResponse> {

@@ -44,3 +44,5 @@
 ## Child DOX Index
 
 - `viewer/assets/live/AGENTS.md`: typed Live controller, PCM media, semantic OHIF adapter, and sidebar.
+
+- The live sidebar uses compact connection/media controls and a Settings overlay containing account-owned research provider/model dropdowns and API-key inputs. Keep CSS aligned with the typed panel and its hidden-state contract; media controls do not occupy space before connection.

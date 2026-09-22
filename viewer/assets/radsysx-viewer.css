@@ -881,31 +881,30 @@ body.radsysx-local-viewer [data-radsysx-local-upload-modal="true"] button:focus-
 }
 
 /* The live controller owns media; this panel is only a persistent, accessible view. */
-.radsysx-live-shell { display: flex; flex-direction: column; padding: 0; gap: 0.7rem; overflow-y: auto; background: linear-gradient(155deg, #101c28, #071119 55%); }
+.radsysx-live-shell { display: flex; flex-direction: column; padding: 0; gap: 0.45rem; overflow-y: auto; background: linear-gradient(155deg, #101c28, #071119 55%); }
 .radsysx-live-shell > * { flex-shrink: 0; }
 .radsysx-live-shell .radsysx-live-conversation { flex: 1 1 6rem; min-height: 6rem; overflow-y: auto; }
 .radsysx-live-shell [hidden] { display: none !important; }
-.radsysx-live-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1rem 0; }
-.radsysx-live-header h2 { margin: 0.3rem 0 0; font-size: 1.5rem; letter-spacing: -0.05em; font-weight: 550; color: #f0fdfa; }
-.radsysx-live-header .radsysx-panel-kicker { letter-spacing: 0.17em; font-size: 0.65rem; color: #9ad7cb; }
-.radsysx-live-model { display: flex; gap: 0.4rem; align-items: center; padding: 0 1rem; font-size: 0.66rem; color: #8daaa9; }
+.radsysx-live-header { display: flex; gap: 0.5rem; align-items: center; padding: 0.65rem 0.75rem 0.3rem; }
+.radsysx-live-brand { display: flex; gap: 0.35rem; align-items: center; white-space: nowrap; }
+.radsysx-live-header .radsysx-panel-kicker { letter-spacing: 0.08em; font-size: 0.65rem; color: #9ad7cb; }
+.radsysx-live-header select { min-width: 0; max-width: 7.5rem; border: 1px solid #46625e; border-radius: 5px; padding: 5px; color: #dffcf4; background: #102523; font-size: 0.72rem; }
+.radsysx-live-header-actions { margin-left: auto; }
 .radsysx-live-dot { width: 0.35rem; height: 0.35rem; flex-shrink: 0; border-radius: 50%; background: #78918d; }
 [data-connection="ready"] .radsysx-live-dot { background: #69e2bc; box-shadow: 0 0 8px #69e2bc66; }
-.radsysx-live-setup { padding: 0.8rem; margin: 0 0.8rem; border: 1px solid #40595888; border-radius: 0.8rem; background: #10252388; }
-.radsysx-live-setup label { display: block; font-size: 0.76rem; color: #d4e9e3; margin-bottom: 0.4rem; }
-.radsysx-live-setup select { width: 100%; border: 1px solid #46625e; border-radius: 0.45rem; padding: 0.5rem; color: #dffcf4; background: #0b161e; font-size: 0.78rem; }
-.radsysx-live-setup p { font-size: 0.69rem; line-height: 1.5; color: #9bb7b1; margin: 0.55rem 0; }
-.radsysx-live-primary { width: 100%; background: #b5f3dc; color: #09241b; border: 0; border-radius: 0.45rem; padding: 0.6rem; font-size: 0.78rem; font-weight: 650; cursor: pointer; }
-.radsysx-live-voice { grid-template-columns: 3rem minmax(0, 1fr) 1.2rem; gap: 0.5rem; margin: 0 0.8rem; padding: 0.7rem; border-color: #38534e; background: #172d2a66; }
-.radsysx-live-voice .radsysx-ai-voice-button { background: #25473e; color: #cdf9e8; border-color: #68b59b66; width: 3rem; height: 3rem; }
-.radsysx-live-voice[data-listening="true"] .radsysx-ai-voice-button { background: #b5f3dc; color: #0c3424; box-shadow: 0 0 0 5px #76dfb71a; }
-.radsysx-live-voice strong { font-size: 0.83rem; color: #e2f5ed; }
-.radsysx-live-voice [data-role="interaction"] { color: #9cb8b0; font-size: 0.68rem; margin-top: 0.25rem; }
+.radsysx-live-setup { padding: 0.6rem; margin: 0 0.75rem; border: 1px solid #40595888; border-radius: 0.6rem; background: #10252388; }
+.radsysx-live-connect-row { display: flex; gap: 0.4rem; }
+.radsysx-live-setup select { flex: 1; min-width: 0; border: 1px solid #46625e; border-radius: 0.4rem; padding: 0.45rem; color: #dffcf4; background: #0b161e; font-size: 0.73rem; }
+.radsysx-live-setup p { font-size: 0.67rem; line-height: 1.45; color: #9bb7b1; margin: 0.45rem 0 0; }
+.radsysx-live-primary { background: #b5f3dc; color: #09241b; border: 0; border-radius: 0.4rem; padding: 0.45rem 0.65rem; font-size: 0.73rem; font-weight: 650; cursor: pointer; }
+.radsysx-live-session { display: grid; gap: 0.3rem; }
 .radsysx-live-icon { background: transparent; color: #adc7c0; font-size: 1.1rem; border: 0; padding: 0.4rem; cursor: pointer; }
 .radsysx-live-controls { display: flex; gap: 0.5rem; margin: 0 0.8rem; }
 .radsysx-live-controls button, .radsysx-live-tool button, .radsysx-live-history button { border: 1px solid #3b5752; background: #11221f; color: #beded3; border-radius: 0.4rem; font-size: 0.7rem; padding: 0.4rem 0.55rem; cursor: pointer; }
 .radsysx-live-controls button[aria-pressed="true"] { color: #a4ffdc; border-color: #70d8b5; }
-.radsysx-live-controls button:first-child { flex: 1; }
+.radsysx-live-controls [data-action="voice"] { display: inline-flex; align-items: center; gap: 0.35rem; }
+.radsysx-live-controls [data-action="share"] { flex: 1; }
+.radsysx-live-controls svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .radsysx-live-shell button:disabled { opacity: 0.4; cursor: default; }
 .radsysx-live-shell :focus-visible { outline: 2px solid #87e9c5; outline-offset: 3px; }
 .radsysx-live-status { margin: 0 1rem; font-size: 0.68rem; color: #a9bbb7; line-height: 1.5; }
@@ -951,7 +950,7 @@ body.radsysx-local-viewer [data-radsysx-local-upload-modal="true"] button:focus-
 .radsysx-live-credentials p { font-size: 11px; line-height: 1.55; color: #a6bdb5; margin: 8px 0; }
 .radsysx-live-credentials form { margin: 16px 0; border: 1px solid #3d5a50; border-radius: 10px; padding: 12px; background: #11231e; }
 .radsysx-live-credentials label { display: block; margin: 12px 0 6px; font-size: 11px; }
-.radsysx-live-credentials input { width: 100%; box-sizing: border-box; border: 1px solid #567367; border-radius: 5px; background: #07130f; color: #e9fff4; padding: 9px; font-size: 13px; }
+.radsysx-live-credentials input, .radsysx-live-credentials select { width: 100%; box-sizing: border-box; border: 1px solid #567367; border-radius: 5px; background: #07130f; color: #e9fff4; padding: 9px; font-size: 13px; }
 .radsysx-live-credentials form > div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .radsysx-live-credentials button { border: 1px solid #496a5c; border-radius: 5px; padding: 7px 9px; background: #19392c; color: #d5f8e8; font-size: 11px; cursor: pointer; }
 .radsysx-live-credentials button[type="submit"] { background: #b5f3dc; color: #09241b; border-color: #b5f3dc; }

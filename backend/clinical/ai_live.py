@@ -71,6 +71,8 @@ class AILiveService:
         self.runtimes: dict[str, LiveRuntime] = {}
         self.session_locks: dict[str, asyncio.Lock] = {}
         self.owner_locks: dict[str, asyncio.Lock] = {}
+        self.research_catalog_lock = asyncio.Lock()
+        self.research_catalog_cache = None
 
     def _openai_provider(self, settings):
         from .ai_openai import OpenAIRealtimeProvider
@@ -91,6 +93,9 @@ class AILiveService:
                 key = ""
                 config.credential_errors.add(provider)
             setattr(config, attribute, key)
+        preference = self.repository.research_preference(actor.sub)
+        if preference is not None:
+            config.research_provider, config.research_model = preference
         return config
 
     def readiness(self, provider_id="gemini", actor=None):
@@ -126,6 +131,68 @@ class AILiveService:
                 return self.credentials.status(actor.sub, self.config)
             except CredentialStoreError:
                 raise HTTPException(503, "API key storage is unavailable.") from None
+
+    def require_research_settings(self, actor):
+        self.require_actor(actor)
+        if not self.config.enabled or self.config.app_mode not in {"research", "pilot"}:
+            raise HTTPException(403, "Research models are disabled in this runtime.")
+
+    def research_settings(self, actor):
+        self.require_research_settings(actor)
+        config = self.config_for(actor)
+        return {"providerId":config.research_provider, "modelId":config.research_model,
+            "source":"saved" if self.repository.research_preference(actor.sub) else "environment",
+            "providers":[
+                {"id":"gemini", "label":"Gemini", "configured":bool(config.api_key) and "gemini" not in config.credential_errors},
+                {"id":"nvidia_nim", "label":"NVIDIA NIM", "configured":bool(config.nvidia_api_key)}]}
+
+    async def research_models(self, actor, provider, *, refresh=False):
+        self.require_research_settings(actor)
+        config = self.config_for(actor)
+        if provider == "gemini":
+            return {"providerId":provider, "models":["gemini-3.8-flash"], "capabilitiesVerified":False}
+        if provider != "nvidia_nim":
+            raise HTTPException(422, "Choose a supported research provider.")
+        if not config.nvidia_api_key:
+            raise HTTPException(503, "NVIDIA NIM is not configured. Add the NVIDIA key to backend settings.")
+        async with self.research_catalog_lock:
+            cached = self.research_catalog_cache
+            if refresh or cached is None or time.monotonic() - cached[0] > 180:
+                from pydantic import SecretStr
+                from ..evidence_review.nim import discover_models
+                from ..evidence_review.transport import new_http_client
+                async with new_http_client() as client:
+                    result = await discover_models(SecretStr(config.nvidia_api_key), client)
+                if "error" in result:
+                    self.research_catalog_cache = None
+                    raise HTTPException(503, "NVIDIA model catalog is unavailable. Check the backend key and connection, then retry.")
+                self.research_catalog_cache = (time.monotonic(), tuple(result["models"]))
+            models = list(self.research_catalog_cache[1])
+        self.require_research_settings(actor)
+        return {"providerId":provider, "models":models, "capabilitiesVerified":False}
+
+    async def change_research_settings(self, actor, provider, model):
+        self.require_research_settings(actor)
+        from .ai_research_worker import validate_research_model
+        try:
+            validate_research_model(provider, model)
+        except ValueError:
+            raise HTTPException(422, "Choose a supported research model.") from None
+        catalog = await self.research_models(actor, provider)
+        if model not in catalog["models"]:
+            raise HTTPException(422, "Choose a model from the current provider catalog.")
+        async with self.owner_lock(actor):
+            config = self.config_for(actor)
+            config.research_provider, config.research_model = provider, model
+            try:
+                config.research_configuration()
+            except ValueError:
+                raise HTTPException(503, "Configure this research provider before saving its model.") from None
+            # Match credential changes: sessions/jobs cannot retain the old choice.
+            await self.stop_owner(actor)
+            self.require_research_settings(actor)
+            self.repository.save_research_preference(actor.sub, provider, model)
+            return self.research_settings(actor)
 
     def session_lock(self, session_id):
         return self.session_locks.setdefault(session_id, asyncio.Lock())

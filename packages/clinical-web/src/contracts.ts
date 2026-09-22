@@ -558,3 +558,7 @@ export type ClinicalPlatformConfig = {
   aiDefaultWorkflowMode: WorkflowMode;
   aiAllowActive: boolean;
 };
+
+export type ResearchProviderId = 'gemini' | 'nvidia_nim';
+export type AIResearchSettings = { providerId: ResearchProviderId; modelId: string; source: 'saved' | 'environment'; providers: { id: ResearchProviderId; label: string; configured: boolean }[] };
+export type AIResearchModels = { providerId: ResearchProviderId; models: string[]; capabilitiesVerified: boolean };
