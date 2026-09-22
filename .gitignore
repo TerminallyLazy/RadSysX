@@ -86,3 +86,6 @@ download-biomedparse-checkpoint.sh
 
 .claude/runtime/logs/stop.log
 .claude/runtime/sessions.jsonl
+
+# Reproducible upstream OHIF source/build cache
+viewer/.cache/

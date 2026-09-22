@@ -69,7 +69,7 @@ This guide explains how to run RadSysX locally while using a remote GPU VM for t
 
 ## Prerequisites
 - A running GPU VM with the backend deployed as described in `DEPLOY_GPU.md` (port 8000 open to your IP or VPN/subnet).
-- Your workstation with Node.js 18+ (or current LTS) and a package manager (npm or pnpm).
+- Your workstation with Node.js 24+ and a package manager (npm or pnpm).
 - Optional but recommended: Git, curl.
 
 ## Step 1 — Start the GPU Backend (on the VM)
@@ -123,3 +123,7 @@ Then open your browser at `http://localhost:3000`.
 
 ## Optional — Local Backend proxy
 If you prefer, you can also run the backend locally (CPU-only will be slow) or create a small local proxy that forwards `/api/biomedparse/v1/*` to the VM. This is not required; the recommended flow is to point the frontend directly to the VM via `NEXT_PUBLIC_BP_API_BASE`.
+
+### Security-patched viewer build
+
+Use Node.js 24+ and Git. The viewer now rebuilds pinned OHIF source with audited dependency updates; the npm package prebuilt bundle is not shipped. `viewer/ohif-build/` holds the upstream commit, reviewed patch, and separate frozen pnpm lockfile. `npm run build --workspace viewer` prepares an ignored `viewer/.cache/` checkout on the first run (network access required) and reuses matching builds afterward. Run `npm audit` and `npm run audit:ohif --workspace viewer` to check both dependency trees. See [the build contract](viewer/ohif-build/AGENTS.md).

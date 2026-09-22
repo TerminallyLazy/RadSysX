@@ -86,3 +86,10 @@
 - `npm run build --workspace frontend`
 
 ## Child DOX Index
+
+## Security build freshness
+
+- Require Node.js 24+ to match the OHIF source build.
+- Compare the generated viewer receipt against `ohifBuildFingerprint()` before reusing the viewer, including changes to the source patch and either dependency lockfile.
+
+- Software-canvas rendering probes must sample the entire DICOM image, not only a corner that can contain letterboxing or a valid black pixel. Preserve the nonblank-image assertion.

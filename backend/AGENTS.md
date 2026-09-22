@@ -40,3 +40,9 @@
 - `backend/skills/AGENTS.md`: research agent skill prompts.
 - `backend/tests/AGENTS.md`: backend pytest suites.
 - `backend/tools/AGENTS.md`: research agent tools.
+
+## Security boundaries
+
+- Research JSON/SSE failures and optional-import fallbacks expose fixed messages, never exception strings, stack traces, worker stderr, or request credentials. SSE failures terminate the stream.
+- BioMedParse artifact downloads accept only generated run IDs and allowlisted filenames, reject symlinks, and enforce resolved containment under the configured runs directory.
+- The unused NLTK/Unstructured document loaders are intentionally absent from research requirements; review security before introducing one.

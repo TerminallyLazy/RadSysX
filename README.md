@@ -249,7 +249,7 @@ Operational guidance:
 
 - Python 3.12 if you need one interpreter for both the clinical and research/backend installs
 - Python 3.13 is acceptable for the clinical bootstrap path only
-- Node.js 20+
+- Node.js 24+
 - npm
 - Docker Engine with Compose plugin if you want the one-origin stack
 
@@ -518,3 +518,9 @@ The next major clinical tasks are:
 3. Wire OHIF measurement tracking and segmentation into governed SR/SEG export and reload flows.
 4. Validate the full local nginx + frontend + viewer + backend + Orthanc stack end to end.
 5. Move from seeded local identity to institutional identity/context.
+
+### Security-patched viewer build
+
+Use Node.js 24+ and Git. The viewer now rebuilds pinned OHIF source with audited dependency updates; the npm package prebuilt bundle is not shipped. `viewer/ohif-build/` holds the upstream commit, reviewed patch, and separate frozen pnpm lockfile. `npm run build --workspace viewer` prepares an ignored `viewer/.cache/` checkout on the first run (network access required) and reuses matching builds afterward. Run `npm audit` and `npm run audit:ohif --workspace viewer` to check both dependency trees. See [the build contract](viewer/ohif-build/AGENTS.md).
+
+Security remediation and verification details are in [SECURITY_REMEDIATION.md](SECURITY_REMEDIATION.md). OHIF OIDC now requires authorization-code flow with PKCE; implicit-flow configurations must migrate.

@@ -1,0 +1,43 @@
+name: Security regressions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r backend/requirements-clinical.txt pillow numpy uv pip-audit
+      - run: python -m pytest backend/tests/test_security_regressions.py backend/tests/test_biomedparse_demo.py backend/tests/test_clinical_platform.py -q
+      - name: Resolve and audit research dependencies
+        run: |
+          uv pip compile --python 3.12 backend/requirements.txt -o /tmp/radsysx-research.txt
+          pip-audit -r /tmp/radsysx-research.txt --no-deps --disable-pip
+      - run: pip-audit -r backend/requirements-clinical.txt
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --legacy-peer-deps --ignore-scripts
+      - run: npm audit
+      - run: npx prisma generate --schema frontend/schema.prisma
+      - run: npm run type-check
+      - run: npm run build
+      - run: npm run audit:ohif --workspace viewer
+      - run: npm run test:fhir-bridge --workspace viewer
+      - run: npm run test:security --workspace viewer

@@ -35,3 +35,10 @@
 
 - `viewer/assets/AGENTS.md`: RadSysX OHIF bootstrap, extension, mode, and CSS assets.
 - `viewer/scripts/AGENTS.md`: OHIF dist build wrapper.
+
+## Security build
+
+- Build OHIF from the commit and frozen dependencies in `ohif-build/`, using `scripts/build-ohif-source.mjs`. The npm package prebuilt distribution is not the shipping source.
+- Generated source and dependency caches live under ignored `.cache/`; shipping output includes `radsysx-build.json` recording the input fingerprint and upstream commit.
+- First builds need Git, Node.js 24+, registry/GitHub access, and space for the upstream checkout and build dependencies. Later builds reuse a matching source cache.
+- `ohif-build/AGENTS.md` owns pinned source-build policy and lockfiles.

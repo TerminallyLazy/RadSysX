@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -29,12 +30,12 @@ function commandExists(command, args = ["--version"]) {
 }
 
 function checkNode() {
-  const major = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
-  if (major >= 20) {
+  const [major] = process.versions.node.split(".").map(Number);
+  if (major >= 24) {
     pass(`Node.js ${process.versions.node} is ready.`);
     return;
   }
-  fail(`Node.js ${process.versions.node} is too old. Use Node.js 20 or newer.`);
+  fail(`Node.js ${process.versions.node} is too old. Use Node.js 24 or newer.`);
 }
 
 function checkNpm() {
@@ -84,13 +85,15 @@ function venvPythonPath() {
 }
 
 function checkNodeDependencies() {
-  const electronMain = path.join(workspaceRoot, "node_modules", "electron");
-  const nextPackage = path.join(workspaceRoot, "node_modules", "next");
-  const ohifPackage = path.join(workspaceRoot, "node_modules", "@ohif", "app");
-
-  if (fs.existsSync(electronMain) && fs.existsSync(nextPackage) && fs.existsSync(ohifPackage)) {
+  try {
+    for (const [workspace, dependency] of [["desktop", "electron"], ["frontend", "next"], ["viewer", "@ohif/app"]]) {
+      const workspaceRequire = createRequire(path.join(workspaceRoot, workspace, "package.json"));
+      workspaceRequire.resolve(`${dependency}/package.json`);
+    }
     pass("Workspace Node dependencies are installed.");
     return;
+  } catch {
+    // npm may hoist dependencies or keep them in the owning workspace.
   }
 
   fail(

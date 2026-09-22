@@ -40,7 +40,7 @@ except ImportError:
 app = FastAPI(title="RadSysX Chat Demo")
 
 # Define the path to frontend files
-frontend_dir = pathlib.Path(__file__).parent / "frontend"
+frontend_dir = pathlib.Path(__file__).resolve().parent.parent / "frontend"
 
 # Mount static files serving
 app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="frontend")
@@ -371,10 +371,8 @@ async def chat(request: ChatRequest):
             full_response += chunk
         return {"response": full_response}
     except Exception as e:
-        import traceback
-        print(f"Error in chat: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error processing chat: {str(e)}"}
+        print("Error in chat. Please try again later.")
+        return {"error": "Error processing chat. Please try again later."}
 
 # Chat streaming endpoint
 @app.post("/chat/stream")
@@ -397,10 +395,8 @@ async def chat_stream(request: ChatRequest):
             media_type="text/event-stream"
         )
     except Exception as e:
-        import traceback
-        print(f"Error in chat stream: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error streaming chat: {str(e)}"}
+        print("Error in chat stream. Please try again later.")
+        return {"error": "Error streaming chat. Please try again later."}
 
 # List available tools
 @app.get("/tools")
@@ -421,10 +417,8 @@ async def list_tools():
             
         return {"tools": formatted_tools}
     except Exception as e:
-        import traceback
-        print(f"Error listing tools: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error listing tools: {str(e)}"}
+        print("Error listing tools. Please try again later.")
+        return {"error": "Error listing tools. Please try again later."}
 
 # Tool execution endpoint
 @app.post("/tools/execute")
@@ -436,10 +430,8 @@ async def execute_tool(request: ToolRequest):
             "result": f"[This is a simulated response for the {request.tool_name} tool. Parameters: {request.params}]\n\nIn a real environment, this would execute the actual MCP tool."
         }
     except Exception as e:
-        import traceback
-        print(f"Error executing tool: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error executing tool: {str(e)}"}
+        print("Error executing tool. Please try again later.")
+        return {"error": "Error executing tool. Please try again later."}
         
 # Agent tool execution endpoint
 @app.post("/agent/{agent_type}/tools/execute")
@@ -467,10 +459,8 @@ async def execute_agent_tool(agent_type: str, request: ToolRequest):
         result = f"{thinking}[This is a simulated response for the {request.tool_name} tool executed by the {agent_type} agent. Parameters: {request.params}]\n\nIn a real environment, this would execute the actual MCP tool through the specialized agent."
         return {"result": result}
     except Exception as e:
-        import traceback
-        print(f"Error executing agent tool: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error executing agent tool: {str(e)}"}     
+        print("Error executing agent tool. Please try again later.")
+        return {"error": "Error executing agent tool. Please try again later."}
 
 # List agent tools endpoint
 @app.get("/agent/{agent_type}/tools")
@@ -500,10 +490,8 @@ async def list_agent_tools(agent_type: str):
         
         return {"tools": agent_tools.get(agent_type, [])}
     except Exception as e:
-        import traceback
-        print(f"Error listing agent tools: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error listing agent tools: {str(e)}"}
+        print("Error listing agent tools. Please try again later.")
+        return {"error": "Error listing agent tools. Please try again later."}
 
 # Serve the chat UI
 @app.get("/", response_class=HTMLResponse)
@@ -515,10 +503,8 @@ async def serve_chat_ui():
             html_content = f.read()
         return HTMLResponse(content=html_content)
     except Exception as e:
-        import traceback
-        print(f"Error serving chat UI: {str(e)}")
-        print(traceback.format_exc())
-        return HTMLResponse(content=f"<h1>Error loading chat UI</h1><p>{str(e)}</p>")
+        print("Error serving chat UI. Please try again later.")
+        return HTMLResponse(content="<h1>Error loading chat UI</h1>")
 
 # Direct MCP tools listing endpoint
 @app.get("/mcp/tools")
@@ -558,10 +544,8 @@ async def list_mcp_tools(request: Optional[MCPToolsRequest] = None):
             "categories": categories
         }
     except Exception as e:
-        import traceback
-        print(f"Error listing MCP tools: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error listing MCP tools: {str(e)}"}
+        print("Error listing MCP tools. Please try again later.")
+        return {"error": "Error listing MCP tools. Please try again later."}
 
 
 # Direct MCP tool execution endpoint
@@ -588,10 +572,8 @@ async def execute_mcp_tool(request: MCPToolRequest):
         
         return {"result": mock_response}
     except Exception as e:
-        import traceback
-        print(f"Error executing MCP tool: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error executing MCP tool: {str(e)}"}
+        print("Error executing MCP tool. Please try again later.")
+        return {"error": "Error executing MCP tool. Please try again later."}
 
 
 if __name__ == "__main__":

@@ -24,3 +24,7 @@
 - `python3 tests/test_client.py`
 
 ## Child DOX Index
+
+## Error privacy
+
+- Legacy HTTP harness errors use fixed messages, never exception text or tracebacks. Keep the static frontend root anchored to the repository rather than a nonexistent `tests/frontend` directory.

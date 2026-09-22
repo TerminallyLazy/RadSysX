@@ -36,3 +36,7 @@
 - `frontend/app/AGENTS.md`: Next.js route contracts.
 - `frontend/components/AGENTS.md`: reusable UI and research viewer components.
 - `frontend/lib/AGENTS.md`: frontend clients, env helpers, services, hooks, and utilities.
+
+## Dependency security
+
+- Browser builds use native Web Crypto through imaging dependencies; do not restore the unused `crypto-browserify` polyfill and its elliptic dependency. Node-only crypto references in browser codecs remain disabled.

@@ -41,6 +41,8 @@ Last updated: 2026-08-08
 
 ## Bootstrap
 
+- Use Node.js 24+ and Git for the security-patched OHIF source build. The root npm lockfile owns RadSysX dependencies; `viewer/ohif-build/pnpm-lock.yaml` owns the separate pinned upstream build.
+
 - Clinical-first local bootstrap:
   - `python3 -m venv .venv`
   - `. .venv/bin/activate`
@@ -297,3 +299,8 @@ Last updated: 2026-08-08
 - `related-papers/AGENTS.md`: research papers and media used as source material.
 - `tests/AGENTS.md`: root-level legacy/test harness scripts outside `backend/tests`.
 - `viewer/AGENTS.md`: dedicated OHIF clinical viewer app, build wrapper, runtime assets, and generated viewer distribution.
+
+## Security verification
+
+- CI runs security regression tests, dependency audits, frontend/viewer builds, and existing CodeQL analysis. Do not dismiss alerts or suppress advisories to obtain a passing result.
+- `npm audit` checks the RadSysX workspace; `npm run audit:ohif --workspace viewer` checks the pinned upstream build.

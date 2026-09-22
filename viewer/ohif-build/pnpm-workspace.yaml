@@ -1,0 +1,122 @@
+packages:
+  - platform/*
+  - "!platform/docs"
+  - "!platform/cli"
+  - extensions/*
+  - modes/*
+
+# Mirror the cornerstone3D pnpm setup (libs/@cornerstonejs) which is known-good.
+nodeLinker: hoisted
+strictPeerDependencies: false
+linkWorkspacePackages: true
+preferWorkspacePackages: true
+minimumReleaseAge: 2880
+# Exempt the cornerstone3D packages from the release-age check: they are pinned
+# to an exact version (5.0.0) that may be newer than the cutoff. Mirrors the
+# bunfig.toml `minimumReleaseAgeExcludes` list (pnpm supports glob patterns).
+minimumReleaseAgeExclude:
+  - '@cornerstonejs/*'
+frozenLockfile: true
+
+# Skip the pre-`pnpm run` frozen deps-check; installs set freshness explicitly.
+verifyDepsBeforeRun: false
+
+# Build commands are explicit; dependency lifecycle scripts are disabled.
+strictDepBuilds: false
+overrides:
+  # Compatibility and security pins inherited from the pinned OHIF source.
+  # Audit this entire build graph; no advisory exclusions are configured.
+  commander: 8.3.0
+  cross-env: 7.0.3
+  cross-spawn: 7.0.6
+  dcmjs: 0.52.0
+  path-to-regexp: 0.1.13
+  nth-check: 2.1.1
+  trim-newlines: 5.0.0
+  glob-parent: 6.0.2
+  trim: 1.0.1
+  package-json: 8.1.1
+  rollup: 2.80.0
+  axios: 1.18.1
+  core-js: 3.45.1
+  '@babel/runtime-corejs2': 7.26.10
+  tapable: 2.2.2
+  '@cornerstonejs/codec-openjpeg': 1.3.0
+  node-forge: 1.4.0
+  lodash: 4.18.1
+  lodash-es: 4.18.1
+  diff: 5.2.2
+  webpack: 5.105.0
+  flatted: 3.4.2
+  handlebars: 4.7.9
+  tmp: 0.2.7
+  shell-quote: 1.10.0
+  '@babel/plugin-transform-modules-systemjs': 7.29.4
+  # pnpm-branch-only overrides (kept across merges from master).
+  # Force a single modern tslib for the whole workspace. Without this, rxjs@6
+  # pulls in tslib@1, which gets hoisted to root node_modules and shadows the
+  # tslib@2 that modern packages (e.g. react-remove-scroll) need for
+  # __spreadArray.
+  tslib: 2.8.1
+  'ws@>=7.0.0 <7.5.11': 7.5.11
+  'ws@>=8.0.0 <8.21.0': 8.21.0
+  form-data: 4.0.6
+  'minimatch@<3.1.4': 3.1.5
+  'minimatch@>=10.0.0 <10.2.3': 10.2.5
+  'picomatch@<2.3.2': 2.3.2
+  'picomatch@>=4.0.0 <4.0.4': 4.0.4
+  # websocket-driver <0.7.5 reaches the tree only via platform/docs
+  # (@docusaurus/core > webpack-dev-server > sockjs > faye-websocket). 0.7.5
+  # patches GHSA-xv26-6w52-cph6 (message corruption via protocol length headers).
+  'websocket-driver@<0.7.5': 0.7.5
+  # adm-zip <0.6.0 reaches the tree only via dcmjs, which pins 0.5.17 but does
+  # not import it in its runtime code. 0.6.0 patches GHSA-xcpc-8h2w-3j85
+  # (crafted ZIP triggers a 4GB memory allocation).
+  'brace-expansion@<1.1.17': 1.1.18
+  'brace-expansion@>=2.0.0 <2.1.3': 2.1.4
+  'brace-expansion@>=3.0.0 <3.0.3': 3.0.6
+  'brace-expansion@>=4.0.0 <5.0.8': 5.0.9
+  'postcss@<8.5.26': 8.5.26
+
+  # RadSysX security updates applied before bundling browser code.
+  "@babel/runtime": "^7.26.10"
+  "adm-zip": "0.6.1"
+  "decode-uri-component": "0.5.0"
+  "deepmerge-ts": "8.0.0"
+  "fflate": "0.8.3"
+  "i18next-locize-backend": "9.0.2"
+  "js-yaml@>=3 <4": "3.15.2"
+  "js-yaml@>=4 <5": "4.3.2"
+  "react-router": "7.18.2"
+  "react-router-dom": "7.18.2"
+  "serialize-javascript": "7.0.5"
+  "uuid@<11": "11.1.1"
+  "validate.js": "npm:@socialtables/validate.js@0.13.2"
+  "qs": "6.16.0"
+  "protobufjs": "7.6.5"
+  "body-parser": "1.20.6"
+  "tar": "7.5.21"
+  "joi@<18": "17.13.6"
+  "launch-editor": "2.14.1"
+  "http-proxy-middleware@<3": "2.0.10"
+  "decompress": "npm:@xhmikosr/decompress@11.1.4"
+  "@babel/core": "7.29.7"
+  "webpack-dev-server": "5.2.6"
+  "image-size": "2.0.3"
+  "postcss-selector-parser@<7": "6.1.4"
+  "postcss-selector-parser@>=7": "7.1.6"
+  "browserslist": "4.28.7"
+  "fast-uri": "3.1.6"
+  "colord": "2.9.4"
+  "baseline-browser-mapping": "2.11.0"
+  "sharp@<0.35.4": "0.35.4"
+  "svgo@>=2 <3": "2.8.4"
+  "svgo@>=3 <4": "3.3.5"
+  "@swc/html": "1.16.2"
+  "query-string": "9.5.1"
+
+allowBuilds:
+  "@swc/core": false
+  core-js: false
+  core-js-pure: false
+  protobufjs: false

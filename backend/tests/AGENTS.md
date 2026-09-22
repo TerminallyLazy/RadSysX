@@ -25,3 +25,7 @@
 - `python3 -m pytest backend/tests`
 
 ## Child DOX Index
+
+## Security regression suite
+
+- `python3 -m pytest backend/tests/test_security_regressions.py` covers synthetic error privacy, streaming completion, artifact traversal/symlink rejection, worker failures, and DICOM/FHIR logging. It must not contact a real FHIR server or process live patient data.

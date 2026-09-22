@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { ohifBuildFingerprint } from "../../viewer/scripts/build-ohif-source.mjs";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -507,6 +508,13 @@ function viewerDistIsFresh(indexPath) {
 
   const appConfigPath = path.join(viewerDist, "app-config.js");
   if (!fs.existsSync(appConfigPath)) {
+    return false;
+  }
+
+  try {
+    const receipt = JSON.parse(fs.readFileSync(path.join(viewerDist, "radsysx-build.json"), "utf8"));
+    if (receipt.fingerprint !== ohifBuildFingerprint()) return false;
+  } catch {
     return false;
   }
 

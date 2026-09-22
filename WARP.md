@@ -44,7 +44,7 @@ npm run desktop:smoke:launch
 npm run desktop:smoke
 ```
 
-Install Node dependencies from the repo root so the workspace-managed root `package-lock.json` is the only active lockfile.
+Install Node dependencies from the repo root so the workspace-managed root `package-lock.json` owns RadSysX dependencies.
 
 Fast local Electron path:
 
@@ -79,3 +79,7 @@ RADSYSX_APP_MODE=research python3 backend/server.py
 - Do not put PHI-bearing launch context into viewer URLs.
 - On `/viewer/fhir-viewer`, allow only standard opaque SMART launch/callback parameters; never add patient identifiers, payloads, or access tokens.
 - Do not let the browser write directly to Orthanc in governed flows.
+
+### Security-patched viewer build
+
+Use Node.js 24+ and Git. The viewer now rebuilds pinned OHIF source with audited dependency updates; the npm package prebuilt bundle is not shipped. `viewer/ohif-build/` holds the upstream commit, reviewed patch, and separate frozen pnpm lockfile. `npm run build --workspace viewer` prepares an ignored `viewer/.cache/` checkout on the first run (network access required) and reuses matching builds afterward. Run `npm audit` and `npm run audit:ohif --workspace viewer` to check both dependency trees. See [the build contract](viewer/ohif-build/AGENTS.md).
