@@ -2,7 +2,7 @@
 
 ## Purpose and ownership
 
-Own the explicit offline public/synthetic evidence evaluator. This package has no clinical database, viewer authority, live observer or HTTP routes. Gemini/OpenAI conversation and existing research behavior remain unchanged.
+Own the pure public/synthetic evidence evaluator used by the standalone CLI and explicit sidebar review service. This package has no clinical database, viewer authority, live observer or HTTP routes. Gemini/OpenAI conversation and existing research behavior remain unchanged.
 
 ## Contracts
 
@@ -73,3 +73,5 @@ None.
 - `pubmed.py` retrieves only fixed-origin NCBI EFetch by exact canonical PMID citations, never model-supplied fetch URLs. It bounds bodies/nodes/depth, rejects redirects/compression/entity declarations, permits ordinary nonexpanding public DOCTYPE declarations, and reuses original `EvidenceCollector` section semantics. Missing/ambiguous/unsafe evidence is explicitly unavailable. Retrieval guards are caller-owned.
 - `ArtifactStore.delete_run` is an explicit caller-authorized, locked, descriptor-relative removal of one verified private run. It rejects links/unsafe entries and cannot traverse other runs. The app service uses it only after owned source-history deletion cancels and joins linked work; offline retention remains operator-controlled.
 - Sentence extraction preserves original offsets even when an answer ends with spaces/newlines. Trailing whitespace must not silently drop the final paragraph.
+
+- Sidebar EFetch evidence IDs bind citation ID plus canonical URL so two aliases for the same PMID remain distinct snapshot records while retrieval is deduplicated. The original capture CLI IDs and extraction semantics remain compatible.

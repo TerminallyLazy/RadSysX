@@ -415,3 +415,19 @@ def test_shutdown_before_worker_starts_is_interrupted(review):
         assert review.service.get(review.actor,detail.review_id).status=='interrupted'
         assert not review.http.requests
     asyncio.run(scenario())
+
+
+def test_two_citation_aliases_for_one_pubmed_article_remain_reviewable(review):
+    async def scenario():
+        from backend.clinical.ai_evidence_contracts import EvidencePrepareRequest
+        sid,tid=seed_research(review.live,summary='Synthetic finding [s1, s2].')
+        result=review.live.service.repository.tool(sid,tid)['result']
+        result['sources'].append({**result['sources'][0],'id':'s2'})
+        review.live.service.repository.set_tool(sid,tid,'completed',result)
+        detail=await review.service.prepare(review.actor,sid,tid,EvidencePrepareRequest(idempotency_key='aliases'))
+        await review.service.jobs[detail.review_id].task
+        detail=review.service.get(review.actor,detail.review_id)
+        assert detail.status=='ready',detail.reason
+        assert len(detail.abstracts)==2 and len({a.evidence_id for a in detail.abstracts})==2
+        assert not review.http.submitted
+    asyncio.run(scenario())

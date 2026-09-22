@@ -47,3 +47,5 @@
 
 - The live sidebar uses compact connection/media controls and a Settings overlay containing account-owned research provider/model dropdowns and API-key inputs. Keep CSS aligned with the typed panel and its hidden-state contract; media controls do not occupy space before connection.
 - Evidence review styles belong inside the existing scrollable research card. No additional permanent header region; checkbox/select controls, long hashes/source text and receipts must fit the 280 px sidebar without horizontal overflow.
+
+- The radiologist-facing AI sidebar uses the restrained reading-room palette in `radsysx-viewer.css`: charcoal/slate surfaces, muted blue actions, dark scrollbars and no luminous status glow. Scope the theme to `.radsysx-live-shell` and its controls; do not tint diagnostic canvases or change image presentation.

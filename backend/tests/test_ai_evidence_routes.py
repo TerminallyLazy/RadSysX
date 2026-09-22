@@ -118,3 +118,32 @@ def test_unexpected_errors_are_fixed_private_and_ids_bounded(review,monkeypatch)
             monkeypatch.setattr(review.service,'get',fail)
             checked(await client.get(ROOT+'/evidence-reviews/example'),500)
     asyncio.run(scenario())
+
+
+def test_live_acceptance_refuses_before_secret_or_network_reads(monkeypatch,tmp_path):
+    from backend.tools import accept_jev_sidebar
+    def forbidden(*args,**kwargs): raise AssertionError('Must not read secrets or network')
+    monkeypatch.setattr(accept_jev_sidebar,'read_key',forbidden)
+    assert accept_jev_sidebar.main([],output_root=tmp_path/'output')==2
+    assert not (tmp_path/'output').exists()
+
+
+@pytest.mark.parametrize('failed',[False,True])
+def test_live_acceptance_uses_real_routes_and_cleans_database(monkeypatch,tmp_path,failed):
+    from backend.tools import accept_jev_sidebar
+    from backend.tests.test_ai_evidence_review import FakeEvidenceHTTP
+    from backend.clinical import ai_evidence_review
+    fake=FakeEvidenceHTTP()
+    if failed: fake.responses=[httpx.Response(422)]
+    monkeypatch.setattr(accept_jev_sidebar,'read_key',lambda path:'synthetic-key')
+    monkeypatch.setattr(ai_evidence_review,'new_http_client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(fake)))
+    output=tmp_path/'output'
+    assert accept_jev_sidebar.main(['--allow-live'],output_root=output)==(1 if failed else 0)
+    reports=list(output.glob('*/receipt.json'));assert len(reports)==1
+    value=json.loads(reports[0].read_text())
+    assert value['source']=='live TypeSafe with synthetic source'
+    assert value['status']==('failed' if failed else 'completed')
+    assert len(fake.submitted)==1
+    assert not list(output.rglob('*.db'))
+    assert 'synthetic-key' not in reports[0].read_text()
+    if not failed: assert value['resolvedModel']=='jev-1.13.0' and len(value['requestSha256'])==64

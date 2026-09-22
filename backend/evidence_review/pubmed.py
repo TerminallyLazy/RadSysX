@@ -1,7 +1,6 @@
 """Fixed-origin public abstract retrieval; no model-supplied URL is requested."""
 from __future__ import annotations
 
-import hashlib
 import re
 from datetime import datetime, timezone
 from typing import Callable
@@ -23,8 +22,13 @@ def canonical_pmid(url: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _evidence_id(source: Source) -> str:
+    # A stored answer may cite one PMID through multiple source aliases.
+    return 'e-'+sha256_bytes(canonical_json([source.id,source.url]))[:24]
+
+
 def _unavailable(source: Source) -> Evidence:
-    return Evidence(evidence_id='e-'+hashlib.sha256(source.url.encode()).hexdigest()[:24],
+    return Evidence(evidence_id=_evidence_id(source),
         citation_id=source.id, source_kind='pubmed_abstract', pmid=canonical_pmid(source.url),
         url=source.url, title=source.title, retrieved_at=datetime.now(timezone.utc), sections=(),
         extraction_version='ncbi-abstract-v1', text_sha256=sha256_bytes(canonical_json([])),
@@ -86,7 +90,7 @@ def parse_pubmed_xml(body: bytes, sources: tuple[Source, ...], *, limits: Limits
             continue
         collector = EvidenceCollector()
         collector(source.model_dump(), articles[pmid])
-        record = Evidence.model_validate_json(canonical_json(collector.records[source.id]))
+        record = Evidence.model_validate_json(canonical_json({**collector.records[source.id], 'evidence_id':_evidence_id(source)}))
         evidence.append(record)
         excluded.extend(CaptureExclusion.model_validate(e) for e in collector.exclusions)
     return tuple(evidence), tuple(excluded)

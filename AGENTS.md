@@ -329,7 +329,7 @@ Last updated: 2026-09-22
 
 ## Explicit public evidence evaluation
 
-The standalone [evidence-review runbook](backend/evidence_review/README.md) documents private public/synthetic PubMed capture, Jev/Gemini replay, blind references and comparative reports. Run `.venv/bin/python -m backend.evidence_review --help`. It has no app route or live observer and never changes assistant answers. Clinical mode disables its network commands; local report/validation commands need no credentials. Software completion does not imply human-quality or live-provider acceptance.
+The standalone [evidence-review runbook](backend/evidence_review/README.md) documents private public/synthetic PubMed capture, Jev/Gemini replay, blind references and comparative reports. Run `.venv/bin/python -m backend.evidence_review --help`. The CLI remains independent of live conversation and never changes assistant answers. The sidebar now offers a separate explicit **Review evidence with Jev** action on completed PubMed research cards; see the [sidebar implementation runbook](roadmap/ai-backend/JEV_SIDEBAR_IMPLEMENTATION.md). Preview the exact claims and original abstracts, exclude claims as needed, and confirm public/synthetic text before TypeSafe receives anything. Saved claim-level judgments and resolved-model receipts establish what ran; the Settings configuration row alone does not. Clinical mode disables its network commands; local report/validation commands need no credentials. Software completion does not imply human-quality or live-provider acceptance.
 
 ## NVIDIA NIM evidence and research
 
@@ -339,3 +339,5 @@ The standalone [evidence-review runbook](backend/evidence_review/README.md) docu
 
 - The sidebar **Settings → Research models** saves Gemini/NVIDIA NIM provider and exact model per signed account. Environment supplies the default until a saved choice exists. The dropdown includes the entire hosted NVIDIA catalog; catalog inclusion does not verify tool support or entitlement. Saving closes that account's sessions/jobs and requires reconnection; live voice selection and offline evidence CLI model flags remain separate.
 - Keep the AI sidebar compact: one header row, inline data confirmation/connect, and media controls visible only during an active connection. Data attestation, transmission disclosure and separate microphone/image consent remain required.
+
+- Sidebar Jev reviews run through backend-owned `/api/ai/sidebar/*/evidence-reviews` contracts in research/pilot only, using backend-only `RADSYSX_TYPESAFE_AI_API_KEY`. They retain original answers, require independent text confirmation, and persist POSIX-private artifacts in `.ai-evidence/` beside the actual database (or absolute `RADSYSX_AI_EVIDENCE_DIR`). Ending voice preserves review; explicit cancel/account changes/logout stop it; source-history deletion cancels jobs and removes their artifacts. Clinical use and the qualified human evidence-quality study remain unapproved/pending.

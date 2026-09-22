@@ -24,7 +24,7 @@ export class EvidenceController {
 
   get suspended(): boolean { return this.disposed; }
 
-  constructor(private notify: () => void, private fetcher: typeof fetch = fetch) {}
+  constructor(private notify: () => void, private fetcher: typeof fetch = (input, init) => fetch(input, init)) {}
 
   private resetRequest(): number {
     ++this.generation; this.abort.abort(); this.abort = new AbortController();

@@ -1,6 +1,6 @@
 # Review evidence with Jev in the sidebar
 
-Date: 2026-09-22. Status: written specification approved by the user on 2026-09-22; [implementation plan](../plans/2026-09-22-jev-sidebar-evidence-review.md) written and awaiting plan review, not implemented. This document makes the explicit app action's data flow, permissions, presentation and verification concrete. Native execution remains the user's selected implementation method.
+Date: 2026-09-22. Status: written specification approved by the user on 2026-09-22; [implementation plan](../plans/2026-09-22-jev-sidebar-evidence-review.md) approved for Native execution; implemented on the feature branch, with acceptance tracked in [the runbook](../../../roadmap/ai-backend/JEV_SIDEBAR_IMPLEMENTATION.md). This document makes the explicit app action's data flow, permissions, presentation and verification concrete. Native execution remains the user's selected implementation method.
 
 ## Intended outcome
 

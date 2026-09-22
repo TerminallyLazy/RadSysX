@@ -46,3 +46,5 @@ Last updated: 2026-09-22
 - `ai-backend/NIM_IMPLEMENTATION.md` owns the approved NIM evaluation/research extension, explicit provider configuration and dated live acceptance. It distinguishes direct evaluation from native DeepAgents/LangGraph research and keeps NIM separate from live voice.
 
 - `ai-backend/JEV_VISION_ROUTING.md` owns the dated assessment of Jev text judgments paired with vision models, contextual tool suggestions, model input compatibility and research validation. These are proposed follow-ons, not installed detectors or clinical capabilities.
+
+- `ai-backend/JEV_SIDEBAR_IMPLEMENTATION.md` records the explicit sidebar review workflow, source/consent and private-storage contracts, dated app/live receipt evidence and remaining human-quality limitations. Keep it distinct from the standalone evaluator runbook and the proposed vision-routing assessment.

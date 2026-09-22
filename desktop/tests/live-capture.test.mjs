@@ -191,7 +191,7 @@ test("main-process rectangle probe rejects an inactive OHIF viewport", async () 
 });
 
 test("only backend child receives provider and clinical secrets", () => {
-  const env = { PATH: "/bin", GEMINI_API_KEY: "synthetic-key", GOOGLE_API_KEY: "synthetic-key", RADSYSX_GEMINI_API_KEY: "synthetic-key", RADSYSX_SESSION_SECRET: "synthetic-secret", NEXT_PUBLIC_API_TOKEN: "synthetic-token", GOOGLE_APPLICATION_CREDENTIALS: "/synthetic/path", RADSYSX_AI_ENABLED: "1", NEXT_PUBLIC_VIEWER_BASE_URL: "/viewer", DATABASE_URL: "postgres://synthetic@host/db", ARCHIVE_URL: "https://synthetic:secret@example.test" };
+  const env = { PATH: "/bin", RADSYSX_TYPESAFE_AI_API_KEY: "synthetic-typesafe", RADSYSX_NVIDIA_API_KEY: "synthetic-nvidia", GEMINI_API_KEY: "synthetic-key", GOOGLE_API_KEY: "synthetic-key", RADSYSX_GEMINI_API_KEY: "synthetic-key", RADSYSX_SESSION_SECRET: "synthetic-secret", NEXT_PUBLIC_API_TOKEN: "synthetic-token", GOOGLE_APPLICATION_CREDENTIALS: "/synthetic/path", RADSYSX_AI_ENABLED: "1", NEXT_PUBLIC_VIEWER_BASE_URL: "/viewer", DATABASE_URL: "postgres://synthetic@host/db", ARCHIVE_URL: "https://synthetic:secret@example.test" };
   const publicEnv = { PATH: "/bin", NEXT_PUBLIC_VIEWER_BASE_URL: "/viewer" };
   assert.deepEqual(publicChildEnvironment(env), publicEnv);
   for (const role of ["viewer", "frontend", "frontend-build", "npm"]) assert.deepEqual(serviceEnvironment(role, env), publicEnv);
@@ -201,7 +201,7 @@ test("only backend child receives provider and clinical secrets", () => {
 
 test("bootstrap and doctor require every direct AI and shared HTTPX/Pydantic pin", () => {
   const expected = expectedAiVersions(path.resolve(import.meta.dirname, "../.."));
-  assert.deepEqual(Object.keys(expected).sort(), ["google-genai", "deepagents", "langchain-google-genai", "langchain", "langchain-core", "langgraph", "python-dotenv", "websockets", "httpx", "pydantic", "cryptography"].sort());
+  assert.deepEqual(Object.keys(expected).sort(), ["google-genai", "deepagents", "langchain-nvidia-ai-endpoints", "langchain-google-genai", "langchain", "langchain-core", "langgraph", "python-dotenv", "websockets", "httpx", "pydantic", "cryptography"].sort());
   assert.deepEqual(dependencyMismatches(expected, expected), []);
   for (const name of Object.keys(expected)) {
     for (const found of [null, "0.0.0-incompatible"]) {

@@ -34,7 +34,7 @@ export function renderEvidenceDetail(detail: EvidenceReviewDetail): string {
       ${assessment.probabilities ? `<details><summary>Model probabilities</summary><p>Model output; not a probability of clinical truth.</p><dl>${Object.entries(assessment.probabilities).map(([key,value]) => row(labels[key as EvidenceLabel],value)).join('')}</dl></details>` : ''}</article>`;
   }).join('');
   return `<details><summary>Original answer · unchanged</summary><p class="radsysx-evidence-text">${escape(detail.originalAnswer ?? '')}</p></details>
-    <div>${abstracts}</div>${judgments}
+    ${judgments}<div>${abstracts}</div>
     ${detail.exclusions.length ? `<details><summary>Not reviewed · exclusions (${detail.exclusions.length})</summary><ul>${detail.exclusions.map(exclusion => `<li>${escape(detail.claims.find(c => c.unitId === exclusion.unitId)?.text ?? exclusion.citationId ?? 'Source')} · ${escape(exclusion.reason)}</li>`).join('')}</ul></details>` : ''}
     <details><summary>Review receipt and attempts</summary><dl>${row('Review ID',detail.reviewId)}${row('Source context version',detail.sourceContextVersion)}${row('Generation provider',detail.generation.providerId)}${row('Generation model',detail.generation.modelId)}${row('Generation recorded',detail.generation.recordedAt)}${row('Reviewer',detail.modelId)}${row('Preview SHA-256',detail.previewSha256)}${row('Answer SHA-256',detail.answerSha256)}${row('Snapshot SHA-256',detail.snapshotSha256)}${row('Created',detail.createdAt)}${row('Updated',detail.updatedAt)}${row('Reason',detail.reason)}${row('Submitted attempts',detail.submittedAttempts)}${row('Unknown usage/billing',detail.unknownUsageAttempts)}</dl>
     ${detail.earlierAttemptCount ? `<p>${detail.earlierAttemptCount} earlier attempts retained in private storage; latest ${detail.attempts.length} shown.</p>` : ''}
@@ -48,11 +48,11 @@ export function mountEvidencePanel(host: HTMLElement, controller: EvidenceContro
   host.innerHTML = `<div data-evidence-status role="status" aria-live="polite"></div><button type="button" data-evidence-action="open">Review evidence with Jev</button>
     <div data-evidence-detail hidden><button type="button" data-evidence-action="close">Close review</button><p data-evidence-message role="status" aria-live="polite"></p>
     <p>TypeSafe · jev-1.13.0 · experimental abstract-support review. The original answer stays unchanged.</p>
-    <div data-evidence-consent></div><div data-evidence-actions><button type="button" data-evidence-action="start">Start Jev review</button><button type="button" data-evidence-action="retry">Retry unfinished review</button><button type="button" data-evidence-action="cancel">Cancel review</button><button type="button" data-evidence-action="refresh">Refresh review</button></div>
+    <details data-evidence-selection><summary>Claim selection and text confirmation</summary><div data-evidence-consent></div></details><div data-evidence-actions><button type="button" data-evidence-action="start">Start Jev review</button><button type="button" data-evidence-action="retry">Retry unfinished review</button><button type="button" data-evidence-action="cancel">Cancel review</button><button type="button" data-evidence-action="refresh">Refresh review</button></div>
     <div data-evidence-result></div></div>`;
   const query = <T extends HTMLElement = HTMLElement>(selector: string) => host.querySelector<T>(selector)!;
   const button = (action: string) => query<HTMLButtonElement>(`[data-evidence-action="${action}"]`);
-  let preview = '', resultSignature = '';
+  let preview = '', resultSignature = '', selectionState = '';
   const click = (event: Event) => {
     const target = (event.target as Element).closest<HTMLButtonElement>('[data-evidence-action]');
     if (!target || target.disabled) return;
@@ -89,7 +89,7 @@ export function mountEvidencePanel(host: HTMLElement, controller: EvidenceContro
     if (identity !== preview) {
       preview = identity;
       query('[data-evidence-consent]').innerHTML = detail.previewSha256 ? `<fieldset><legend>Claims to send</legend>${detail.claims.map((claim,index) => `<label for="${escape(detail.reviewId)}-claim-${index}"><input id="${escape(detail.reviewId)}-claim-${index}" type="checkbox" data-evidence-unit="${escape(claim.unitId)}"${claim.eligible ? '' : ' disabled'}><span class="radsysx-evidence-text">${escape(claim.text)}${claim.eligible ? '' : ` · Not reviewed: ${escape(claim.exclusionReason ?? 'No eligible abstract')}`}</span></label>`).join('')}</fieldset>
-      <p>Only selected claims and their original abstracts will be sent to TypeSafe. Confirm this text contains no patient information.</p><label for="${escape(detail.reviewId)}-confirmation">Displayed claim text</label><select id="${escape(detail.reviewId)}-confirmation" data-evidence-confirmation><option value="">Choose before sending…</option><option value="public_literature">Public literature only · no patient information</option><option value="synthetic">Synthetic only · no patient information</option></select>` : '';
+      <div data-evidence-confirm><p>Only selected claims and their original abstracts will be sent to TypeSafe. Confirm this text contains no patient information.</p><label for="${escape(detail.reviewId)}-confirmation">Displayed claim text</label><select id="${escape(detail.reviewId)}-confirmation" data-evidence-confirmation><option value="">Choose before sending…</option><option value="public_literature">Public literature only · no patient information</option><option value="synthetic">Synthetic only · no patient information</option></select></div>` : '';
     }
     query('[data-evidence-consent]').querySelectorAll<HTMLInputElement>('[data-evidence-unit]').forEach(input => {
       input.checked = controller.selectedUnitIds.has(input.dataset.evidenceUnit!);
@@ -97,6 +97,11 @@ export function mountEvidencePanel(host: HTMLElement, controller: EvidenceContro
     });
     const confirmation = host.querySelector<HTMLSelectElement>('[data-evidence-confirmation]');
     const retryable = ['partial','failed','interrupted'].includes(detail.status) && Boolean(detail.selectedUnitIds?.length);
+    const selection = query<HTMLDetailsElement>('[data-evidence-selection]');
+    const nextSelectionState = `${detail.reviewId}:${detail.status}`;
+    if (selectionState !== nextSelectionState) { selection.open = detail.status === 'ready' || retryable; selectionState = nextSelectionState; }
+    const consent = host.querySelector<HTMLElement>('[data-evidence-confirm]');
+    if (consent) consent.hidden = detail.status !== 'ready' && !retryable;
     if (confirmation) { confirmation.value = controller.confirmation ?? ''; confirmation.disabled = controller.busy || (detail.status !== 'ready' && !retryable); }
     button('start').hidden = detail.status !== 'ready'; button('start').disabled = controller.busy || !controller.confirmation || !controller.selectedUnitIds.size;
     button('retry').hidden = !retryable; button('retry').disabled = controller.busy || !controller.confirmation;

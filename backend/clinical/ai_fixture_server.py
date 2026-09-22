@@ -38,6 +38,10 @@ class FixtureResearchSupervisor:
         try:
             number = "one" if "one" in query else "two"
             await asyncio.sleep(1.2 if number == "one" else 1.8)
+            if os.environ.get('RADSYSX_DESKTOP_EVIDENCE_FIXTURE')=='1':
+                summary = 'The synthetic study reports 10 samples [s1]. EXCLUDED_SENTINEL [s1].' if number=='one' else 'The second synthetic study reports 20 samples [s1].'
+                return {'summary':summary,'sources':[{'id':'s1','title':'Synthetic review fixture, not a real paper','url':'https://pubmed.ncbi.nlm.nih.gov/123/'}],
+                    'limitations':['Synthetic fixture; no web research was performed.']}
             return {"summary": f"Synthetic research {number} completed.",
                     "sources": [{"id": f"fixture-{number}", "title": f"Synthetic research {number}",
                                  "url": f"https://example.com/synthetic-research-{number}"}],
@@ -188,3 +192,33 @@ ai_live_service.config.readiness = lambda provider_id="gemini": ("configured", "
 ai_live_service.provider_factory = FixtureProvider
 ai_live_service.openai_provider_factory = OpenAIFixtureProvider
 ai_research.ResearchSupervisor = FixtureResearchSupervisor
+
+
+if os.environ.get('RADSYSX_DESKTOP_EVIDENCE_FIXTURE')=='1':
+    import httpx
+    from backend.clinical import ai_evidence_review
+    from backend.evidence_review import nim
+    _evidence = {'submitted':0,'excludedSubmitted':False}
+
+    async def evidence_http(request):
+        if request.url.host=='eutils.ncbi.nlm.nih.gov':
+            return httpx.Response(200,content=b'<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMID><Article><Abstract><AbstractText>The synthetic study reports 10 samples.</AbstractText></Abstract></Article></MedlineCitation></PubmedArticle></PubmedArticleSet>')
+        if request.url.host!='api.typesafe.ai': raise AssertionError('Unexpected synthetic destination')
+        _evidence['submitted']+=1
+        _evidence['excludedSubmitted'] |= b'EXCLUDED_SENTINEL' in request.content
+        if _evidence['submitted']>1: await asyncio.Event().wait()
+        await asyncio.sleep(1.5)
+        return httpx.Response(200,json={'model':'jev-1.13.0','answers':{'relationship':{'type':'choice','choice':'supported',
+            'probabilities':{'supported':1.0,'partially_supported':0.0,'contradicted':0.0,'mixed':0.0,'not_addressed':0.0},'confidence':1.0}},
+            'usage':{'input_tokens':10,'output_tokens':1}})
+
+    ai_evidence_review.new_http_client=lambda:httpx.AsyncClient(transport=httpx.MockTransport(evidence_http))
+
+    async def fixture_catalog(*args,**kwargs):
+        return {'provider':'nvidia_nim','models':['z-ai/glm-5.3-flash']+[f'synthetic/model-{index:03d}' for index in range(81)],'capabilities_verified':False}
+    nim.discover_models=fixture_catalog
+
+    @app.get('/api/ai/_fixture/evidence',include_in_schema=False)
+    async def fixture_evidence_counters():
+        root=ai_live_service.evidence_reviews.root
+        return {**_evidence,'privateRuns':sum(p.is_dir() for p in root.iterdir()) if root.exists() else 0}

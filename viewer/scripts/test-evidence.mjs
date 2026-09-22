@@ -113,3 +113,14 @@ test('markup escapes text, separates all judgments, exclusions and unknown usage
  assert.match(renderEvidenceSummary(detail),/Partially completed/);
  assert.ok(!renderEvidenceDetail({...detail,abstracts:[{...base.abstracts[0],url:'javascript:alert(1)'}]}).includes('href="javascript:'));
 });
+
+test('default browser fetch retains the native global receiver',async()=>{
+  const saved=globalThis.fetch;
+  globalThis.fetch=async function() {
+    if(this!==undefined && this!==globalThis) throw new TypeError('Illegal invocation');
+    return response({reviews:[reviewFixture()],truncated:false});
+  };
+  const c=new EvidenceController(()=>{});
+  try {await c.selectSession('ais-fixture');assert.equal(c.reviews.size,1);}
+  finally {c.dispose();globalThis.fetch=saved;}
+});

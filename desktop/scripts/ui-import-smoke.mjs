@@ -21,6 +21,7 @@ const manyDicomCount = 32;
 const smokeMode = resolveSmokeMode();
 const aiViewerSmoke = smokeMode === "local-start" && process.argv.includes("--ai-live");
 const audioPlaybackSmoke = process.argv.includes("--audio-playback");
+const evidenceReviewSmoke = process.argv.includes("--evidence-review");
 const credentialsSmoke = process.argv.includes("--credentials");
 const realOpenAiAcceptance = process.argv.includes("--real-openai");
 const aiProviderId = process.argv.includes("--openai") || realOpenAiAcceptance ? "openai" : "gemini";
@@ -65,6 +66,7 @@ function resolveSmokeMode() {
 
 async function main() {
   try {
+    if (evidenceReviewSmoke && (!aiViewerSmoke || realOpenAiAcceptance)) throw new Error("--evidence-review requires synthetic --local-start --ai-live.");
     if (audioPlaybackSmoke && (smokeMode !== "local-start" || realOpenAiAcceptance)) throw new Error("--audio-playback requires --local-start and is synthetic-only.");
     if (credentialsSmoke && (!aiViewerSmoke || realOpenAiAcceptance)) throw new Error("--credentials requires --local-start --ai-live and is synthetic-only.");
     if (realOpenAiAcceptance && smokeMode !== "viewer-launch") throw new Error("--real-openai requires --viewer-launch and uses a real provider with synthetic data.");
@@ -374,6 +376,7 @@ async function startDesktopRuntime() {
     RADSYSX_LOCAL_IMAGING_ENABLED: "true",
     RADSYSX_LOCAL_IMAGING_STORAGE_DIR: storageRoot,
     RADSYSX_CLINICAL_DATABASE_URL: `sqlite:///${asFileUrlPath(dbPath)}`,
+    RADSYSX_AI_EVIDENCE_DIR: path.join(fs.realpathSync(tmpRoot), ".ai-evidence"),
     RADSYSX_AI_KEY_STORE_DIR: path.join(fs.realpathSync(tmpRoot), ".ai-secrets"),
     RADSYSX_SESSION_COOKIE_SECURE: "false",
     RADSYSX_DESKTOP_ALLOW_TEST_SHUTDOWN: "1",
@@ -381,6 +384,9 @@ async function startDesktopRuntime() {
     ...(aiViewerSmoke || audioPlaybackSmoke ? {
       RADSYSX_APP_MODE: "pilot", RADSYSX_AI_ENABLED: "true", RADSYSX_GEMINI_API_KEY: "synthetic-unused-key",
       RADSYSX_OPENAI_API_KEY: "synthetic-unused-key",
+      RADSYSX_TYPESAFE_AI_API_KEY: "synthetic-unused-key", RADSYSX_NVIDIA_API_KEY: "synthetic-unused-key",
+      RADSYSX_RESEARCH_PROVIDER: "gemini",
+      RADSYSX_DESKTOP_EVIDENCE_FIXTURE: evidenceReviewSmoke ? "1" : "0",
       RADSYSX_DESKTOP_BACKEND_APP: "backend.clinical.ai_fixture_server:app",
     } : {}),
     ...(realOpenAiAcceptance ? { RADSYSX_APP_MODE: "pilot", RADSYSX_AI_ENABLED: "true", RADSYSX_DESKTOP_BACKEND_APP: "backend.server:app" } : {}),
@@ -512,7 +518,22 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         fs.writeFileSync(credentialScreenshotPath, Buffer.from(screenshot.data, "base64"));
         await evaluateInRenderer(cdp, `document.querySelector('radsysx-ai-chat-panel [data-action="close-credentials"]').click()`);
       }
-      const aiLiveState = aiViewerSmoke ? await evaluateInRenderer(cdp, `(${exerciseLiveViewer.toString()})(${JSON.stringify(aiProviderId)})`, 45000) : undefined;
+      const aiLiveState = aiViewerSmoke ? await evaluateInRenderer(cdp, `(${exerciseLiveViewer.toString()})(${JSON.stringify(aiProviderId)}, ${evidenceReviewSmoke})`, 45000) : undefined;
+      let evidenceState;
+      if (evidenceReviewSmoke) {
+        const prepared = await evaluateInRenderer(cdp, `(${exerciseEvidenceReview.toString()})("prepare")`, 45000);
+        await cdp.send('Input.dispatchKeyEvent', { type:'keyDown', key:'Tab', code:'Tab', windowsVirtualKeyCode:9 });
+        await cdp.send('Input.dispatchKeyEvent', { type:'keyUp', key:'Tab', code:'Tab', windowsVirtualKeyCode:9 });
+        const keyboardReady = await evaluateInRenderer(cdp, `document.activeElement?.dataset.evidenceAction === 'start'`);
+        if (!keyboardReady) throw new Error('Keyboard Tab did not reach Start Jev review from confirmation');
+        evidenceState = await evaluateInRenderer(cdp, `(${exerciseEvidenceReview.toString()})("run", ${JSON.stringify(prepared)})`, 55000);
+        const clip = await evaluateInRenderer(cdp, `(()=>{const r=document.querySelector('radsysx-ai-chat-panel').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,scale:1};})()`);
+        const capture = await cdp.send('Page.captureScreenshot', { format:'png', clip });
+        const evidenceScreenshot = path.join(tmpRoot, 'synthetic-jev-review.png');
+        fs.writeFileSync(evidenceScreenshot, Buffer.from(capture.data,'base64'));
+        const cleanup = await evaluateInRenderer(cdp, `(${exerciseEvidenceReview.toString()})("delete", ${JSON.stringify(evidenceState)})`, 20000);
+        evidenceState = { ...evidenceState, ...cleanup, keyboardReady, evidenceScreenshot };
+      }
       const credentialsState = credentialsSmoke ? await evaluateInRenderer(cdp, `(${exerciseCredentials.toString()})("after")`, 45000) : undefined;
       let adapterState;
       if (aiViewerSmoke) {
@@ -538,6 +559,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         ...(screenshotPath ? { screenshotPath } : {}),
         ...(credentialScreenshotPath ? { credentialScreenshotPath } : {}),
         ...(aiLiveState ? { aiLiveState } : {}),
+        ...(evidenceState ? { evidenceState } : {}),
         ...(credentialsState ? { credentialsState } : {}),
         ...(adapterState ? { adapterState } : {}),
         ...(audioPlaybackState ? { audioPlaybackState } : {}),
@@ -1229,7 +1251,7 @@ async function approveRealOpenAiReport(toolCallId) {
   }
 }
 
-async function exerciseLiveViewer(providerId) {
+async function exerciseLiveViewer(providerId, keepOpen = false) {
   const panel = document.querySelector('radsysx-ai-chat-panel');
   const button = action => panel.querySelector(`[data-action="${action}"]`);
   if (panel.querySelector('.radsysx-ai-mention-menu').dataset.open === 'true') button('toggle-mention').click();
@@ -1336,6 +1358,7 @@ async function exerciseLiveViewer(providerId) {
   button('share').click();
   await waitFor(() => button('share').getAttribute('aria-pressed') === 'false', 'Image sharing did not stop');
   await waitFor(() => panel.querySelector('[data-role="status"]').textContent.includes('image sharing off'), 'Visible sharing status did not clear after stop');
+  if (keepOpen) return { provider: providerId, sessionId, connectedLayout, source: 'synthetic fixture (no cloud call)', pendingEndForEvidenceReview: true };
   button('end').click();
   await waitFor(() => panel.state.backendStatus === 'disconnected', 'Live session did not end');
   await waitMedia(value => value.activeProviders === 0, 'Session end did not close the provider fixture');
@@ -2417,4 +2440,129 @@ async function exerciseCredentials(stage) {
   assert(!input('gemini').value && !input('openai').value, 'Credential operation left key entry in DOM');
   button('close-credentials').click();
   return { savedBothProviders: true, stablePasswordInput: true, maskedInputs: true, inputsCleared: true, replacedDuringActiveSession: true, sessionClosed: true, attestationCleared: true, removedBothSavedKeys: true, environmentFallbackDisclosed: true, providerAccessVerified: false, cloudCalls: false };
+}
+
+async function exerciseEvidenceReview(phase, prior = {}) {
+  const panel = document.querySelector('radsysx-ai-chat-panel');
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const api = async (path, body, method) => {
+    const response = await fetch('/api/ai/'+path, {credentials:'include',cache:'no-store',method:method??(body===undefined?'GET':'POST'),headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+    if (!response.ok) throw new Error(`Synthetic review API failed: ${response.status}`);
+    return response.json();
+  };
+  const wait = async (predicate, message) => {
+    const end = Date.now()+18000;
+    do { if(await predicate())return; await new Promise(resolve=>setTimeout(resolve,50)); } while(Date.now()<end);
+    throw new Error(typeof message==='function'?message():message);
+  };
+  const card = id => panel.querySelector(`[data-evidence-tool="${id}"]`);
+  const button = (host,action) => host.querySelector(`[data-evidence-action="${action}"]`);
+  const counters = () => api('_fixture/evidence');
+  const sid = prior.sessionId ?? panel.state.backendSessionId;
+  if (phase==='prepare') {
+    // OHIF's resizable dock may restore a wider width. Constrain the real
+    // production component to the acceptance width instead of assuming it.
+    panel.style.width='280px'; panel.style.minWidth='280px'; panel.style.maxWidth='280px';
+    const history = await api(`sidebar/sessions/${sid}`);
+    assert(card('smoke-research-one'), 'Missing public PubMed fixture / Review evidence with Jev action');
+    const original = history.tools.find(t=>t.toolCallId==='smoke-research-one').result;
+    await wait(()=>!button(card('smoke-research-one'),'open').disabled,'Review button remained busy');
+    button(card('smoke-research-one'),'open').click();
+    await wait(()=>card('smoke-research-one').textContent.includes('Ready to review'),()=> 'Preview did not become ready: '+card('smoke-research-one').textContent);
+    const host = card('smoke-research-one');
+    const foreground=getComputedStyle(host.querySelector('[data-evidence-detail] > p:not([data-evidence-message])')).color;
+    assert(foreground!=='rgb(0, 0, 0)','Review text is unreadable on the dark card');
+    assert((await counters()).submitted===0,'Preview performed inference');
+    assert(host.textContent.includes('The synthetic study reports 10 samples.') && host.textContent.includes('fetched for this review'),'Original abstract was not previewed');
+    assert(button(host,'start').disabled,'Start was enabled without text confirmation');
+    const inputs = [...host.querySelectorAll('[data-evidence-unit]')];
+    assert(inputs.length===2,'Expected two selectable exact claims');
+    inputs[1].click();
+    const confirmation = host.querySelector('[data-evidence-confirmation]');
+    confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));confirmation.focus();
+    const nodeBefore=confirmation;
+    // A sibling live transcript update must not replace the exact-text controls.
+    const textarea=panel.querySelector('textarea');textarea.value='Synthetic status refresh';textarea.dispatchEvent(new Event('input',{bubbles:true}));
+    panel.querySelector('.radsysx-ai-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+    await new Promise(resolve=>setTimeout(resolve,100));
+    assert(host.querySelector('[data-evidence-confirmation]')===nodeBefore && document.activeElement===confirmation && confirmation.value==='synthetic','Consent or keyboard focus changed during live rendering: '+JSON.stringify({sameNode:host.querySelector('[data-evidence-confirmation]')===nodeBefore,active:document.activeElement?.outerHTML,value:confirmation.value,connected:confirmation.isConnected,disabled:confirmation.disabled,selectionOpen:host.querySelector('[data-evidence-selection]')?.open}));
+    const list=await api(`sidebar/sessions/${sid}/evidence-reviews`);
+    return {sessionId:sid,reviewId:list.reviews[0].reviewId,original};
+  }
+  if(phase==='delete') {
+    const root=await counters();
+    assert(root.privateRuns===2,'Expected two private reviews before deletion');
+    // Use the visible saved-history deletion action, accepting its synthetic-only dialog.
+    panel.querySelector('[data-action="history"]').click();
+    await wait(()=>panel.querySelector(`[data-action="clear-history"][data-id="${sid}"]`),'Saved history deletion missing');
+    const originalConfirm=window.confirm;window.confirm=()=>true;
+    try { panel.querySelector(`[data-action="clear-history"][data-id="${sid}"]`).click(); } finally {window.confirm=originalConfirm;}
+    await wait(async()=> (await counters()).privateRuns===0,'Private review artifacts survived history deletion');
+    const deleted=await fetch(`/api/ai/sidebar/evidence-reviews/${prior.reviewId}`,{credentials:'include'});
+    assert(deleted.status===404,'Deleted review remained readable');
+    return {deleted:true,privateRunsAfterDeletion:0};
+  }
+  const first=card('smoke-research-one');button(first,'start').click();
+  await wait(()=>first.textContent.includes('Reviewing'),'Reviewing status missing');
+  await wait(()=>first.textContent.includes('Supported by this abstract'),'Completed judgment did not appear');
+  let receipt=await api(`sidebar/evidence-reviews/${prior.reviewId}`);
+  assert(receipt.status==='completed' && receipt.assessments[0].resolvedModel==='jev-1.13.0','Saved reviewer receipt missing');
+  assert(receipt.completedPairs===1 && receipt.selectedUnitIds.length===1,'Excluded claim was reviewed');
+  assert((await counters()).submitted===1 && !(await counters()).excludedSubmitted,'Excluded text entered provider payload');
+  const history=await api(`sidebar/sessions/${sid}`);
+  assert(JSON.stringify(history.tools.find(t=>t.toolCallId==='smoke-research-one').result)===JSON.stringify(prior.original),'Original answer/source changed');
+  assert(first.querySelector('[data-evidence-confirmation]').value==='','Submission retained confirmation');
+  button(first,'close').click();
+  const conversation=panel.querySelector('[data-role="conversation"]'),shell=panel.querySelector('.radsysx-live-shell');
+  const geometry={width:Math.round(shell.getBoundingClientRect().width),height:Math.round(shell.getBoundingClientRect().height),conversation:Math.round(conversation.getBoundingClientRect().height)};
+  assert(geometry.width<=285 && geometry.conversation>=400,'Collapsed review consumed conversation space: '+JSON.stringify({...geometry,windowWidth:innerWidth,windowHeight:innerHeight}));
+  assert(shell.scrollWidth<=shell.clientWidth+1 && first.scrollWidth<=first.clientWidth+1,'Review horizontally overflowed narrow sidebar');
+  // Catalog must remain complete in the same real Settings dropdown.
+  panel.querySelector('[data-action="credentials"]').click();
+  const selectProvider=panel.querySelector('[data-role="research-provider"]');
+  await wait(()=>!selectProvider.disabled,'Research settings did not load');
+  selectProvider.value='nvidia_nim';selectProvider.dispatchEvent(new Event('change',{bubbles:true}));
+  const modelSelect=panel.querySelector('[data-role="research-model"]');
+  await wait(()=>!modelSelect.disabled,'NVIDIA fixture catalog did not load');
+  const catalog=await api('sidebar/research-settings/models/nvidia_nim');
+  assert(catalog.models.length===82 && catalog.models.every(id=>[...modelSelect.options].some(o=>o.value===id)),'NVIDIA models were filtered');
+  panel.querySelector('[data-action="close-credentials"]').click();
+  const second=card('smoke-research-two');button(second,'open').click();
+  await wait(()=>second.textContent.includes('Ready to review'),'Second review preview failed');
+  const confirmation=second.querySelector('[data-evidence-confirmation]');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));button(second,'start').click();
+  await wait(async()=> (await counters()).submitted===2,'Blocked review was not submitted');
+  panel.querySelector('[data-action="end"]').click();
+  await wait(()=>panel.state.backendStatus==='disconnected','Voice did not end');
+  const secondSummary=(await api(`sidebar/sessions/${sid}/evidence-reviews`)).reviews.find(r=>r.toolCallId==='smoke-research-two');
+  assert((await api(`sidebar/evidence-reviews/${secondSummary.reviewId}`)).status==='reviewing','End voice cancelled independent review');
+  button(second,'cancel').click();await wait(()=>second.textContent.includes('Cancelled'),'Explicit review cancellation failed');
+  assert((await api(`sidebar/evidence-reviews/${secondSummary.reviewId}`)).unknownUsageAttempts===1,'Cancelled submitted attempt lost unknown usage');
+  panel.querySelector('[data-action="history"]').click();await wait(()=>panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`),'History action missing');
+  panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`).click();
+  await wait(()=>panel.querySelector('[data-role="status"]').textContent.includes('Viewing saved conversation'),'Saved history did not open');
+  await wait(()=>!button(card('smoke-research-one'),'open').disabled,'Saved review summaries did not load');
+  // Delay a genuine owned GET across a history switch, even after its abort.
+  const other=await api('sidebar/sessions',{});
+  const originalFetch=window.fetch;let releaseOld;
+  window.fetch=async (...args)=>{
+    const response=await originalFetch(...args);
+    if(String(args[0]).endsWith(`/evidence-reviews/${prior.reviewId}`) && args[1]?.method==='GET') {
+      return new Promise(resolve=>{releaseOld=()=>resolve(response);});
+    }
+    return response;
+  };
+  button(card('smoke-research-one'),'open').click();await wait(()=>releaseOld,'Saved review GET was not captured');
+  panel.querySelector('[data-action="history"]').click();await wait(()=>panel.querySelector(`[data-action="read-history"][data-id="${other.sessionId}"]`),'Other history missing');
+  panel.querySelector(`[data-action="read-history"][data-id="${other.sessionId}"]`).click();await wait(()=>!card('smoke-research-one'),'History did not switch');
+  window.fetch=originalFetch;releaseOld();await new Promise(resolve=>setTimeout(resolve,100));
+  assert(!card('smoke-research-one') && !panel.textContent.includes('Supported by this abstract'),'Late review replaced the new conversation');
+  panel.querySelector('[data-action="history"]').click();await wait(()=>panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`),'Original history missing');
+  panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`).click();await wait(()=>card('smoke-research-one') && !button(card('smoke-research-one'),'open').disabled,'Original review card did not reload');
+  await api(`sidebar/sessions/${other.sessionId}`,undefined,'DELETE');
+  button(card('smoke-research-one'),'open').click();await wait(()=>card('smoke-research-one').textContent.includes('Supported by this abstract'),'Saved receipt was not restored');
+  assert((await counters()).submitted===2,'Reopen triggered inference');
+  // Expand the real receipt for the retained synthetic screenshot.
+  card('smoke-research-one').querySelectorAll('details').forEach(node=>{if(node.querySelector('summary')?.textContent.includes('Execution receipt'))node.open=true;});
+  card('smoke-research-one').scrollIntoView({block:'start'});
+  return {...prior,status:receipt.status,resolvedModel:receipt.assessments[0].resolvedModel,submitted:2,completedPairs:1,excludedSubmitted:false,unknownUsageAttempts:1,unchangedAnswer:true,reopenWithoutInference:true,endVoiceIndependent:true,staleHistoryReplyDiscarded:true,geometry,nvidiaModelCount:catalog.models.length};
 }
