@@ -3,7 +3,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, Field
+from pydantic import AwareDatetime, Field, JsonValue
 
 from .contracts import (Hash, Identifier, Label, Limits, Record, Snapshot, SpanAnnotation, load_snapshot)
 from .serialization import canonical_json, sha256_bytes
@@ -39,6 +39,7 @@ class ExperimentConfig(Record):
     models: dict[str,Identifier]
     resolved_models: dict[str,Identifier]
     rubric_sha256: Hash
+    generation_configs: dict[str,dict[str,JsonValue]] = {}
     config_hashes: dict[str,Hash]
     limits: Limits
     pricing: dict[str,Pricing] = {}

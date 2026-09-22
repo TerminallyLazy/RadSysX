@@ -65,3 +65,16 @@ def test_failed_assessment_cannot_carry_judgment():
     assert Assessment(**fields, status="completed", judgment=judgment).status == "completed"
     with pytest.raises(ValueError):
         Assessment(**fields, status="failed", reason="timeout", judgment=judgment)
+
+
+def test_nested_immutable_json_serializes_without_payload_warnings(payload_factory):
+    import warnings
+    from backend.evidence_review.contracts import freeze_snapshot,Limits
+    payload=payload_factory()
+    payload['generation']['nested']={'values':['PRIVATE_WARNING_CANARY',{'nested':[1,True,None]}]}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        snapshot=freeze_snapshot(payload,limits=Limits())
+        serialized=snapshot.model_dump(mode='json')
+    assert not caught
+    assert serialized['generation']['nested']['values'][1]['nested']==[1,True,None]

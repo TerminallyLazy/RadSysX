@@ -326,3 +326,7 @@ Last updated: 2026-09-22
 - The provider catalog can be retried explicitly if desktop authentication was not ready on the first fetch. Runtime readiness follows acknowledged setup and successful initial context delivery, never key presence alone.
 - Image sharing remains a separate opt-in from microphone use. Show backend-confirmed waiting/image-sent/off states and the selected image scope. Tell the model explicitly when no image is available or prior images are historical; `viewer_get_state` alone is not pixel awareness. Never infer historical sharing from journals that intentionally omit frame activity.
 - `backend/tests/test_ai_openai.py`, `test_ai_providers.py` and `test_ai_connection_races.py` cover transport, provider/session boundaries and reconnect authority. `node desktop/scripts/ai-live-smoke.mjs --openai` is synthetic Electron bridge validation, not live-provider acceptance.
+
+## Explicit public evidence evaluation
+
+The standalone [evidence-review runbook](backend/evidence_review/README.md) documents private public/synthetic PubMed capture, Jev/Gemini replay, blind references and comparative reports. Run `.venv/bin/python -m backend.evidence_review --help`. It has no app route or live observer and never changes assistant answers. Clinical mode disables its network commands; local report/validation commands need no credentials. Software completion does not imply human-quality or live-provider acceptance.

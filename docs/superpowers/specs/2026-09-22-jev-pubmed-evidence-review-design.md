@@ -6,7 +6,7 @@ Branch: `codex/jev-typesafe-design`
 
 Repository baseline: `43d443ff8a41c67cbc6bf8985b2b26d27e8eee17`
 
-Status: all conversational design sections and the consolidated written specification approved by the user on 2026-09-22. The [implementation plan](../plans/2026-09-22-jev-pubmed-evidence-review.md) awaits user review and execution-method selection. Implementation and live evaluation have not started.
+Status: all conversational design sections and the consolidated written specification approved by the user on 2026-09-22. The user approved native execution of the [implementation plan](../plans/2026-09-22-jev-pubmed-evidence-review.md). Implementation is in progress; live-provider and human-quality acceptance remain separate.
 
 ## 1. Approved intent and scope
 

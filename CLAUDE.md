@@ -76,3 +76,7 @@ The current execution checklist is [PHASE4_CLINICAL_EXECUTION_CHECKLIST.md](PHAS
 ### Security-patched viewer build
 
 Use Node.js 24+ and Git. The viewer now rebuilds pinned OHIF source with audited dependency updates; the npm package prebuilt bundle is not shipped. `viewer/ohif-build/` holds the upstream commit, reviewed patch, and separate frozen pnpm lockfile. `npm run build --workspace viewer` prepares an ignored `viewer/.cache/` checkout on the first run (network access required) and reuses matching builds afterward. Run `npm audit` and `npm run audit:ohif --workspace viewer` to check both dependency trees. See [the build contract](viewer/ohif-build/AGENTS.md).
+
+## Explicit public evidence evaluation
+
+The standalone [evidence-review runbook](backend/evidence_review/README.md) documents private public/synthetic PubMed capture, Jev/Gemini replay, blind references and comparative reports. Run `.venv/bin/python -m backend.evidence_review --help`. It has no app route or live observer and never changes assistant answers. Clinical mode disables its network commands; local report/validation commands need no credentials. Software completion does not imply human-quality or live-provider acceptance.

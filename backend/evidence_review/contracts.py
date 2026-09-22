@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, field_serializer, field_validator, model_validator
 
 from .serialization import canonical_json, immutable, parse_json, sha256_bytes
 
@@ -20,6 +20,10 @@ class Record(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True, allow_inf_nan=False)
     schema_version: Literal[1] = 1
 
+    @field_serializer("*", when_used="json")
+    def serialize_immutable(self, value):
+        return _json_value(value)
+
     @field_validator("*", mode="after")
     @classmethod
     def freeze_fields(cls, value):
@@ -31,6 +35,18 @@ class Record(BaseModel):
             except UnicodeError:
                 raise ValueError("invalid_unicode") from None
         return immutable(value)
+
+
+def _json_value(value):
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, datetime):
+        return value.isoformat().replace("+00:00", "Z")
+    if isinstance(value, dict):
+        return {key: _json_value(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_json_value(item) for item in value]
+    return value
 
 
 class Limits(Record):

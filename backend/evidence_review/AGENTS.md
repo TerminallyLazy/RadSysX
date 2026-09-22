@@ -54,3 +54,9 @@ None.
 - `report.py` emits static accessible HTML with escaped text, keyboard-operable native disclosures and a CSP that permits only its fixed stylesheet hash. It never fetches sources; source links are canonical PubMed or designated synthetic fixture HTTPS URLs.
 - Blind exports positively select exact claim/citation/abstract fields, public/synthetic designation, constructed/natural origin and immutable case identity. They contain no model predictions, reference labels, generation metadata or suggested HTML. Case hashes support label submission; constructed claims are visibly distinguished from paper quotations.
 - Run reports preserve the exact original answer and show abstract-scoped judgments, coverage, exclusions and unknown billing. Comparison exports require frozen references and display unresolved cases. Keep result reports away from blind reviewers until reference freeze.
+
+## Explicit operator interface
+
+- `python -m backend.evidence_review` exposes capture, replay, resume, blind, freeze-references, validate-suite and compare. See `README.md` for private input formats and destinations. Input files are bounded, owner-only regular files; suite/run-list paths cannot escape their private directory.
+- Network mode is checked before settings/clients. Local commands never read credentials. SIGINT/SIGTERM signal cancellation; exit codes are 0 completed operation, 2 rejected configuration/input, 3 partial/provider/storage failure and 130 cancellation.
+- CLI resume reconstructs the original configuration and rejects changed request bytes. Experiment generation configurations are retained alongside their hashes so replay/resume can enforce the same declared request.

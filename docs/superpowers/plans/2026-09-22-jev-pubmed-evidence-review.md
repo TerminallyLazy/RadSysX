@@ -10,7 +10,7 @@
 
 **Spec:** [Approved design](../specs/2026-09-22-jev-pubmed-evidence-review-design.md). Read it alongside this plan; its five-way definitions and outcome table are authoritative.
 
-**Status:** Written specification approved by the user on 2026-09-22. This implementation plan awaits user review and execution-method selection. No implementation or live inference has started. Code below is planned implementation/test guidance, not existing functionality.
+**Status:** Written specification and native implementation approved by the user on 2026-09-22. Execution is in progress on `codex/jev-evidence-implementation`; the execution ledger records task evidence. Live-provider and human-quality acceptance remain separate. Code below records the approved implementation/test guidance.
 
 ## Global Constraints
 

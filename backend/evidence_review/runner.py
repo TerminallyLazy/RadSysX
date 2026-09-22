@@ -92,6 +92,7 @@ async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Ev
     manifest["plan_ref"] = record(plan,"plan")
     manifest["evaluator"] = adapter.evaluator_id
     manifest["model"] = adapter.model
+    manifest["expected_resolved_model"] = getattr(adapter,"expected_resolved_model",None)
     manifest["experiment_sha256"] = experiment_sha256
     manifest["config"] = getattr(adapter,"config",{})
     manifest["limits"] = limits.model_dump(mode="json")
