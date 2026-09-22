@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import pathlib
-import traceback
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 
@@ -24,13 +23,13 @@ except Exception as exc:
     RADSYSX_IMPORT_ERROR = exc
 
     def process_query(query: str):  # type: ignore
-        return f"RadSysX agent stack is unavailable: {exc}"
+        return "RadSysX agent stack is unavailable."
 
     async def stream_query(query: str):  # type: ignore
-        yield f"RadSysX agent stack is unavailable: {exc}"
+        yield "RadSysX agent stack is unavailable."
 
     def enable_disable_mcp(enabled: bool):  # type: ignore
-        return f"MCP toggle unavailable because RadSysX failed to import: {exc}"
+        return "MCP toggle is unavailable."
 
 MCP_IMPORT_ERROR = None
 
@@ -58,10 +57,10 @@ except Exception:
 
         class _FallbackChatInterface:
             async def chat(self, **_: Any) -> str:
-                return f"Chat interface is unavailable: {exc}"
+                return "Chat interface is unavailable."
 
             async def stream_chat(self, **_: Any):
-                yield f"Chat interface is unavailable: {exc}"
+                yield "Chat interface is unavailable."
 
             def get_available_tools(self):
                 return []
@@ -171,13 +170,12 @@ class _FallbackFHIRServer:
         return None
 
     async def list_resources(self, uri_pattern: str = "", mime_type: str | None = None):
-        return {"error": f"FHIR integration unavailable: {self.unavailable_reason}"}
+        return {"error": "FHIR integration unavailable."}
 
     async def call_tool(self, tool_name: str, params: dict[str, Any]):
         return {
-            "error": f"FHIR integration unavailable: {self.unavailable_reason}",
+            "error": "FHIR integration unavailable.",
             "tool": tool_name,
-            "params": params,
         }
 
     async def get_patient_demographics(self, patient_id: str):
@@ -254,10 +252,8 @@ async def process(request: QueryRequest):
         result = await asyncio.to_thread(process_query, request.query)
         return {"result": result}
     except Exception as e:
-        import traceback
-        print(f"Error processing query: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error processing query: {str(e)}"}
+        print("Error processing query. Please try again later.")
+        return {"error": "Error processing query. Please try again later."}
 
 
 # MCP Status Endpoint
@@ -270,7 +266,7 @@ async def get_mcp_status():
         result = {"enabled": True}  # Replace with actual status check
         return result
     except Exception as e:
-        return {"error": f"Error getting MCP status: {str(e)}"}
+        return {"error": "Error getting MCP status. Please try again later."}
 
 
 # MCP Toggle Endpoint
@@ -282,7 +278,7 @@ async def toggle_mcp(request: dict = {"enabled": True}):
         result = await asyncio.to_thread(enable_disable_mcp, enabled)
         return {"status": result, "enabled": enabled}
     except Exception as e:
-        return {"error": f"Error toggling MCP: {str(e)}"}
+        return {"error": "Error toggling MCP. Please try again later."}
 
 
 # New streaming endpoint
@@ -314,9 +310,9 @@ async def stream(request: Request):
     # Set MCP integration status before processing the query
     try:
         await asyncio.to_thread(enable_disable_mcp, mcp_enabled)
-        print(f"MCP integration set to: {mcp_enabled} for query: {user_query[:50]}...")
+        print(f"MCP integration set to: {mcp_enabled}")
     except Exception as e:
-        print(f"Error setting MCP status: {str(e)}")
+        print("Error setting MCP status. Please try again later.")
     
     async def event_generator():
         try:
@@ -341,12 +337,9 @@ async def stream(request: Request):
                     response_data = {"chunk": chunk} if isinstance(chunk, str) else chunk
                     yield f"data: {json.dumps(response_data)}\n\n"
         except Exception as e:
-            error_msg = str(e)
-            tb = traceback.format_exc()
-            print(f"Error in streaming: {error_msg}")
-            print(tb)
+            print("Error in streaming.")
             # Send the error to the client
-            yield f"data: {json.dumps({'error': f'Sorry, an error occurred while processing your query: {error_msg}. Please try again later.'})}\n\n"
+            yield f"data: {json.dumps({'error': 'Unable to process your query. Please try again later.'})}\n\n"
             yield "data: [DONE]\n\n"
     
     # Return a streaming response
@@ -961,12 +954,10 @@ async def fhir_tool(request: FHIRToolRequest):
         result = await _execute_fhir_tool_request(request.tool, request.params)
         return {"result": result}
     except ValueError as exc:
-        return {"error": str(exc)}
+        return {"error": "Invalid FHIR tool request."}
     except Exception as e:
-        import traceback
-        print(f"Error executing FHIR tool: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error executing FHIR tool: {str(e)}"}
+        print("Error executing FHIR tool. Please try again later.")
+        return {"error": "Error executing FHIR tool. Please try again later."}
 
 
 # Chat endpoint - provides direct access to LLM
@@ -982,10 +973,8 @@ async def chat(request: ChatRequest):
         )
         return {"response": response}
     except Exception as e:
-        import traceback
-        print(f"Error in chat: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error in chat: {str(e)}"}
+        print("Error in chat. Please try again later.")
+        return {"error": "Error in chat. Please try again later."}
 
 
 # Chat streaming endpoint
@@ -1007,8 +996,8 @@ async def chat_stream(request: ChatRequest):
             # Signal that the stream is complete
             yield "data: [DONE]\n\n"
         except Exception as e:
-            print(f"Error in streaming chat: {str(e)}")
-            yield f"data: {json.dumps({'error': f'Error in streaming chat: {str(e)}'})}\n\n"
+            print("Error in streaming chat. Please try again later.")
+            yield f"data: {json.dumps({'error': 'Error in streaming chat. Please try again later.'})}\n\n"
             yield "data: [DONE]\n\n"
     
     return StreamingResponse(
@@ -1046,10 +1035,8 @@ async def execute_tool(request: ToolRequest):
         else:
             return f"Unknown tool: {tool_name}. Available tools can be found via the /tools endpoint."
     except Exception as e:
-        import traceback
-        print(f"Error executing tool {request.tool_name}: {str(e)}")
-        print(traceback.format_exc())
-        return f"Error executing tool: {str(e)}"
+        print("Error executing tool.")
+        return "Error executing tool. Please try again later."
 
 
 # List available tools
@@ -1094,10 +1081,8 @@ async def list_tools():
         
         return all_tools
     except Exception as e:
-        import traceback
-        print(f"Error listing tools: {str(e)}")
-        print(traceback.format_exc())
-        return {"error": f"Error listing tools: {str(e)}"}
+        print("Error listing tools. Please try again later.")
+        return {"error": "Error listing tools. Please try again later."}
 
 
 # MCP Server installation endpoint
@@ -1111,9 +1096,9 @@ async def install_mcp_server(request: MCPServerInstallRequest):
         
         # This would call the MCP installer module
         # For now, just return a mock response
-        return {"status": f"Installed MCP server {server_name} with args: {args} and env: {env}"}
+        return {"status": f"MCP server installation requested for {server_name}"}
     except Exception as e:
-        return {"error": f"Error installing MCP server: {str(e)}"}
+        return {"error": "Error installing MCP server. Please try again later."}
 
 
 # Serve the chat UI

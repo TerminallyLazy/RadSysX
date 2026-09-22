@@ -170,8 +170,7 @@ async def run_biomedparse_demo(request: BiomedParseDemoRunRequest) -> BiomedPars
     (run_dir / "stderr.log").write_bytes(stderr)
 
     if process.returncode != 0:
-        detail = _tail_text(stderr) or _tail_text(stdout) or "BioMedParse worker failed."
-        raise HTTPException(status_code=502, detail=detail)
+        raise HTTPException(status_code=502, detail="BioMedParse worker failed.")
 
     summary_path = run_dir / "summary.json"
     if not summary_path.is_file():
@@ -193,9 +192,14 @@ async def run_biomedparse_demo(request: BiomedParseDemoRunRequest) -> BiomedPars
 def biomedparse_demo_artifact_path(run_id: str, filename: Literal["mask.npz", "preview.png"]) -> Path:
     if not RUN_ID_PATTERN.fullmatch(run_id):
         raise HTTPException(status_code=400, detail="Invalid BioMedParse demo run id.")
-    path = (_runs_dir() / run_id / filename).resolve()
+    if filename not in {"mask.npz", "preview.png"}:
+        raise HTTPException(status_code=400, detail="Invalid BioMedParse demo artifact name.")
+    # Both components are single names; resolve symlinks before checking containment.
     runs_root = _runs_dir().resolve()
-    if path.parent.parent != runs_root:
+    run_dir = runs_root / os.path.basename(run_id)
+    candidate = run_dir / os.path.basename(filename)
+    path = candidate.resolve()
+    if run_dir.is_symlink() or candidate.is_symlink() or path.parent.parent != runs_root:
         raise HTTPException(status_code=403, detail="BioMedParse demo artifact path is outside the runs directory.")
     if not path.is_file():
         raise HTTPException(status_code=404, detail="BioMedParse demo artifact was not found.")

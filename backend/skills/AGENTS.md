@@ -22,3 +22,7 @@
 ## Verification
 
 ## Child DOX Index
+
+## Script privacy
+
+- DICOM anonymization scripts report field names and actions only, including verbose mode. Do not print original/replacement patient values, input/output paths, or exception text that may contain identifiers.

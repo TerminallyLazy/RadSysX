@@ -7,7 +7,9 @@
     "build": "node ./scripts/build-ohif-dist.mjs",
     "dev": "npm run build && http-server ./dist -p 3001 -c-1",
     "test:fhir-bridge": "node ./scripts/test-fhir-bridge.mjs",
-    "type-check": "tsc --noEmit -p ./tsconfig.json"
+    "type-check": "tsc --noEmit -p ./tsconfig.json",
+    "audit:ohif": "node ./scripts/build-ohif-source.mjs --audit",
+    "test:security": "node ./scripts/test-security-dependencies.mjs"
   },
   "dependencies": {
     "@ohif/app": "3.13.4",

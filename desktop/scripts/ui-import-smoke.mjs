@@ -1135,8 +1135,14 @@ function viewerRenderProbeInRenderer() {
     }
     const width = Math.min(canvas.width, 48);
     const height = Math.min(canvas.height, 48);
-    const data = context.getImageData(0, 0, width, height).data;
-    return summarizePixels(data);
+    // Sample the whole image, not the top-left corner (which may be a black
+    // DICOM pixel or letterbox margin on the software canvas renderer).
+    const probe = document.createElement("canvas");
+    probe.width = width;
+    probe.height = height;
+    const probeContext = probe.getContext("2d", { willReadFrequently: true });
+    probeContext.drawImage(canvas, 0, 0, width, height);
+    return summarizePixels(probeContext.getImageData(0, 0, width, height).data);
   };
 
   const sampleWebglCanvas = (canvas) => {

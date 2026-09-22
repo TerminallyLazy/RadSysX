@@ -63,23 +63,23 @@ async def test_mcp_server():
             )
             if search_result and search_result.get("entry"):
                 patient_id = search_result["entry"][0]["resource"]["id"]
-                logger.info(f"Testing with patient ID: {patient_id}")
+                logger.info("Testing with an available patient resource")
                 
                 # Read patient demographics
                 demographics = await server.call_tool(
                     "get_patient_demographics", {"patient_id": patient_id}
                 )
-                logger.info(f"Patient demographics: {demographics}")
+                logger.info("Patient demographics request completed")
                 
                 # Test medication list (which may be empty for test patients)
                 medications = await server.call_tool(
                     "get_medication_list", {"patient_id": patient_id}
                 )
-                logger.info(f"Medication list: {medications}")
+                logger.info("Medication list request completed")
             else:
                 logger.warning("No patient resources found for testing")
         except Exception as e:
-            logger.error(f"Error testing Patient resource: {e}")
+            logger.error("Patient resource test failed")
     
     return server
 
@@ -107,10 +107,10 @@ async def test_mcp_client():
         # Test patient demographics if patients exist
         if search_results.get("entry"):
             patient_id = search_results["entry"][0]["resource"]["id"]
-            logger.info(f"Testing with patient ID: {patient_id}")
+            logger.info("Testing with an available patient resource")
             
             demographics = await client.get_patient_demographics(patient_id)
-            logger.info(f"Patient demographics via client: {demographics}")
+            logger.info("Client demographics request completed")
     
     return client
 
@@ -159,7 +159,7 @@ async def main():
         logger.info("All tests completed successfully!")
         
     except Exception as e:
-        logger.error(f"Error during testing: {e}")
+        logger.error("MCP integration test failed")
         raise
 
 

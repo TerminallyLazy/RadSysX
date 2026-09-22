@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "dev": "next dev --webpack",
@@ -63,7 +63,6 @@
     "baseline-browser-mapping": "^2.9.19",
     "browserify-zlib": "^0.2.0",
     "buffer": "^6.0.3",
-    "crypto-browserify": "^3.12.1",
     "eslint": "^8.54.0",
     "eslint-config-next": "^15.3.3",
     "eslint-plugin-import": "^2.32.0",

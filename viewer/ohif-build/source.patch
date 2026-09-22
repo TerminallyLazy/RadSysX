@@ -1,0 +1,112 @@
+diff --git a/.webpack/resolveConfig.js b/.webpack/resolveConfig.js
+index 8dcbbe5..83b1985 100644
+--- a/.webpack/resolveConfig.js
++++ b/.webpack/resolveConfig.js
+@@ -15,6 +15,7 @@ const path = require('path');
+ // is doing the resolving.
+ 
+ const alias = {
++  '@ohif/ui-next$': path.resolve(__dirname, '../platform/ui-next/src/index.ts'),
+   // Some extensions import app-level utilities (e.g. history,
+   // preserveQueryParameters) from '@ohif/app'. pnpm's isolated layout does not
+   // expose the top-level app package to those extensions, and adding it as a
+diff --git a/package.json b/package.json
+index 579879b..5347003 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "ohif-monorepo-root",
+   "private": true,
+-  "packageManager": "pnpm@11.5.2",
++  "packageManager": "pnpm@11.27.1",
+   "engines": {
+     "node": ">=24",
+     "pnpm": ">=11"
+@@ -83,17 +83,12 @@
+     "@babel/preset-react": "7.29.7",
+     "@babel/preset-typescript": "7.29.7",
+     "@istanbuljs/nyc-config-typescript": "1.0.2",
+-    "@rsbuild/core": "1.7.3",
+-    "@rsbuild/plugin-node-polyfill": "1.4.4",
+-    "@rsbuild/plugin-react": "1.4.5",
+     "babel-jest": "29.7.0",
+     "babel-loader": "8.4.1",
+     "babel-plugin-istanbul": "7.0.1",
+     "babel-plugin-transform-import-meta": "2.3.3",
+     "cross-env": "7.0.3",
+     "css-loader": "6.11.0",
+-    "cypress": "14.5.2",
+-    "cypress-file-upload": "5.0.8",
+     "file-loader": "6.2.0",
+     "identity-obj-proxy": "3.0.0",
+     "jest": "29.7.0",
+diff --git a/platform/app/package.json b/platform/app/package.json
+index 75b2b0e..fbc4f16 100644
+--- a/platform/app/package.json
++++ b/platform/app/package.json
+@@ -71,7 +71,6 @@
+     "i18next": "17.3.1",
+     "i18next-browser-languagedetector": "3.1.1",
+     "lodash.isequal": "4.5.0",
+-    "oidc-client": "1.11.5",
+     "oidc-client-ts": "3.3.0",
+     "prop-types": "15.8.1",
+     "query-string": "6.14.1",
+diff --git a/platform/app/public/silent-refresh.html b/platform/app/public/silent-refresh.html
+index 089c94b..57be3f3 100644
+--- a/platform/app/public/silent-refresh.html
++++ b/platform/app/public/silent-refresh.html
+@@ -1,25 +1,11 @@
+ <!doctype html>
+ <html lang="en">
+-  <head>
+-    <meta charset="UTF-8" />
+-    <title>Silent OpenID Connect Token Refresh Page</title>
+-  </head>
++  <head><meta charset="UTF-8" /><title>OpenID Connect Token Refresh</title></head>
+   <body>
+-    <script src="https://cdnjs.cloudflare.com/ajax/libs/es5-shim/4.5.7/es5-shim.min.js"></script>
+-    <script
+-      type="text/javascript"
+-      src="es6-shim.min.js"
+-    ></script>
+-    <script
+-      type="text/javascript"
+-      src="oidc-client.min.js"
+-    ></script>
+-    <script
+-      type="text/javascript"
+-      src="polyfill.min.js"
+-    ></script>
+-    <script type="text/javascript">
+-      new UserManager().signinSilentCallback().catch(console.error);
++    <script src="oidc-client-ts.min.js"></script>
++    <script>
++      new oidc.UserManager({ authority: window.location.origin, client_id: 'silent-callback', redirect_uri: window.location.href })
++        .signinSilentCallback().catch(function () { console.error('Silent token refresh failed.'); });
+     </script>
+   </body>
+ </html>
+diff --git a/platform/app/src/utils/OpenIdConnectRoutes.tsx b/platform/app/src/utils/OpenIdConnectRoutes.tsx
+index b70aa60..bb6a311 100644
+--- a/platform/app/src/utils/OpenIdConnectRoutes.tsx
++++ b/platform/app/src/utils/OpenIdConnectRoutes.tsx
+@@ -3,7 +3,6 @@ import { useEffect, useMemo } from 'react';
+ import { Route, Routes, useLocation, useNavigate } from 'react-router';
+ import CallbackPage from '../routes/CallbackPage';
+ import SignoutCallbackComponent from '../routes/SignoutCallbackComponent';
+-import LegacyClient from './legacyOIDCClient';
+ import NextClient from './nextOIDCClient';
+ import { sanitizeSameOriginRedirect } from './sanitizeRedirect';
+ 
+@@ -45,7 +44,8 @@ const initUserManager = (oidc, routerBasename) => {
+     post_logout_redirect_uri: _makeAbsoluteIfNecessary(post_logout_redirect_uri, baseUri),
+   });
+ 
+-  const client = firstOpenIdClient.response_type === 'code' ? NextClient : LegacyClient;
++  // RadSysX only supports authorization-code flow with PKCE.
++  const client = NextClient;
+ 
+   return client(openIdConnectConfiguration);
+ };

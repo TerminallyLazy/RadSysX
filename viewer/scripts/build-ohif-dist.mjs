@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { buildOhifSource } from "./build-ohif-source.mjs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,11 +12,7 @@ const viewerRoot = path.resolve(__dirname, "..");
 const distRoot = path.join(viewerRoot, "dist");
 const workspaceRoot = path.resolve(viewerRoot, "..");
 const fhirVendorRoot = path.join(viewerRoot, "vendor", "ohif-fhir-viewer");
-const candidateSourceDists = [
-  path.join(viewerRoot, "node_modules", "@ohif", "app", "dist"),
-  path.join(workspaceRoot, "node_modules", "@ohif", "app", "dist"),
-];
-const sourceDist = candidateSourceDists.find((candidate) => fs.existsSync(candidate));
+const { sourceDist, receipt } = buildOhifSource();
 const copiedRuntimeAssetNames = [
   "radsysx-bootstrap.js",
   "radsysx-fhir-extension.js",
@@ -35,6 +32,7 @@ if (!sourceDist) {
 fs.rmSync(distRoot, { recursive: true, force: true });
 fs.mkdirSync(distRoot, { recursive: true });
 fs.cpSync(sourceDist, distRoot, { recursive: true });
+fs.writeFileSync(path.join(distRoot, "radsysx-build.json"), JSON.stringify(receipt, null, 2) + "\n");
 
 for (const assetName of copiedRuntimeAssetNames) {
   copyViewerAsset(assetName);
@@ -59,7 +57,10 @@ function copyViewerAsset(fileName) {
 }
 
 function copyWorkspaceAsset(relativeParts, outputName) {
-  const assetPath = path.join(workspaceRoot, "node_modules", ...relativeParts);
+  const packageRoot = path.dirname(require.resolve(`${relativeParts[0]}/package.json`, {
+    paths: [path.join(workspaceRoot, "frontend")],
+  }));
+  const assetPath = path.join(packageRoot, ...relativeParts.slice(1));
   if (!fs.existsSync(assetPath)) {
     throw new Error(`Required viewer asset was not found: ${assetPath}`);
   }
@@ -299,8 +300,10 @@ function patchIndexHtml() {
     "window.PUBLIC_URL = window.__RADSYSX_PUBLIC_URL__;",
   ].join(" ");
 
-  html = html.replace("window.PUBLIC_URL = '/';", publicUrlBootstrap);
-  html = html.replace("window.PUBLIC_URL = '/';", "window.PUBLIC_URL = window.__RADSYSX_PUBLIC_URL__;");
+  const publicUrlAssignment = /window\.PUBLIC_URL\s*=\s*["']\/["']/;
+  if (!publicUrlAssignment.test(html)) throw new Error("OHIF public URL bootstrap was not found.");
+  html = html.replace(publicUrlAssignment, () => `(function () { ${publicUrlBootstrap} return window.PUBLIC_URL; })()`);
+  html = html.replace(/window\.PUBLIC_URL\s*=\s*["']\/["']/g, "window.PUBLIC_URL = window.__RADSYSX_PUBLIC_URL__");
   html = html.replace(/(src|href|content)=\"\/assets\//g, '$1="assets/');
   html = html.replace(/(src|href)=\"\//g, '$1="');
   html = html.replace(
@@ -342,8 +345,8 @@ function patchRuntimePublicPath() {
         ].includes(fileName),
     )
     .map((fileName) => path.join(distRoot, fileName));
-  const current = /__webpack_require__\.p\s*=\s*["']\/["'];/g;
-  const next = `__webpack_require__.p = ((function resolveRadSysXPublicUrl() {
+  const current = /\b([A-Za-z_$][\w$]*)\.p\s*=\s*["']\/["']/g;
+  const next = `$1.p = ((function resolveRadSysXPublicUrl() {
   function normalizePublicUrl(value) {
     if (!value) {
       return null;
@@ -397,7 +400,7 @@ function patchRuntimePublicPath() {
     "";
   const normalizedPathname = normalizePublicUrl(locationPathname);
   return normalizedPathname || "/";
-})());`;
+})())`;
   let patchedCount = 0;
 
   for (const bundlePath of bundlePaths) {

@@ -35,7 +35,7 @@ const nextConfig = {
       // Stub out Node.js built-ins that WASM codecs reference but don't need in-browser
       fs: { browser: path.join(frontendRoot, 'empty-module.js') },
       path: 'path-browserify',
-      crypto: 'crypto-browserify',
+      crypto: { browser: path.join(frontendRoot, 'empty-module.js') },
       stream: 'stream-browserify',
       // Client-side polyfills for Cornerstone3D and DICOM dependencies
       buffer: 'buffer',
@@ -80,7 +80,7 @@ const nextConfig = {
         buffer: require.resolve('buffer'),
         process: require.resolve('process/browser'),
         path: require.resolve('path-browserify'),
-        crypto: require.resolve('crypto-browserify'),
+        crypto: false,
         stream: require.resolve('stream-browserify'),
         util: require.resolve('util'),
       };
