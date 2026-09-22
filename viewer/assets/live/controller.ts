@@ -1,8 +1,13 @@
+import { EvidenceController } from './evidence.js';
+import type { EvidenceReviewAvailability } from './protocol.js';
 import { LiveAudio } from './audio.js';
 import { OHIFAdapter } from './ohif.js';
 import { EventGate, TranscriptStore, object, parseEvent, request, safeUrl, toolFromWire, type AIResearchSettings, type AIResearchModels, type ResearchProviderId, type AICredentialStatusResponse, type Attestation, type ProviderId, type ProviderProfile, type AudioChunk, type CaptureRequest, type Citation, type DesktopCapture, type Json, type ServerEvent, type Session, type SavedConversation, type Tool } from './protocol.js';
 
 export class LiveController {
+  readonly evidence = new EvidenceController(() => this.emit());
+  evidenceAvailability?: EvidenceReviewAvailability;
+  get evidenceSessionId(): string | undefined { return this.historical ? this.viewedHistoryId : this.session?.sessionId; }
   status = 'loading';
   message = 'Checking assistant configuration…';
   availability = 'unavailable';
@@ -94,7 +99,7 @@ export class LiveController {
       if (!this.session || this.closed) return;
       try {
         const auth = await request<{ authenticated: boolean }>('/api/auth/session');
-        if (!auth.authenticated) { await this.end(); this.status = 'unavailable'; this.message = 'Sign in to reconnect.'; this.emit(); }
+        if (!auth.authenticated) { this.evidence.dispose(); await this.end(); this.status = 'unavailable'; this.message = 'Sign in to reconnect.'; this.emit(); }
       } catch { /* The WebSocket owns transient connection recovery. */ }
     }, 15000);
     void this.initialize();
@@ -127,6 +132,7 @@ export class LiveController {
     this.initializing = true; this.status = 'loading'; this.message = 'Checking assistant configuration…'; this.emit();
     try {
       const capabilities = await request<Json>('/api/ai/sidebar/capabilities');
+      this.evidenceAvailability = capabilities.evidenceReview as EvidenceReviewAvailability | undefined;
       this.providers = (Array.isArray(capabilities.providers) ? capabilities.providers : []).flatMap(value => {
         const profile = object(value);
         if (!['gemini', 'openai'].includes(String(profile.id)) || ![16000, 24000].includes(Number(profile.inputSampleRate)) || profile.outputSampleRate !== 24000 || typeof profile.modelId !== 'string') return [];
@@ -490,6 +496,7 @@ export class LiveController {
     if (this.credentialsBusy || this.researchLoading || !this.researchModels.includes(this.researchModelId)
         || !this.researchSettings?.providers.find(provider => provider.id === this.researchProviderId)?.configured) return;
     const payload = { providerId: this.researchProviderId, modelId: this.researchModelId };
+    this.evidence.dispose();
     this.credentialsBusy = true; this.credentialInputEpoch += 1;
     this.researchMessage = 'Ending active sessions and saving your research model…'; this.requireAttestation(); this.emit();
     try {
@@ -531,6 +538,7 @@ export class LiveController {
     if (apiKey !== undefined && !apiKey.trim()) { this.credentialMessage = 'Enter an API key before saving.'; this.emit(); return; }
     if (saving && !this.credentials?.storageAvailable) { this.credentialMessage = 'Secure key storage is unavailable. Retry key settings before saving.'; this.emit(); return; }
     if (apiKey === undefined && this.credentials?.providers.find(provider => provider.id === id)?.source !== 'saved') { this.credentialMessage = 'There is no saved key to remove.'; this.emit(); return; }
+    this.evidence.dispose();
     this.credentialsBusy = true; this.credentialMessage = 'Ending the current session and updating your key…'; this.requireAttestation(); this.emit();
     try {
       await this.end();
@@ -572,6 +580,7 @@ export class LiveController {
   private failMessage(error: unknown): void { this.message = error instanceof Error ? error.message : 'The assistant is unavailable.'; }
   private fail(error: unknown): void { this.failMessage(error); this.status = 'unavailable'; this.audio.close(); this.emit(); }
   dispose(): void {
+    this.evidence.dispose();
     this.credentialInputEpoch += 1; this.emit();
     clearInterval(this.authTimer);
     this.closed = true; this.generation += 1; clearTimeout(this.captureTimer); clearTimeout(this.contextTimer); clearTimeout(this.reconnectTimer);

@@ -914,7 +914,7 @@ body.radsysx-local-viewer [data-radsysx-local-upload-modal="true"] button:focus-
 .radsysx-live-shell .radsysx-ai-message-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; line-height: 1.65; }
 .radsysx-live-tools { padding: 0 0.8rem; }
 .radsysx-live-tool { border: 1px solid #2d4943; border-radius: 0.55rem; padding: 0.65rem; margin-bottom: 0.4rem; background: #11211f; }
-.radsysx-live-tool > div:first-child { display: flex; justify-content: space-between; gap: 0.5rem; align-items: start; font-size: 0.7rem; }
+.radsysx-live-tool > .radsysx-live-tool-body > div:first-child { display: flex; justify-content: space-between; gap: 0.5rem; align-items: start; font-size: 0.7rem; }
 .radsysx-live-tool strong { color: #c5eadc; font-weight: 550; }
 .radsysx-live-tool span, .radsysx-live-tool summary { color: #8fb2a5; font-size: 0.65rem; }
 .radsysx-live-tool details { margin: 0.4rem 0; }
@@ -954,3 +954,21 @@ body.radsysx-local-viewer [data-radsysx-local-upload-modal="true"] button:focus-
 .radsysx-live-credentials form > div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .radsysx-live-credentials button { border: 1px solid #496a5c; border-radius: 5px; padding: 7px 9px; background: #19392c; color: #d5f8e8; font-size: 11px; cursor: pointer; }
 .radsysx-live-credentials button[type="submit"] { background: #b5f3dc; color: #09241b; border-color: #b5f3dc; }
+
+/* Saved evidence stays inside the scrollable research card, below its unchanged answer. */
+.radsysx-evidence { margin-top: 0.6rem; border-top: 1px solid #38594f; padding-top: 0.6rem; font-size: 0.72rem; line-height: 1.5; overflow-wrap: anywhere; min-width: 0; }
+.radsysx-evidence [data-evidence-status] { display: grid; gap: 0.15rem; margin-bottom: 0.4rem; }
+.radsysx-evidence [data-evidence-detail] { margin-top: 0.5rem; }
+.radsysx-evidence [data-evidence-actions] { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
+.radsysx-evidence fieldset { border: 1px solid #405f54; border-radius: 0.4rem; min-width: 0; padding: 0.5rem; }
+.radsysx-evidence fieldset label { display: flex; align-items: start; gap: 0.5rem; margin: 0.5rem 0; }
+.radsysx-evidence input[type="checkbox"] { flex: 0 0 auto; margin-top: 0.25rem; accent-color: #b5f3dc; }
+.radsysx-evidence select { width: 100%; min-width: 0; background: #0b1d17; color: #d5f8e8; border: 1px solid #567367; border-radius: 0.35rem; padding: 0.45rem; font-size: 0.7rem; }
+.radsysx-evidence-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.radsysx-evidence .radsysx-evidence-text { color: #d1e5de; font-size: 0.72rem; }
+.radsysx-evidence-judgment { border-left: 2px solid #638d7c; padding-left: 0.5rem; margin: 0.8rem 0; }
+.radsysx-evidence a { color: #a8ddcc; text-decoration: underline; }
+.radsysx-evidence dt { margin-top: 0.5rem; color: #8fb2a5; }
+.radsysx-evidence dd { margin: 0; font-size: 0.65rem; overflow-wrap: anywhere; }
+.radsysx-evidence summary { cursor: pointer; }
+.radsysx-evidence button[data-evidence-action="start"] { background: #b5f3dc; color: #09241b; }

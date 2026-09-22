@@ -1,3 +1,4 @@
+import { evidenceEligibility, mountEvidencePanel } from './evidence-panel.js';
 import { LiveController } from './controller.js';
 import { escape, object, safeUrl, type Attestation, type Json, type ProviderId, type ResearchProviderId } from './protocol.js';
 
@@ -18,6 +19,7 @@ export function credentialSettingsMarkup(): string {
       <p role="status" aria-live="polite" data-role="research-message"></p>
       <div><button type="submit" data-action="save-research-model">Save research model</button><button type="button" data-action="refresh-research-models">Refresh models</button><button type="button" data-action="reload-research-settings">Reload settings</button></div>
     </form>
+    <p data-role="jev-availability"></p>
     <h4>API keys</h4>
     <p>Add your own provider keys. Changing a key ends all your active assistant sessions and background tasks. Your next conversation requires fresh data confirmation.</p>
     ${(['gemini', 'openai'] as const).map(id => `<form data-credential-provider="${id}" autocomplete="off">
@@ -53,7 +55,7 @@ export function registerPanel(controller: LiveController): void {
     private attestationEpoch = -1;
     private mentionOpen = false;
     private threadSignature = '';
-    private toolSignature = '';
+    private evidenceCards = new Map<string, { article: HTMLElement; body: HTMLElement; signature: string; review?: ReturnType<typeof mountEvidencePanel> }>();
     private providerSignature = '';
     private suggestionSignature = '';
     private credentialInputEpoch = -1;
@@ -163,9 +165,10 @@ export function registerPanel(controller: LiveController): void {
           }
         });
       }
+      void controller.evidence.selectSession(controller.evidenceSessionId);
       this.unsubscribe = controller.subscribe(() => this.render());
     }
-    disconnectedCallback(): void { this.clearKeyInputs(); this.unsubscribe?.(); this.unsubscribe = undefined; }
+    disconnectedCallback(): void { controller.evidence.dispose(); this.evidenceCards.forEach(card => card.review?.dispose()); this.evidenceCards.clear(); this.node('tools').replaceChildren(); this.clearKeyInputs(); this.unsubscribe?.(); this.unsubscribe = undefined; }
     private clearKeyInputs(): void { this.querySelectorAll<HTMLInputElement>('input[data-key-provider]').forEach(input => { input.value = ''; }); }
     private renderCredentials(): void {
       if (this.credentialInputEpoch !== controller.credentialInputEpoch) { this.credentialInputEpoch = controller.credentialInputEpoch; this.clearKeyInputs(); }
@@ -173,6 +176,8 @@ export function registerPanel(controller: LiveController): void {
       this.querySelectorAll<HTMLElement>('.radsysx-live-shell > *').forEach(node => { if (node !== this.node('credentials')) node.inert = controller.credentialsOpen; });
       this.button('credentials').setAttribute('aria-expanded', String(controller.credentialsOpen));
       this.node('credential-message').textContent = controller.credentialMessage;
+      const jev = controller.evidenceAvailability;
+      this.node('jev-availability').textContent = jev ? `Jev · ${jev.modelId} · ${jev.availability.charAt(0).toUpperCase() + jev.availability.slice(1)}. ${jev.reason} Open a completed PubMed research card to review its evidence.` : 'Jev · availability not loaded.';
       const provider = this.node<HTMLSelectElement>('research-provider'), model = this.node<HTMLSelectElement>('research-model');
       const providerOptions = (controller.researchSettings?.providers ?? []).map(item => `<option value="${escape(item.id)}">${escape(item.label)}${item.configured ? '' : ' · not configured'}</option>`).join('');
       if (provider.innerHTML !== providerOptions) provider.innerHTML = providerOptions;
@@ -208,6 +213,7 @@ export function registerPanel(controller: LiveController): void {
     private button(action: string): HTMLButtonElement { return this.querySelector(`[data-action="${action}"]`)!; }
     private render(): void {
       this.renderCredentials();
+      if (!controller.credentialsBusy && (controller.evidence.suspended || controller.evidence.sessionId !== controller.evidenceSessionId)) void controller.evidence.selectSession(controller.evidenceSessionId);
       if (this.lastTarget !== controller.targetId || this.attestationEpoch !== controller.attestationEpoch) {
         this.attestationEpoch = controller.attestationEpoch;
         this.lastTarget = controller.targetId; this.attestation = undefined;
@@ -263,13 +269,29 @@ export function registerPanel(controller: LiveController): void {
       this.node('report').hidden = !report;
       this.node('report').innerHTML = report ? `<strong>Draft report · unsaved</strong><p>${report.targetId === controller.targetId ? 'Review before saving. Local files must be imported through the worklist and opened as a study to save a report.' : 'This draft belongs to a previously selected image.'}</p><details open><summary>Findings and impression</summary><div class="radsysx-live-report-text">${escape(report.findings)}<hr>${escape(report.impression)}</div></details><button type="button" data-action="undo-draft">Undo latest edit</button>` : '';
       const visibleTools = [...controller.tools.values()].slice(-12);
-      const toolSignature = JSON.stringify([visibleTools, controller.historical]);
-      if (toolSignature !== this.toolSignature) {
-        this.toolSignature = toolSignature;
-        this.node('tools').innerHTML = visibleTools.map(tool => {
+      const visibleIds = new Set(visibleTools.map(tool => tool.id));
+      for (const [id, card] of this.evidenceCards) if (!visibleIds.has(id)) { card.review?.dispose(); card.article.remove(); this.evidenceCards.delete(id); }
+      for (const tool of visibleTools) {
+        let card = this.evidenceCards.get(tool.id);
+        if (!card) {
+          const article = document.createElement('article'); article.className = 'radsysx-live-tool';
+          const body = document.createElement('div'); body.className = 'radsysx-live-tool-body'; article.append(body); this.node('tools').append(article);
+          card = { article, body, signature: '' }; this.evidenceCards.set(tool.id, card);
+        }
+        const signature = JSON.stringify([tool, controller.historical]);
+        if (signature !== card.signature) {
+          card.signature = signature;
           const pending = !controller.historical && !['completed', 'failed', 'cancelled', 'declined', 'rejected', 'denied', 'interrupted', 'outcome_unknown'].includes(tool.status);
-          return `<article class="radsysx-live-tool"><div><strong>${escape(tool.name.replace(/_/g, ' '))}</strong><span>${escape(tool.status)}</span></div><details${tool.approval ? ' open' : ''}><summary>${tool.approval ? 'Review this action' : 'Details'}</summary><pre>${escape(JSON.stringify(tool.args, null, 2))}</pre></details>${renderToolResult(tool.result)}${tool.approval ? `<div class="radsysx-live-review"><button type="button" data-action="approve" data-id="${escape(tool.id)}">Approve</button><button type="button" data-action="decline" data-id="${escape(tool.id)}">Decline</button></div>` : pending ? `<button type="button" data-action="cancel" data-id="${escape(tool.id)}">Cancel task</button>` : ''}</article>`;
-        }).join('');
+          card.body.innerHTML = `<div><strong>${escape(tool.name.replace(/_/g, ' '))}</strong><span>${escape(tool.status)}</span></div><details${tool.approval ? ' open' : ''}><summary>${tool.approval ? 'Review this action' : 'Details'}</summary><pre>${escape(JSON.stringify(tool.args, null, 2))}</pre></details>${renderToolResult(tool.result)}${tool.approval ? `<div class="radsysx-live-review"><button type="button" data-action="approve" data-id="${escape(tool.id)}">Approve</button><button type="button" data-action="decline" data-id="${escape(tool.id)}">Decline</button></div>` : pending ? `<button type="button" data-action="cancel" data-id="${escape(tool.id)}">Cancel task</button>` : ''}`;
+          if (tool.name === 'research_run' && !card.review) {
+            const reason = evidenceEligibility(tool);
+            if (!reason) {
+              const host = document.createElement('section'); host.dataset.evidenceTool = tool.id; card.article.append(host);
+              card.review = mountEvidencePanel(host, controller.evidence);
+            } else { const note = document.createElement('p'); note.textContent = reason; card.body.append(note); }
+          }
+        }
+        card.review?.update();
       }
       this.node('sources').innerHTML = controller.citations.length ? '<strong>Sources</strong>' + controller.citations.map(source => `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">${escape(source.title)} ↗</a>`).join('') : '';
       if (this.suggestionSignature !== controller.suggestionsHtml) {

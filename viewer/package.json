@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit -p ./tsconfig.json && tsc --noEmit -p ./tsconfig.live.json && tsc -p ./tsconfig.live-contracts.json",
     "audit:ohif": "node ./scripts/build-ohif-source.mjs --audit",
     "test:security": "node ./scripts/test-security-dependencies.mjs",
-    "test:live": "node ./scripts/build-live.mjs --compile && node --test ./scripts/test-live.mjs"
+    "test:live": "node ./scripts/build-live.mjs --compile && node --test ./scripts/test-live.mjs ./scripts/test-evidence.mjs"
   },
   "dependencies": {
     "@ohif/app": "3.13.4",

@@ -41,3 +41,4 @@
 
 - Live tests cover research-selection save/attestation boundaries, stale catalog response suppression, preserved selection on catalog failure, and credential changes updating research availability without replacing a pending dropdown selection. Shared compile checks include research settings and catalog response shapes.
 - Shared compile assertions also cover bidirectional evidence-review detail/start/retry/availability shapes. Their independent HTTP contract never modifies the live conversation protocol.
+- `test:live` compiles once and runs both `test-live.mjs` and `test-evidence.mjs`. Review tests use synthetic wire fixtures and mock timers to prove confirmation/selection, stable uncertain idempotency, old-response rejection, bounded polling, no inference on reopen/refresh and escaped abstract-scoped presentation. The guarded Electron smoke owns actual DOM/focus/layout acceptance.
