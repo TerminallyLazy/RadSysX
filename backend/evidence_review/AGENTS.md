@@ -66,3 +66,6 @@ None.
 
 - `nim.py` implements the `nvidia_nim` catalog and evaluator on fixed NVIDIA hosted endpoints. Use backend-only `RADSYSX_NVIDIA_API_KEY` and an explicit `replay --model`. Catalog output lists IDs only and does not certify tools, JSON support, availability or free usage. NIM judgments have no probabilities; exact response model/finish state/label and token usage are validated, reasoning text discarded. The shared runner owns limits, retries and immutable resume.
 - NIM evaluation uses direct HTTP; NIM research uses the separate native DeepAgents/LangGraph worker. Capture remains Gemini-only so the existing study generation protocol stays fixed.
+
+- Optional selected-unit evaluation projects executable pairs from the fully rebuilt immutable plan; it never rewrites the original answer or weakens span/citation validation. Selection is bound into explicit resume identity; old unselected CLI runs remain compatible.
+- Callers may supply a synchronous pre-attempt guard and committed-progress callback. Guards prevent submission with a distinct nonsemantic reason, including on retries; callbacks see only successfully committed manifests. Callback persistence failure stops scheduling as local storage failure. Actor/database authority remains outside this package.

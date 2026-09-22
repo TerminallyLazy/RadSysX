@@ -3,14 +3,14 @@ import asyncio
 from collections import deque
 from datetime import datetime, timezone
 import random
-from typing import Protocol
+from typing import Callable, Protocol
 import uuid
 
 from .artifacts import ArtifactStore, RunView
 from .contracts import (Assessment, AttemptOutcome, AttemptRecord, Limits, PreparedRequest,
                         ReviewPair, ReviewPlan, RunResult, Snapshot, SpanAnnotation, load_snapshot)
 from .serialization import canonical_json, sha256_bytes
-from .units import build_review_plan
+from .units import build_review_plan, select_review_plan
 
 
 class Evaluator(Protocol):
@@ -39,12 +39,19 @@ def _utc():
 
 async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Evaluator,
                             store: ArtifactStore, limits: Limits, cancel: asyncio.Event,
-                            resume: RunView | None = None, experiment_sha256: str | None = None) -> RunResult:
+                            resume: RunView | None = None, experiment_sha256: str | None = None,
+                            selected_unit_ids: tuple[str, ...] | None = None,
+                            before_attempt: Callable[[], str | None] | None = None,
+                            on_commit: Callable[[RunView], None] | None = None) -> RunResult:
     snapshot = load_snapshot(canonical_json(snapshot.model_dump(mode="json")), limits=limits)
     annotations = tuple(SpanAnnotation(start=u.start,end=u.end,citation_spans=u.citation_spans)
                         for u in plan.units if u.origin == "curated")
     expected = build_review_plan(snapshot,limits=limits,annotations=annotations)
-    if expected != plan or (resume and (resume.snapshot is None or resume.snapshot != snapshot)):
+    expected = select_review_plan(expected, selected_unit_ids=selected_unit_ids)
+    selection = ([u.unit_id for u in expected.units if u.unit_id in selected_unit_ids]
+                 if selected_unit_ids is not None else None)
+    if expected != plan or (resume and (resume.snapshot is None or resume.snapshot != snapshot
+                                       or resume.manifest.get("selected_unit_ids") != selection)):
         raise ValueError("evaluation_input_mismatch")
     loop = asyncio.get_running_loop()
     started_at = _utc()
@@ -53,6 +60,8 @@ async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Ev
     failure = None
     storage_failed = False
     manifest = {"schema_version":1, "objects":[], "request_refs":[], "attempt_refs":[], "assessment_refs":[], "cache":{}}
+    if selection is not None:
+        manifest["selected_unit_ids"] = selection
     attempts = {a.attempt_id:a for a in resume.attempts} if resume else {}
     assessments = {}
     attempt_refs = {}
@@ -85,7 +94,9 @@ async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Ev
         manifest["assessment_refs"] = list(assessment_refs.values())
         try:
             store.commit_manifest(manifest)
-        except (OSError, ValueError):
+            if on_commit is not None:
+                on_commit(store.load_run())
+        except Exception:
             storage_failed = True
             raise LocalStorageFailure() from None
 
@@ -171,9 +182,13 @@ async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Ev
                     remaining = deadline - loop.time()
                     if remaining <= 0:
                         raise TimeoutError
-                    submitted = True
-                    async with asyncio.timeout(min(limits.attempt_seconds,remaining)):
-                        outcome = await adapter.attempt(request)
+                    blocked = before_attempt() if before_attempt is not None else None
+                    if blocked:
+                        outcome = AttemptOutcome(reason=blocked, stop_evaluator=True, submitted=False)
+                    else:
+                        submitted = True
+                        async with asyncio.timeout(min(limits.attempt_seconds,remaining)):
+                            outcome = await adapter.attempt(request)
                 except TimeoutError:
                     outcome = AttemptOutcome(reason="snapshot_deadline" if loop.time() >= deadline else "timeout",
                         retryable=loop.time() < deadline,submitted=submitted,elapsed_seconds=loop.time()-attempt_started)

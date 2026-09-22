@@ -150,3 +150,23 @@ def build_review_plan(snapshot: Snapshot, *, limits: Limits, annotations: tuple[
                 pair_ids.append(pair_id)
         coverage.append(CoverageItem(start=start,end=end,unit_id=unit.unit_id,pair_ids=tuple(pair_ids),reason=reasons[0] if reasons else None))
     return ReviewPlan(snapshot_sha256=snapshot.snapshot_sha256,units=tuple(units),pairs=tuple(pairs),coverage=tuple(coverage),excluded_pairs=tuple(excluded))
+
+
+def select_review_plan(plan: ReviewPlan, *, selected_unit_ids: tuple[str, ...] | None) -> ReviewPlan:
+    """Project executable pairs without rewriting any original answer span."""
+    if selected_unit_ids is None:
+        return plan
+    selected = set(selected_unit_ids)
+    eligible = {pair.unit.unit_id for pair in plan.pairs}
+    if not selected or len(selected) != len(selected_unit_ids) or not selected <= eligible:
+        raise ValueError("invalid_unit_selection")
+    removed = tuple(p for p in plan.pairs if p.unit.unit_id not in selected)
+    pairs = tuple(p for p in plan.pairs if p.unit.unit_id in selected)
+    removed_ids = {p.pair_id for p in removed}
+    coverage = tuple(item.model_copy(update={
+        "pair_ids": tuple(p for p in item.pair_ids if p not in removed_ids),
+        "reason": item.reason or "user_excluded",
+    }) if any(p in removed_ids for p in item.pair_ids) else item for item in plan.coverage)
+    return plan.model_copy(update={"pairs": pairs, "coverage": coverage,
+        "excluded_pairs": plan.excluded_pairs + tuple(ExcludedPair(pair_id=p.pair_id,
+            unit_id=p.unit.unit_id, evidence_id=p.evidence.evidence_id, reason="user_excluded") for p in removed)})
