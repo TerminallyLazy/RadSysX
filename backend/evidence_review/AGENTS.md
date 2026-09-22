@@ -48,3 +48,9 @@ None.
 - Reference freeze requires distinct, qualified, blinded reviewer attestations. Agreement resolves directly; disagreement requires a separate qualified adjudicator or remains unresolved. Review revisions are new artifacts. Hashes prove local integrity, not medical truth or reviewer identity.
 - `metrics.py` reports explicit denominators, ordered five-label matrices, per-label precision/recall, failures and unreviewed reference contradictions, own-completed and paired-intersection results. Intervals use 2,000 deterministic topic-family resamples; insufficient groups/denominators remain unavailable. Latency quantiles use nearest rank. Missing pricing/usage remains unknown, and cached assessments are excluded from fresh latency.
 - Held-out comparisons require frozen experiment, model, resolved version, rubric/configuration and limit identities. Reports never automatically promote an evaluator or modify answers.
+
+## Local reports
+
+- `report.py` emits static accessible HTML with escaped text, keyboard-operable native disclosures and a CSP that permits only its fixed stylesheet hash. It never fetches sources; source links are canonical PubMed or designated synthetic fixture HTTPS URLs.
+- Blind exports positively select exact claim/citation/abstract fields, public/synthetic designation, constructed/natural origin and immutable case identity. They contain no model predictions, reference labels, generation metadata or suggested HTML. Case hashes support label submission; constructed claims are visibly distinguished from paper quotations.
+- Run reports preserve the exact original answer and show abstract-scoped judgments, coverage, exclusions and unknown billing. Comparison exports require frozen references and display unresolved cases. Keep result reports away from blind reviewers until reference freeze.
