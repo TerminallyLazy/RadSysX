@@ -19,6 +19,23 @@ SENSITIVE = "synthetic-private-record /private/server/config.py bearer-test-toke
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.mark.parametrize('mode',['unknown','production',''])
+def test_invalid_runtime_mode_fails_before_research_imports(monkeypatch,mode):
+    from backend.clinical.config import ClinicalPlatformSettings
+    monkeypatch.setenv('RADSYSX_APP_MODE',mode)
+    with pytest.raises(ValueError,match='RADSYSX_APP_MODE'):
+        ClinicalPlatformSettings()
+    # Execute only bootstrap statements before the first optional research import.
+    import ast
+    tree=ast.parse((ROOT/'backend/server.py').read_text())
+    statements=[]
+    for node in tree.body:
+        if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='RADSYSX_IMPORT_ERROR' for t in node.targets): break
+        statements.append(node)
+    with pytest.raises(ValueError,match='RADSYSX_APP_MODE'):
+        exec(compile(ast.Module(body=statements,type_ignores=[]),'server-bootstrap','exec'),{'__package__':'backend'})
+
+
 def fail(*args, **kwargs):
     raise RuntimeError(SENSITIVE)
 

@@ -495,6 +495,7 @@ class AISidebarSessionResponse(ClinicalModel):
 
 
 class AILiveContextUpdate(AISidebarSessionCreateRequest):
+    viewer_context: AISidebarViewerContext = Field(alias="viewerContext")
     context_version: int = Field(alias="contextVersion", ge=1)
 
 

@@ -93,9 +93,12 @@ class AICredentialStore:
                 os.close(directory_fd)
 
     def _saved(self, owner, provider):
-        with self.factory() as db:
-            row = db.get(AICredentialModel, (owner, provider))
-            return row.ciphertext if row is not None else None
+        try:
+            with self.factory() as db:
+                row = db.get(AICredentialModel, (owner, provider))
+                return row.ciphertext if row is not None else None
+        except Exception:
+            raise CredentialStoreError() from None
 
     def resolve(self, owner, provider, environment_key):
         ciphertext = self._saved(owner, provider)

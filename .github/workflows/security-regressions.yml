@@ -19,7 +19,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r backend/requirements-ai.txt pillow numpy uv pip-audit
       - run: python -m pip check
-      - run: python -m pytest backend/tests/test_security_regressions.py backend/tests/test_biomedparse_demo.py backend/tests/test_clinical_platform.py backend/tests/test_ai_live.py backend/tests/test_ai_research.py backend/tests/test_ai_providers.py backend/tests/test_ai_openai.py backend/tests/test_ai_connection_races.py backend/tests/test_ai_screen_awareness.py backend/tests/test_ai_credentials.py backend/tests/test_ai_research_settings.py backend/tests/evidence_review -q
+      - run: python -m pytest backend/tests/test_security_regressions.py backend/tests/test_biomedparse_demo.py backend/tests/test_clinical_platform.py backend/tests/test_ai_live.py backend/tests/test_ai_research.py backend/tests/test_ai_providers.py backend/tests/test_ai_openai.py backend/tests/test_ai_connection_races.py backend/tests/test_ai_screen_awareness.py backend/tests/test_ai_credentials.py backend/tests/test_ai_research_settings.py backend/tests/test_ai_evidence_review.py backend/tests/test_ai_evidence_routes.py backend/tests/test_ai_evidence_provenance.py backend/tests/evidence_review -q
       - name: Resolve and audit research dependencies
         run: |
           uv pip compile --python 3.12 backend/requirements.txt -o /tmp/radsysx-research.txt

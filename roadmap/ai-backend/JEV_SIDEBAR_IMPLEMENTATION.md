@@ -61,10 +61,16 @@ This is **live TypeSafe with synthetic source**, not live NCBI retrieval or a di
 
 ## Final code review
 
-A fresh read-only `gpt-6-astra` review covered `2f22e89..ae8c6cc`. It found no critical issues and two important recovery defects: stranded preparations after failure/cancellation and retry after shutdown before evaluator initialization. Both were reproduced by failing regression tests and fixed in one native pass. The final 520-test backend suite, 41-test viewer suite, compilation/type checks, build and actual Electron recovery scenario passed. The final fixes were verified by those tests, not a second reviewer. No minor findings were deferred. The implementation branch was pushed and its remote ref verified; no merge or deployment was performed.
+A fresh read-only `gpt-6-astra` review covered `2f22e89..ae8c6cc`. It found no critical issues and two important recovery defects: stranded preparations after failure/cancellation and retry after shutdown before evaluator initialization. Both were reproduced by failing regression tests and fixed in one native pass. The final 520-test backend suite, 41-test viewer suite, compilation/type checks, build and actual Electron recovery scenario passed. The final fixes were verified by those tests, not a second reviewer. No minor findings were deferred. The implementation branch was pushed and its remote ref verified; that implementation checkpoint preceded PR integration and did not deploy software.
 
 The reviewer separately declined to establish diagnostic accuracy or repeat external-provider/hardware acceptance. The qualified human study, live NCBI and hardware limitations above remain explicit; the recorded synthetic-source TypeSafe receipt establishes only that bounded provider execution.
 
 ## Follow-on work
 
 [Jev/vision routing assessment](JEV_VISION_ROUTING.md) covers contextual tool suggestions and vision-model pairing. Jev is used here for text/abstract judgments. No image anomaly detector, automatic imaging-tool dispatch or new cloud image destination is added.
+
+## PR integration verification
+
+The user authorized PR creation and merge after implementation sign-off. Reviewing the still-open live-assistant foundation PR exposed missing context validation, privacy-class changes retaining earlier attestation, credential-database errors escaping the private error boundary, and inconsistent mode parsing. Nine regression cases reproduced these failures before the fixes. The combined pre-merge backend suite passed 563 tests; viewer 41 and desktop 17 tests, shared type checks and Python compilation passed. CI now includes the Jev sidebar service, routes and provenance suites. A case-insensitive HTML-escaping assertion covers lower/upper-case tags without the test-only filtering-regexp pattern flagged by CodeQL. Hosted checks and the merge outcome are recorded on the integration PR.
+
+The pre-merge Electron repeat also passed the full Jev workflow. Earlier repeats showed that its harness retained a detached OHIF panel after submission despite a completed backend review. It now reacquires the actual dock and opens the same saved review through GET after remount; exact consent/focus assertions before submission, inference counts, cancellation, deletion and narrow layout assertions remain intact.

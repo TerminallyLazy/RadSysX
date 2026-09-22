@@ -2443,7 +2443,7 @@ async function exerciseCredentials(stage) {
 }
 
 async function exerciseEvidenceReview(phase, prior = {}) {
-  const panel = document.querySelector('radsysx-ai-chat-panel');
+  let panel = document.querySelector('radsysx-ai-chat-panel');
   const assert = (value, message) => { if (!value) throw new Error(message); };
   const api = async (path, body, method) => {
     const response = await fetch('/api/ai/'+path, {credentials:'include',cache:'no-store',method:method??(body===undefined?'GET':'POST'),headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
@@ -2452,7 +2452,7 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   };
   const wait = async (predicate, message) => {
     const end = Date.now()+18000;
-    do { if(await predicate())return; await new Promise(resolve=>setTimeout(resolve,50)); } while(Date.now()<end);
+    do { panel=document.querySelector('radsysx-ai-chat-panel'); if(await predicate())return; await new Promise(resolve=>setTimeout(resolve,50)); } while(Date.now()<end);
     throw new Error(typeof message==='function'?message():message);
   };
   const card = id => panel.querySelector(`[data-evidence-tool="${id}"]`);
@@ -2502,9 +2502,18 @@ async function exerciseEvidenceReview(phase, prior = {}) {
     assert(deleted.status===404,'Deleted review remained readable');
     return {deleted:true,privateRunsAfterDeletion:0};
   }
-  const first=card('smoke-research-one');button(first,'start').click();
+  let first=card('smoke-research-one');button(first,'start').click();
   await wait(()=>first.textContent.includes('Reviewing'),'Reviewing status missing');
-  await wait(()=>first.textContent.includes('Supported by this abstract'),'Completed judgment did not appear');
+  await wait(()=>{
+    const current=card('smoke-research-one');
+    // OHIF can remount its dock after submission. Reopen the same saved review
+    // through GET; pre-submission consent/focus still has the strict check above.
+    if(current && !first.isConnected && !button(current,'open').disabled) {
+      first=current;
+      if(!button(first,'open').hidden)button(first,'open').click();
+    }
+    return first.isConnected && first.textContent.includes('Supported by this abstract');
+  },()=> 'Completed judgment did not appear: '+JSON.stringify({connected:first.isConnected,current:card('smoke-research-one')?.textContent}));
   let receipt=await api(`sidebar/evidence-reviews/${prior.reviewId}`);
   assert(receipt.status==='completed' && receipt.assessments[0].resolvedModel==='jev-1.13.0','Saved reviewer receipt missing');
   assert(receipt.completedPairs===1 && receipt.selectedUnitIds.length===1,'Excluded claim was reviewed');

@@ -73,7 +73,7 @@ Last updated: 2026-09-22
 ## Runtime Modes
 
 - Mode is controlled by `RADSYSX_APP_MODE`.
-- Valid modes are `research`, `pilot`, and `clinical`.
+- Valid modes are `research`, `pilot`, and `clinical`. One shared parser normalizes casing/whitespace; invalid explicit values fail startup before optional research imports. An absent value retains the documented research default.
 - Only `research` may expose experimental upload/analyze flows.
 - `pilot` and `clinical` must use the clinical FastAPI surface and worklist/viewer flow.
 - Do not send DICOM bytes directly from the browser to third-party AI services in `pilot` or `clinical`.
@@ -303,7 +303,7 @@ Last updated: 2026-09-22
 
 ## Security verification
 
-- CI installs and audits the layered AI requirements, runs clinical/security/Live/research regressions and pip consistency checks, type-checks/builds the frontend and viewer, runs viewer/desktop protocol tests, and preserves existing CodeQL analysis. Do not dismiss alerts or suppress advisories to obtain a passing result. Hosted CI is distinct from locally run checks.
+- CI installs and audits the layered AI requirements, runs clinical/security/Live/research and Jev service/route/provenance regressions and pip consistency checks, type-checks/builds the frontend and viewer, runs viewer/desktop protocol tests, and preserves existing CodeQL analysis. Do not dismiss alerts or suppress advisories to obtain a passing result. Hosted CI is distinct from locally run checks.
 - `npm audit` checks the RadSysX workspace; `npm run audit:ohif --workspace viewer` checks the pinned upstream build.
 
 ## Live assistant workflow

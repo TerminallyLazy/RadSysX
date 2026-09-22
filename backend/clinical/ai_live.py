@@ -45,15 +45,18 @@ def provider_failure(error, provider_id="gemini"):
 
 def clean_context(context):
     context = context or AISidebarViewerContext()
-    result = context.model_dump(by_alias=True)
-    bound_json(result)
+    try:
+        result = context.model_dump(by_alias=True)
+        bound_json(result)
+    except (ValueError, TypeError, RecursionError):
+        raise HTTPException(422, "Viewer context is invalid or exceeds the size limit.") from None
     result["route"] = (result.get("route") or "").split("?")[0].split("#")[0][:128]
     result["state"] = safe_state(result.get("state", {}))
     return result
 
 
 def context_identity(context):
-    return tuple(context.get(k) for k in ("targetId", "studyInstanceUID", "seriesInstanceUID", "captureTarget"))
+    return tuple(context.get(k) for k in ("targetId", "studyInstanceUID", "seriesInstanceUID", "captureTarget", "privacyClass"))
 
 
 class AILiveService:

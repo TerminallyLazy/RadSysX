@@ -15,7 +15,12 @@ import pathlib
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 
-RESEARCH_RUNTIME = os.getenv("RADSYSX_APP_MODE", "research") == "research"
+if __package__:
+    from .clinical.config import read_app_mode
+else:
+    from clinical.config import read_app_mode
+
+RESEARCH_RUNTIME = read_app_mode().value == "research"
 
 RADSYSX_IMPORT_ERROR = None
 

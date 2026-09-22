@@ -65,6 +65,18 @@ def test_status_save_encryption_restart_and_explicit_environment_fallback(live):
         assert restored.resolve(live.actor.sub, "gemini", "fallback") == "fallback"
 
 
+def test_credential_database_outage_is_private_and_never_uses_fallback(live,monkeypatch):
+    def unavailable(): raise RuntimeError('PRIVATE_DATABASE_SENTINEL')
+    monkeypatch.setattr(live.service.credentials,'factory',unavailable)
+    with pytest.raises(CredentialStoreError):
+        live.service.credentials.resolve(live.actor.sub,'gemini','must-not-use-fallback')
+    with TestClient(live.app,raise_server_exceptions=False) as client:
+        authorize(client,live)
+        result=client.get(PATH)
+        assert result.status_code==503 and result.headers['cache-control']=='no-store'
+        assert 'PRIVATE_DATABASE_SENTINEL' not in result.text
+
+
 def test_owner_and_provider_isolation_and_status_never_returns_fragments(live):
     other = live.manager.issue_for_username("attending-radiologist")
     with TestClient(live.app) as client:

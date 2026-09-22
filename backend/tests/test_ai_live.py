@@ -565,7 +565,7 @@ def test_context_change_cancels_actions_and_requires_new_attestation(live):
         with pytest.raises(HTTPException):
             await runtime.decide("call-1", AILiveDecision(contextVersion=1, approved=True))
         with pytest.raises(HTTPException):
-            await live.service.update_context(runtime.id, AILiveContextUpdate(contextVersion=1), runtime.actor)
+            await live.service.update_context(runtime.id, AILiveContextUpdate(contextVersion=1,viewerContext=CONTEXT), runtime.actor)
     asyncio.run(scenario())
 
 
@@ -654,6 +654,44 @@ def test_state_update_keeps_binding_but_phi_update_revokes_attestation(live):
         assert updated["attestation"] is None and updated["contextVersion"] == 2
         assert runtime.closed
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('privacy_class', ['unknown', 'local-only'])
+def test_privacy_class_change_requires_fresh_attestation(live, privacy_class):
+    async def scenario():
+        runtime=runtime_for(live)
+        updated=await live.service.update_context(runtime.id,AILiveContextUpdate.model_validate({
+            'contextVersion':1,'viewerContext':{**CONTEXT,'privacyClass':privacy_class}}),live.actor)
+        assert updated['attestation'] is None
+        assert updated['contextVersion']==2 and runtime.closed
+        with pytest.raises(HTTPException) as error:
+            await live.service._accept(FakeSocket(),runtime.id,live.actor)
+        assert error.value.status_code==403
+    asyncio.run(scenario())
+
+
+def test_missing_update_context_is_rejected_without_changing_session(live):
+    with TestClient(live.app) as client:
+        authorize(client,live)
+        before=create_http(client)
+        response=client.post(PREFIX+'/sessions/'+before['sessionId']+'/context',
+            json={'contextVersion':1},headers={'origin':ORIGIN})
+        assert response.status_code==422
+        assert live.service.repository.get(before['sessionId'])==before
+
+
+@pytest.mark.parametrize('operation',['create','update'])
+def test_oversized_viewer_context_returns_private_validation_error(live,operation):
+    with TestClient(live.app,raise_server_exceptions=False) as client:
+        authorize(client,live)
+        before=create_http(client)
+        payload={'viewerContext':{**CONTEXT,'state':{'private':'PRIVATE_SENTINEL'*7000}}}
+        if operation=='create': response=client.post(PREFIX+'/sessions',json=payload,headers={'origin':ORIGIN})
+        else: response=client.post(PREFIX+'/sessions/'+before['sessionId']+'/context',
+            json={**payload,'contextVersion':1},headers={'origin':ORIGIN})
+        assert response.status_code==422
+        assert 'PRIVATE_SENTINEL' not in response.text
+        assert live.service.repository.get(before['sessionId'])==before
 
 
 def test_report_save_requires_review_then_uses_bound_study_and_authenticated_actor(live):

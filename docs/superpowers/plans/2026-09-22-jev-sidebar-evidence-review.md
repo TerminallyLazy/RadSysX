@@ -10,7 +10,7 @@
 
 **Spec:** [Approved sidebar specification](../specs/2026-09-22-jev-sidebar-evidence-review-design.md). Read it and this plan together.
 
-**Stage:** Approved by the user for Native execution, 2026-09-22. Runtime implementation, synthetic/live acceptance and final review fixes are complete. The branch was pushed and its remote ref verified on 2026-09-22; it remains unmerged. Preserve Native execution. Worktree: `codex/jev-evidence-implementation`, based on `codex/gemini-live-assistant`. Implementation baseline: `2f22e89`.
+**Stage:** Approved by the user for Native execution, 2026-09-22. Runtime implementation, synthetic/live acceptance and final review fixes are complete. The branch was pushed and its remote ref verified on 2026-09-22; subsequent integration status is tracked in GitHub PR history. Preserve Native execution. Worktree: `codex/jev-evidence-implementation`, based on `codex/gemini-live-assistant`. Implementation baseline: `2f22e89`.
 
 ## Global Constraints
 

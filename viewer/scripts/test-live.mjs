@@ -41,9 +41,11 @@ test('review controls appear only while approval is pending; receipts render esc
   assert.equal(toolFromWire({ ...input, status: 'awaiting_approval' }).approval, true);
   for (const status of ['completed', 'denied', 'running', 'cancelled']) assert.equal(toolFromWire({ ...input, status }).approval, false);
   assert.equal(toolFromWire({ ...input, status: 'awaiting_approval' }, true).approval, false);
-  const html = renderToolResult({ summary: '<script>private</script>', limitations: ['Synthetic result only.'], sources: [{ title: 'Paper', url: 'https://example.org/paper' }, { title: 'Unsafe', url: 'javascript:alert(1)' }] });
+  const html = renderToolResult({ summary: '<script>private</script><SCRIPT>upper</SCRIPT>', limitations: ['Synthetic result only.'], sources: [{ title: 'Paper', url: 'https://example.org/paper' }, { title: 'Unsafe', url: 'javascript:alert(1)' }] });
   assert.match(html, /&lt;script&gt;/); assert.match(html, /Synthetic result only/); assert.match(html, /https:\/\/example.org\/paper/);
-  assert.doesNotMatch(html, /<script>|javascript:/);
+  assert.ok(html.includes('&lt;SCRIPT&gt;'));
+  assert.ok(!html.toLowerCase().includes('<script'));
+  assert.ok(!html.toLowerCase().includes('javascript:'));
 });
 
 function fixture() {
