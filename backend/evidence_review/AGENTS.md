@@ -21,3 +21,9 @@ Own the explicit offline public/synthetic evidence evaluator. This package has n
 ## Child DOX Index
 
 None.
+
+## Evaluation inputs and providers
+
+- `sentence-citations-v1` keeps exact Unicode spans, compound sentences and separate cited abstracts. Ambiguous paragraph citation attachment is excluded; curated annotations must validate against original spans and sources.
+- `settings.py` reads only explicitly requested deployment settings. Clinical/unknown modes reject network evaluation; Jev does not require Gemini credentials. The normal application provider catalog is unchanged.
+- `typesafe.py` pins Jev 1.13.0 and validates all five-way probabilities, model identity and usage. Adapters issue one attempt; the runner owns retries/deadlines. Transport discards error bodies, rejects compression and bounds success bodies.
