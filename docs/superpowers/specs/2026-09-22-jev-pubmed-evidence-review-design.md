@@ -6,7 +6,7 @@ Branch: `codex/jev-typesafe-design`
 
 Repository baseline: `43d443ff8a41c67cbc6bf8985b2b26d27e8eee17`
 
-Status: all conversational design sections approved; consolidated written specification awaiting user review. Implementation and live evaluation have not started.
+Status: all conversational design sections and the consolidated written specification approved by the user on 2026-09-22. The [implementation plan](../plans/2026-09-22-jev-pubmed-evidence-review.md) awaits user review and execution-method selection. Implementation and live evaluation have not started.
 
 ## 1. Approved intent and scope
 
@@ -218,4 +218,4 @@ The [research dossier](../../../roadmap/ai-backend/JEV_RESEARCH.md) contains the
 
 During research, the configured key was detected without disclosure and an authenticated model-catalog request returned HTTP 200. No inference, dataset labeling, application launch or runtime test has been performed for this design. No such acceptance is implied by these documents.
 
-The next workflow stage is user review of this consolidated specification. Written-spec approval permits creation of the implementation plan through the requested brainstorming workflow; implementation requires review of that plan and selection of its execution method.
+The user approved this consolidated specification on 2026-09-22. The implementation plan has been written through the requested brainstorming workflow; implementation requires review of that plan and selection of its execution method.

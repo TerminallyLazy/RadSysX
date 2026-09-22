@@ -19,7 +19,8 @@ Last updated: 2026-09-22
 
 ## Current specifications
 
-- `superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md`: public/synthetic PubMed evidence evaluation using a separate runner, immutable inputs, Jev assessments, blind review and comparative results. Its conversational sections are approved; the written specification awaits user review.
+- `superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md`: public/synthetic PubMed evidence evaluation using a separate runner, immutable inputs, Jev assessments, blind review and comparative results. The user approved the written specification on 2026-09-22.
+- `superpowers/plans/2026-09-22-jev-pubmed-evidence-review.md`: implementation tasks and verification for that specification. The plan awaits user review and execution-method selection; implementation and live evaluation have not started.
 
 ## Verification
 

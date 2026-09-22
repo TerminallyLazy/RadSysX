@@ -2,11 +2,11 @@
 
 Research date: 2026-09-22. Repository baseline: `43d443ff8a41c67cbc6bf8985b2b26d27e8eee17`.
 
-Status: research dossier supporting the section-approved design in [the consolidated specification](../../docs/superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md). The written specification awaits user review; Jev is not implemented or inference-validated.
+Status: research dossier supporting [the approved specification](../../docs/superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md) and [implementation plan](../../docs/superpowers/plans/2026-09-22-jev-pubmed-evidence-review.md). The plan awaits review and execution-method selection; Jev is not implemented or inference-validated.
 
 ## Intent and scope
 
-The user requested a branch from `codex/gemini-live-assistant`, deep TypeSafe research, and collaborative brainstorming. They selected: “Survey the opportunities and recommend the strongest starting point.” They subsequently approved public PubMed evidence review, initially evaluated without changing answers, and approved its architecture, data contracts, presentation, failure behavior and acceptance criteria section by section. The consolidated written specification still requires review before implementation planning.
+The user requested a branch from `codex/gemini-live-assistant`, deep TypeSafe research, and collaborative brainstorming. They selected: “Survey the opportunities and recommend the strongest starting point.” They subsequently approved public PubMed evidence review, initially evaluated without changing answers, approved its architecture, data contracts, presentation, failure behavior and acceptance criteria section by section, and approved the consolidated specification on 2026-09-22. Implementation planning is complete and awaiting review.
 
 Created local branch `codex/jev-typesafe-design` at the baseline above after fetching and confirming that the source branch matched its remote. The pre-existing `.DS_Store` change was preserved. No branch was pushed.
 
@@ -131,4 +131,4 @@ V1 protocol tests separately cover malformed responses, timeout/429/529, missing
 
 ## Design outcome and next checkpoint
 
-All five design sections are approved in conversation. The [written specification](../../docs/superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md) consolidates them for review. It narrows V1 to replayable sentence–abstract assessment, independent evaluation budgets, private blind/comparison reports and a 200-pair public-data study. Relevance filtering, automatic repairs, live integration and report/viewer controls remain outside V1. A written-spec approval is the next checkpoint; no implementation plan or runtime integration exists yet.
+The [written specification](../../docs/superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md) is approved. It narrows V1 to replayable sentence–abstract assessment, independent evaluation budgets, private blind/comparison reports and a 200-pair public-data study. Relevance filtering, automatic repairs, live integration and report/viewer controls remain outside V1. The [implementation plan](../../docs/superpowers/plans/2026-09-22-jev-pubmed-evidence-review.md) is the next review checkpoint, together with execution-method selection. No runtime integration exists yet.
