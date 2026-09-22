@@ -21,16 +21,11 @@ frozenLockfile: true
 # Skip the pre-`pnpm run` frozen deps-check; installs set freshness explicitly.
 verifyDepsBeforeRun: false
 
-# Equivalent of the bun `audit --ignore=...` flags. These GHSAs are accepted
-# risk: minimatch/picomatch advisories reached only via build/CI tooling, never
-# fed user-supplied expressions. Kept in sync with the .circleci SECURITY_AUDIT
-# job and the root `audit` script.
 # Build commands are explicit; dependency lifecycle scripts are disabled.
 strictDepBuilds: false
 overrides:
-  # Synced from origin/master's package.json `resolutions` block during the
-  # merge. Keep this list aligned with master so security/version pins from
-  # upstream PRs land here too.
+  # Compatibility and security pins inherited from the pinned OHIF source.
+  # Audit this entire build graph; no advisory exclusions are configured.
   commander: 8.3.0
   cross-env: 7.0.3
   cross-spawn: 7.0.6
