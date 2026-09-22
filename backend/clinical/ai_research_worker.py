@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import ipaddress
 import json
 import logging
@@ -134,10 +135,11 @@ def _response_text(response: Any) -> str:
 
 
 class ResearchTools:
-    def __init__(self, client: Any, model: str, emit: Callable[[dict], None]) -> None:
+    def __init__(self, client: Any, model: str, emit: Callable[[dict], None], *, on_pubmed: Callable[[dict, ET.Element], None] | None = None) -> None:
         self.client = client
         self.model = model
         self.emit = emit
+        self.on_pubmed = on_pubmed
         self.ledger = SourceLedger()
         self.tool_calls = 0
         self.model_calls = 0
@@ -280,6 +282,13 @@ class ResearchTools:
                 source = self.ledger.add(title, f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/")
                 if source is None:
                     continue
+                if self.on_pubmed is not None:
+                    try:
+                        self.on_pubmed(dict(source), copy.deepcopy(article))
+                    except Exception:
+                        # Capture loss is reported by the separate evaluator;
+                        # it must not change the research tool result.
+                        pass
                 abstract = "\n".join("".join(node.itertext()) for node in article.findall(".//AbstractText"))[:10000]
                 articles.append({"sourceId": source["id"], "title": title[:500], "pmid": pmid, "year": article.findtext(".//PubDate/Year", ""), "abstract": abstract})
                 sources.append(source)
@@ -373,7 +382,7 @@ def create_research_agent(api_key: str, model: str, research_tools: ResearchTool
     return agent, budget, sorted(tool_names)
 
 
-async def run_worker(request: dict, emit: Callable[[dict], None]) -> dict:
+async def run_worker(request: dict, emit: Callable[[dict], None], *, on_pubmed: Callable[[dict, ET.Element], None] | None = None) -> dict:
     from google import genai
 
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -383,7 +392,7 @@ async def run_worker(request: dict, emit: Callable[[dict], None]) -> dict:
         raise ValueError("Invalid research configuration")
     client = genai.Client(api_key=api_key, vertexai=False, http_options={"api_version": "v1beta", "timeout": 30000})
     try:
-        research_tools = ResearchTools(client, model, emit)
+        research_tools = ResearchTools(client, model, emit, on_pubmed=on_pubmed)
         agent, budget, _ = create_research_agent(api_key, model, research_tools)
         emit({"kind": "progress", "stage": "starting"})
         async with asyncio.timeout(115):
