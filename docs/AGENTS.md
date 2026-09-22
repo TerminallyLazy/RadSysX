@@ -21,6 +21,8 @@ Last updated: 2026-09-22
 
 - `superpowers/specs/2026-09-22-jev-pubmed-evidence-review-design.md`: public/synthetic PubMed evidence evaluation using a separate runner, immutable inputs, Jev assessments, blind review and comparative results. The user approved the written specification on 2026-09-22.
 - `superpowers/plans/2026-09-22-jev-pubmed-evidence-review.md`: implementation tasks and verification for that specification. The user approved native execution on 2026-09-22. Implementation is in progress on `codex/jev-evidence-implementation`; provider and human-quality acceptance remain separate.
+- `superpowers/specs/2026-09-22-jev-sidebar-evidence-review-design.md`: explicit public PubMed review in the app, owned jobs and visible receipts. The user approved this written specification on 2026-09-22. The separate offline evaluator remains supported.
+- `superpowers/plans/2026-09-22-jev-sidebar-evidence-review.md`: implementation plan for the approved sidebar specification, awaiting the user's plan review. Preserve Native execution; do not confuse approval of the specification with implemented or verified app behavior.
 
 ## Verification
 
@@ -30,5 +32,3 @@ Last updated: 2026-09-22
 ## Child DOX Index
 
 - None.
-
-- `superpowers/specs/2026-09-22-jev-sidebar-evidence-review-design.md`: proposed next-stage app integration for explicit public PubMed review, owned jobs and visible receipts. User approved the feature direction; this written specification awaits review. It does not change the implemented offline evaluator contract until subsequent implementation is approved.

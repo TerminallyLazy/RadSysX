@@ -1,6 +1,6 @@
 # Review evidence with Jev in the sidebar
 
-Date: 2026-09-22. Status: proposed specification for user review, not implemented. The user approved moving from the separate evaluator to an explicit app action. This document makes that action's data flow, permissions, presentation and verification concrete. Implementation planning follows approval of this written specification.
+Date: 2026-09-22. Status: written specification approved by the user on 2026-09-22; [implementation plan](../plans/2026-09-22-jev-sidebar-evidence-review.md) written and awaiting plan review, not implemented. This document makes the explicit app action's data flow, permissions, presentation and verification concrete. Native execution remains the user's selected implementation method.
 
 ## Intended outcome
 
