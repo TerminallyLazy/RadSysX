@@ -113,6 +113,17 @@ def test_artifact_rejects_non_allowlisted_file(tmp_path, monkeypatch):
     assert error.value.status_code == 400
 
 
+@pytest.mark.parametrize("filename", ["mask.npz", "preview.png"])
+def test_artifact_preserves_leading_zero_run_ids(tmp_path, monkeypatch, filename):
+    run_id = "bmp-" + "0" * 31 + "a"
+    run = tmp_path / run_id
+    run.mkdir()
+    artifact = run / filename
+    artifact.write_bytes(b"synthetic")
+    monkeypatch.setenv("RADSYSX_BIOMEDPARSE_RUNS_DIR", str(tmp_path))
+    assert biomedparse_demo_artifact_path(run_id, filename) == artifact
+
+
 def load_script(name, relative_path):
     spec = importlib.util.spec_from_file_location(name, ROOT / relative_path)
     module = importlib.util.module_from_spec(spec)

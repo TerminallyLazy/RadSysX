@@ -5,7 +5,7 @@ Baseline: GitHub reported **29 open Dependabot alerts and 27 open CodeQL alerts*
 ## Changes
 
 - Replaced exception strings and tracebacks in JSON, HTML, SSE, and optional-import responses with fixed public messages. Removed query text and patient payloads/identifiers from the affected logs; verbose DICOM anonymization now reports field actions without values or filenames.
-- Restricted BioMedParse artifact reads to generated run IDs and the two supported artifacts, with single-component paths, resolved containment, and symlink rejection. Worker stderr remains a local diagnostic artifact and is never returned to the client.
+- Restricted BioMedParse artifact reads to generated run IDs and the two supported artifacts. Run IDs are parsed and rebuilt as fixed-width hexadecimal names before filesystem access, with resolved containment and symlink rejection. Worker stderr remains a local diagnostic artifact and is never returned to the client.
 - Updated AnyIO and Soup Sieve. Removed unused NLTK/Unstructured dependencies instead of retaining their vulnerable optional document-processing chain.
 - Updated the npm dependency graph, including React Router, URI decoding/query parsing, YAML parsing, ZIP utilities, UUID, translation backend, merging, and serialization. Removed the unused browser crypto polyfill.
 - Replaced abandoned `validate.js` with the Social Tables fork containing the email-regex fix for [CVE-2020-26308](https://securitylab.github.com/advisories/GHSL-2020-302-redos-validate.js/). The regression test exercises the disclosed malformed email under a process timeout.

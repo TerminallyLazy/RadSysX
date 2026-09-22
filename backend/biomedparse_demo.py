@@ -194,10 +194,11 @@ def biomedparse_demo_artifact_path(run_id: str, filename: Literal["mask.npz", "p
         raise HTTPException(status_code=400, detail="Invalid BioMedParse demo run id.")
     if filename not in {"mask.npz", "preview.png"}:
         raise HTTPException(status_code=400, detail="Invalid BioMedParse demo artifact name.")
-    # Both components are single names; resolve symlinks before checking containment.
+    # Rebuild the fixed-width ID from a number, so URL text never becomes path syntax.
+    run_token = int(run_id[4:], 16)
     runs_root = _runs_dir().resolve()
-    run_dir = runs_root / os.path.basename(run_id)
-    candidate = run_dir / os.path.basename(filename)
+    run_dir = runs_root / f"bmp-{run_token:032x}"
+    candidate = run_dir / ("mask.npz" if filename == "mask.npz" else "preview.png")
     path = candidate.resolve()
     if run_dir.is_symlink() or candidate.is_symlink() or path.parent.parent != runs_root:
         raise HTTPException(status_code=403, detail="BioMedParse demo artifact path is outside the runs directory.")
