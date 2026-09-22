@@ -28,6 +28,7 @@
 
 ## Security regression suite
 
+- `evidence_review/` owns synthetic network-isolated tests for immutable snapshots, original abstracts, bounded evaluators and private review artifacts. Fixtures clear provider credentials; live inference and qualified human labels are separate acceptance work.
 - `python3 -m pytest backend/tests/test_security_regressions.py` covers synthetic error privacy, streaming completion, artifact traversal/symlink rejection, worker failures, and DICOM/FHIR logging. It must not contact a real FHIR server or process live patient data.
 
 - `test_ai_live.py` verifies synthetic Live ownership, media/lifecycle, action approval/idempotency/recovery without Google; `test_ai_research.py` verifies bounded isolated delegates, shared dispatch limits across public and virtual tools, and citation contracts. Tests must not read a real provider key into fixtures or accidentally call Google.

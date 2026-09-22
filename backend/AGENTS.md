@@ -34,6 +34,7 @@
 
 ## Child DOX Index
 
+- `backend/evidence_review/AGENTS.md`: explicit offline public/synthetic PubMed evidence evaluation and private artifacts; no clinical routes or answer modification.
 - `backend/clinical/AGENTS.md`: governed clinical platform implementation.
 - `backend/mcp/AGENTS.md`: research MCP/FHIR integration.
 - `backend/models_utils/AGENTS.md`: optional model/GPU utility materials.
