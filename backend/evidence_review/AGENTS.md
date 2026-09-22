@@ -27,3 +27,9 @@ None.
 - `sentence-citations-v1` keeps exact Unicode spans, compound sentences and separate cited abstracts. Ambiguous paragraph citation attachment is excluded; curated annotations must validate against original spans and sources.
 - `settings.py` reads only explicitly requested deployment settings. Clinical/unknown modes reject network evaluation; Jev does not require Gemini credentials. The normal application provider catalog is unchanged.
 - `typesafe.py` pins Jev 1.13.0 and validates all five-way probabilities, model identity and usage. Adapters issue one attempt; the runner owns retries/deadlines. Transport discards error bodies, rejects compression and bounds success bodies.
+
+## Private persistence
+
+- `artifacts.py` requires POSIX, rejects symlink paths and uses directory-relative descriptors. Storage roots/runs/directories are owner-only 0700, files 0600. Immutable content hashes are verified on every read; files are bounded and regular.
+- Each writer holds a nonblocking run lock. Objects precede immutable manifest generations and an atomic HEAD pointer. Unreferenced objects are never promoted automatically; an unfinished committed attempt means interrupted/unknown billing.
+- Exports use fresh private directories and allowlisted filenames. Retention and deletion remain operator-controlled; resume is always explicit.
