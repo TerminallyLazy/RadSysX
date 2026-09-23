@@ -499,6 +499,36 @@ def test_cancelled_research_cannot_publish_late_result(live, monkeypatch):
     asyncio.run(scenario())
 
 
+def test_research_progress_and_recorded_model_survive_history_without_private_payload(live, monkeypatch):
+    from backend.clinical.ai_research import ResearchSupervisor
+    async def scenario():
+        callbacks = []
+        async def research(self, query, on_progress=None):
+            callbacks.append(on_progress)
+            await on_progress({"stage": "waiting_model", "private": "never display"})
+            await on_progress({"stage": "searching_pubmed"})
+            await on_progress({"stage": "private invented stage"})
+            return {"summary": "Synthetic result", "sources": [], "limitations": []}
+        monkeypatch.setattr(ResearchSupervisor, "run", research)
+        runtime = runtime_for(live)
+        await runtime.schedule_tool(call("research_run", query="Public synthetic query"))
+        await drain_tools(runtime)
+        history = runtime.repo.history(runtime.id, runtime.actor)
+        progress = [event for event in history["events"] if event["kind"] == "research_progress"]
+        assert [event["stage"] for event in progress] == ["queued", "waiting_model", "searching_pubmed"]
+        assert "private" not in json.dumps(progress) and "never display" not in json.dumps(progress)
+        result = history["tools"][0]
+        provider, _, model = runtime.config.research_configuration()
+        assert result["research"]["providerId"] == provider
+        assert result["research"]["modelId"] == model
+        assert result["research"]["recordedAt"]
+        assert result["status"] == "completed"
+        await callbacks[0]({"stage": "waiting_model"})
+        assert len([event for event in runtime.repo.history(runtime.id, runtime.actor)["events"] if event["kind"] == "research_progress"]) == 3
+        await runtime.close("closed")
+    asyncio.run(scenario())
+
+
 def test_renderer_ack_idempotency_and_conflicting_id_replay(live):
     async def scenario():
         runtime = runtime_for(live)

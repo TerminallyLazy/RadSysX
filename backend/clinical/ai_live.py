@@ -834,11 +834,18 @@ class LiveRuntime:
             tool = self.repo.set_tool(self.id, tool_id, "running")
             await self.emit("tool", **tool)
             if name == "research_run":
-                from .ai_research import ResearchSupervisor
+                from .ai_research import RESEARCH_PROGRESS_STAGES, ResearchSupervisor
                 provider, key, model = self.config.research_configuration()
                 worker = ResearchSupervisor(api_key=key, model=model, provider=provider)
                 self.repo.record_research_generation(self.id, tool_id, provider=provider, model=model)
-                result = await worker.run(args["query"])
+                await self.emit("tool", **self.repo.tool(self.id, tool_id))
+                async def research_progress(progress):
+                    self.check()
+                    stage = progress.get("stage")
+                    if stage in RESEARCH_PROGRESS_STAGES and self.repo.tool(self.id, tool_id)["status"] == "running":
+                        await self.emit("research_progress", toolCallId=tool_id, stage=stage)
+                await research_progress({"stage": "queued"})
+                result = await worker.run(args["query"], on_progress=research_progress)
                 if result.get("sources"):
                     await self.emit("citations", sources=result["sources"], suggestionsHtml=result.get("suggestionsHtml", ""))
             elif name == "research_cancel":

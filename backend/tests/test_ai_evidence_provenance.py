@@ -16,7 +16,7 @@ def test_dispatch_provenance_survives_preferences_without_changing_result(live, 
         class Supervisor:
             def __init__(self,*,provider,model,api_key):
                 assert (provider,model,api_key)==('nvidia_nim','z-ai/glm-5.3-flash','synthetic-nim')
-            async def run(self,query): return result
+            async def run(self,query,on_progress=None): return result
         monkeypatch.setattr('backend.clinical.ai_research.ResearchSupervisor',Supervisor)
         tool,_=live.service.repository.add_tool(runtime.id,'research','research_run',{'query':'fixture'},1,False)
         await runtime.execute(tool)

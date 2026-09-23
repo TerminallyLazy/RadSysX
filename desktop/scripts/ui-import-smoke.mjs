@@ -2465,6 +2465,10 @@ async function exerciseEvidenceReview(phase, prior = {}) {
     panel.style.width='280px'; panel.style.minWidth='280px'; panel.style.maxWidth='280px';
     const history = await api(`sidebar/sessions/${sid}`);
     assert(card('smoke-research-one'), 'Missing public PubMed fixture / Review evidence with Jev action');
+    assert(panel.querySelector('[aria-label="Jev evidence review"]') && !panel.querySelector('[data-action="review-latest"]').disabled, 'Prominent Jev action is missing or unavailable');
+    assert(panel.querySelector('[data-role="research-tools"]').textContent.includes('Literature research'), 'Research activity is not visible above the transcript');
+    assert(history.events.some(event=>event.kind==='research_progress' && event.stage==='searching_pubmed'), 'Research progress was not journaled through the broker');
+    assert(history.tools.filter(tool=>tool.name==='research_run').every(tool=>tool.research?.modelId), 'Research cards have no recorded dispatch model');
     const original = history.tools.find(t=>t.toolCallId==='smoke-research-one').result;
     await wait(()=>!button(card('smoke-research-one'),'open').disabled,'Review button remained busy');
     button(card('smoke-research-one'),'open').click();
@@ -2536,7 +2540,7 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   const catalog=await api('sidebar/research-settings/models/nvidia_nim');
   assert(catalog.models.length===82 && catalog.models.every(id=>[...modelSelect.options].some(o=>o.value===id)),'NVIDIA models were filtered');
   panel.querySelector('[data-action="close-credentials"]').click();
-  const second=card('smoke-research-two');button(second,'open').click();
+  const second=card('smoke-research-two');panel.querySelector('[data-action="review-latest"]').click();
   await wait(()=>second.textContent.includes('Ready to review'),'Second review preview failed');
   const confirmation=second.querySelector('[data-evidence-confirmation]');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));button(second,'start').click();
   await wait(async()=> (await counters()).submitted===2,'Blocked review was not submitted');

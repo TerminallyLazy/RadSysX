@@ -184,6 +184,39 @@ def test_timeout_terminates_and_reaps_child(monkeypatch):
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("events,returncode,expected", [
+    ([{"kind": "error", "code": "research_timeout"}], 1, "research_timeout"),
+    ([{"kind": "error", "code": "research_timeout"}], 0, "research_failed"),
+    ([{"kind": "error", "code": "research_timeout", "message": "private"}], 1, "research_failed"),
+    ([{"kind": "result", "result": RESULT}, {"kind": "error", "code": "research_timeout"}], 1, "research_failed"),
+    ([{"kind": "error", "code": "research_timeout"}, {"kind": "result", "result": RESULT}], 1, "research_failed"),
+])
+def test_worker_timeout_protocol_is_fixed_and_terminal(monkeypatch, events, returncode, expected):
+    async def scenario():
+        process = FakeProcess(events)
+        process.returncode = returncode
+        monkeypatch.setattr(supervisor_module.asyncio, "create_subprocess_exec", AsyncMock(return_value=process))
+        result = await ResearchSupervisor("synthetic-key").run("Synthetic query")
+        assert result["error"] == expected
+        assert "private" not in json.dumps(result)
+        assert process.waited
+    asyncio.run(scenario())
+
+
+def test_worker_provider_timeout_emits_no_exception_details(monkeypatch):
+    import io
+    from backend.clinical import ai_research_worker as worker
+    async def timed_out(*args):
+        raise TimeoutError("private credential and request")
+    output = io.StringIO()
+    monkeypatch.setattr(worker, "run_worker", timed_out)
+    monkeypatch.setattr(worker.logging, "disable", lambda level: None)
+    monkeypatch.setattr(worker.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b'{"query":"synthetic"}\n')))
+    monkeypatch.setattr(worker.sys, "stdout", output)
+    assert worker.main() == 1
+    assert json.loads(output.getvalue()) == {"kind": "error", "code": "research_timeout"}
+
+
 def test_cancellation_terminates_child_and_propagates(monkeypatch):
     async def scenario():
         process = FakeProcess(blocked=True)
@@ -364,7 +397,9 @@ def test_real_graph_tool_turn_and_structured_result_without_network(monkeypatch)
     assert result["usage"] == {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30, "model_calls": 2, "tool_calls": 1}
     assert events == [
         {"kind": "progress", "stage": "starting"},
+        {"kind": "progress", "stage": "waiting_model"},
         {"kind": "progress", "stage": "searching_pubmed"},
+        {"kind": "progress", "stage": "waiting_model"},
         {"kind": "progress", "stage": "synthesizing"},
     ]
     assert len(calls) == 2

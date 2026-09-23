@@ -1,8 +1,21 @@
 import { evidenceEligibility, mountEvidencePanel } from './evidence-panel.js';
 import { LiveController } from './controller.js';
-import { escape, object, safeUrl, type Attestation, type Json, type ProviderId, type ResearchProviderId } from './protocol.js';
+import { escape, object, safeUrl, type Attestation, type Json, type ProviderId, type ResearchProviderId, type Tool } from './protocol.js';
 
 const MIC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>';
+
+export function researchStatus(tool: Tool): string {
+  if (tool.status === 'failed' && tool.result?.error === 'research_timeout') return 'Timed out';
+  if (tool.status !== 'running') return ({ pending: 'Queued', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted', outcome_unknown: 'Status unconfirmed' } as Record<string, string>)[tool.status] ?? tool.status;
+  return ({ queued: 'Waiting for a research slot', starting: 'Starting research', waiting_model: 'Waiting for model response', searching_web: 'Searching the web', searching_pubmed: 'Searching PubMed', reading_source: 'Reading a source', synthesizing: 'Preparing the cited answer' } as Record<string, string>)[tool.progress ?? ''] ?? 'Research running';
+}
+
+export function renderResearchActivity(tool: Tool): string {
+  const provider = tool.research?.providerId === 'nvidia_nim' ? 'NVIDIA NIM' : tool.research?.providerId === 'gemini' ? 'Gemini' : 'Provider not recorded';
+  return `<p class="radsysx-research-model">${escape(provider)}${tool.research?.modelId ? ` · ${escape(tool.research.modelId)}` : ''}</p>
+    <p role="status" aria-live="polite">${escape(researchStatus(tool))}</p>
+    <details><summary>Research request and dispatch</summary><p>${escape(tool.args.query)}</p><p>Requested model recorded: ${escape(tool.research?.recordedAt ?? 'Not recorded')}</p></details>`;
+}
 
 /** Inputs are created once; live transcript updates must never replace an edited password field. */
 export function credentialSettingsMarkup(): string {
@@ -93,6 +106,14 @@ export function registerPanel(controller: LiveController): void {
             <p class="radsysx-live-status" role="status" aria-live="polite" data-role="status"></p>
             <div class="radsysx-live-conversation" data-role="conversation">
             <section class="radsysx-live-history" data-role="history" hidden></section>
+            <section class="radsysx-evidence-entry" aria-label="Jev evidence review">
+              <strong>Jev evidence review</strong>
+              <p>Check claims for support, contradictions and gaps in their cited abstracts.</p>
+              <button type="button" data-action="review-latest">Review latest evidence with Jev</button>
+              <button type="button" data-action="history">Saved research</button>
+              <p data-role="evidence-next" role="status" aria-live="polite"></p>
+            </section>
+            <section class="radsysx-live-tools" data-role="research-tools" aria-label="Research activity"></section>
             <div class="radsysx-ai-thread" role="log" aria-label="RadSysX AI conversation" data-role="thread"><div class="radsysx-live-empty">A second set of hands.<br><span>Discuss the image, change a view, or research a question.</span></div></div>
             <section class="radsysx-live-report" data-role="report" aria-label="Draft report" hidden></section>
             <section class="radsysx-live-tools" data-role="tools" aria-label="Assistant actions"></section>
@@ -124,6 +145,10 @@ export function registerPanel(controller: LiveController): void {
           else if (action === 'remove-key') { this.clearKeyInputs(); void controller.removeCredential(button.dataset.provider as ProviderId); }
           else if (action === 'undo-draft') void controller.adapter.execute('viewer_undo', {}).then(() => controller.emit());
           else if (action === 'history') void controller.showHistory();
+          else if (action === 'review-latest') {
+            const tool = [...controller.tools.values()].slice(-12).reverse().find(tool => !evidenceEligibility(tool));
+            if (tool) void controller.evidence.openTool(tool.id).then(() => this.evidenceCards.get(tool.id)?.article.scrollIntoView({ block: 'nearest' }));
+          }
           else if (action === 'toggle-mention') { this.mentionOpen = !this.mentionOpen; this.render(); }
           else if (action === 'attach' && button.dataset.id) { controller.selected.add(button.dataset.id); this.mentionOpen = false; this.render(); }
           else if (action === 'remove' && button.dataset.id) { controller.selected.delete(button.dataset.id); this.render(); }
@@ -268,21 +293,26 @@ export function registerPanel(controller: LiveController): void {
       const report = controller.adapter.draftReport;
       this.node('report').hidden = !report;
       this.node('report').innerHTML = report ? `<strong>Draft report · unsaved</strong><p>${report.targetId === controller.targetId ? 'Review before saving. Local files must be imported through the worklist and opened as a study to save a report.' : 'This draft belongs to a previously selected image.'}</p><details open><summary>Findings and impression</summary><div class="radsysx-live-report-text">${escape(report.findings)}<hr>${escape(report.impression)}</div></details><button type="button" data-action="undo-draft">Undo latest edit</button>` : '';
-      const visibleTools = [...controller.tools.values()].slice(-12);
+      const allTools = [...controller.tools.values()];
+      const visibleTools = allTools.filter((tool, index) => index >= allTools.length - 12 || ['pending', 'running', 'awaiting_approval'].includes(tool.status));
+      const eligible = [...visibleTools].reverse().find(tool => !evidenceEligibility(tool));
+      const researching = visibleTools.some(tool => tool.name === 'research_run' && ['pending', 'running'].includes(tool.status));
+      this.button('review-latest').disabled = !eligible || controller.evidence.busy || controller.credentialsBusy;
+      this.node('evidence-next').textContent = eligible ? 'Preview the selected claims and original abstracts before anything is sent to Jev.' : researching ? 'Research is in progress below. Jev review becomes available when cited abstracts arrive.' : 'No reviewable result in this conversation. Ask for public PubMed research, or open saved research.';
       const visibleIds = new Set(visibleTools.map(tool => tool.id));
       for (const [id, card] of this.evidenceCards) if (!visibleIds.has(id)) { card.review?.dispose(); card.article.remove(); this.evidenceCards.delete(id); }
       for (const tool of visibleTools) {
         let card = this.evidenceCards.get(tool.id);
         if (!card) {
           const article = document.createElement('article'); article.className = 'radsysx-live-tool';
-          const body = document.createElement('div'); body.className = 'radsysx-live-tool-body'; article.append(body); this.node('tools').append(article);
+          const body = document.createElement('div'); body.className = 'radsysx-live-tool-body'; article.append(body); this.node(tool.name === 'research_run' ? 'research-tools' : 'tools').append(article);
           card = { article, body, signature: '' }; this.evidenceCards.set(tool.id, card);
         }
         const signature = JSON.stringify([tool, controller.historical]);
         if (signature !== card.signature) {
           card.signature = signature;
           const pending = !controller.historical && !['completed', 'failed', 'cancelled', 'declined', 'rejected', 'denied', 'interrupted', 'outcome_unknown'].includes(tool.status);
-          card.body.innerHTML = `<div><strong>${escape(tool.name.replace(/_/g, ' '))}</strong><span>${escape(tool.status)}</span></div><details${tool.approval ? ' open' : ''}><summary>${tool.approval ? 'Review this action' : 'Details'}</summary><pre>${escape(JSON.stringify(tool.args, null, 2))}</pre></details>${renderToolResult(tool.result)}${tool.approval ? `<div class="radsysx-live-review"><button type="button" data-action="approve" data-id="${escape(tool.id)}">Approve</button><button type="button" data-action="decline" data-id="${escape(tool.id)}">Decline</button></div>` : pending ? `<button type="button" data-action="cancel" data-id="${escape(tool.id)}">Cancel task</button>` : ''}`;
+          card.body.innerHTML = `<div><strong>${tool.name === 'research_run' ? 'Literature research' : escape(tool.name.replace(/_/g, ' '))}</strong><span>${escape(tool.status)}</span></div>${tool.name === 'research_run' ? renderResearchActivity(tool) : `<details${tool.approval ? ' open' : ''}><summary>${tool.approval ? 'Review this action' : 'Details'}</summary><pre>${escape(JSON.stringify(tool.args, null, 2))}</pre></details>`}${renderToolResult(tool.result)}${tool.approval ? `<div class="radsysx-live-review"><button type="button" data-action="approve" data-id="${escape(tool.id)}">Approve</button><button type="button" data-action="decline" data-id="${escape(tool.id)}">Decline</button></div>` : pending ? `<button type="button" data-action="cancel" data-id="${escape(tool.id)}">Cancel task</button>` : ''}`;
           if (tool.name === 'research_run' && !card.review) {
             const reason = evidenceEligibility(tool);
             if (!reason) {

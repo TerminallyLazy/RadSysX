@@ -39,7 +39,7 @@ export type ServerEvent = Json & {
   contextVersion: number;
 };
 export type Transcript = { id: string; role: string; text: string; finished: boolean };
-export type Tool = { id: string; name: string; args: Json; status: string; approval: boolean; result?: Json };
+export type Tool = { id: string; name: string; args: Json; status: string; approval: boolean; result?: Json; research?: Json; progress?: string };
 export type Citation = { title: string; url: string };
 export type CaptureRequest = {
   sessionId: string; contextVersion: number; targetId: string; viewportId: string;
@@ -60,6 +60,7 @@ export function toolFromWire(value: Json, historical = false): Tool {
   return { id: String(value.toolCallId), name: String(value.name), args: object(value.args), status: String(value.status),
     approval: !historical && value.requiresApproval === true && value.status === 'awaiting_approval',
     ...(value.result && typeof value.result === 'object' ? { result: object(value.result) } : {}),
+    ...(value.research && typeof value.research === 'object' ? { research: object(value.research) } : {}),
   };
 }
 export function safeUrl(value: unknown): string | null {

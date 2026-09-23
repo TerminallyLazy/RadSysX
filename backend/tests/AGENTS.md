@@ -46,3 +46,5 @@ The evidence-review CLI tests exercise real private artifacts and mocked capture
 - `test_ai_evidence_routes.py` exercises production router composition with isolated persistence and synthetic HTTP: all six ownership/auth/mode/origin gates, strict bounded bodies, fixed private failures, preview/start/idempotency, unchanged answer and source deletion. No real key or external network is permitted.
 
 - Pre-merge Live regressions cover privacy-class attestation revocation, required update context, unchanged sessions on oversized input, private credential-database failures and invalid mode rejection before research imports. CI includes all three Jev sidebar service/routes/provenance modules as well as the pure evaluator suite.
+
+- Research observability regressions cover actual graph model-wait/tool stages, fixed private timeout frames, persisted broker progress, recorded provider/model history and no late progress after terminal completion. Adapt supervisor fixtures to the optional `on_progress` callback without contacting hosted models.

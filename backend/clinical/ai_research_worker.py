@@ -328,6 +328,7 @@ def create_research_agent(api_key: str, model: str, research_tools: ResearchTool
         async def awrap_model_call(self, request, handler):
             research_tools.reserve_model_call()
             self.calls += 1
+            research_tools.emit({"kind": "progress", "stage": "waiting_model"})
             result = await handler(request)
             for message in getattr(result, "result", []) or []:
                 metadata = getattr(message, "usage_metadata", None) or {}
@@ -464,6 +465,9 @@ def main() -> int:
             result = asyncio.run(run_worker(request, emit))
         emit({"kind": "result", "result": result})
         return 0
+    except TimeoutError:
+        emit({"kind": "error", "code": "research_timeout"})
+        return 1
     except BaseException:
         return 1
 

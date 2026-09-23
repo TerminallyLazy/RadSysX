@@ -49,3 +49,5 @@
 - Evidence review styles belong inside the existing scrollable research card. No additional permanent header region; checkbox/select controls, long hashes/source text and receipts must fit the 280 px sidebar without horizontal overflow.
 
 - The radiologist-facing AI sidebar uses the restrained reading-room palette in `radsysx-viewer.css`: charcoal/slate surfaces, muted blue actions, dark scrollbars and no luminous status glow. Scope the theme to `.radsysx-live-shell` and its controls; do not tint diagnostic canvases or change image presentation.
+
+- The Jev entry and research activity cards live inside the conversation scroll region, not in an expanded permanent header. Keep long model IDs wrapped and restrained reading-room colors; evidence eligibility, confirmation and receipts remain owned by the typed controller.

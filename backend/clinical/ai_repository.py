@@ -114,7 +114,7 @@ class AILiveRepository:
 
     def event(self, session_id, kind, payload, *, persist=True):
         # This method deliberately cannot accept audio/screen blobs.
-        if kind not in {"session", "transcript", "interaction", "interrupted", "tool", "viewer_action", "citations", "error", "pong", "audio_chunk", "screen_status"}:
+        if kind not in {"session", "transcript", "interaction", "interrupted", "tool", "viewer_action", "citations", "error", "pong", "audio_chunk", "screen_status", "research_progress"}:
             raise ValueError("Unsupported journal event")
         if kind in {"audio_chunk", "screen_status"}:
             persist = False
@@ -139,7 +139,7 @@ class AILiveRepository:
             tools = db.scalars(select(AILiveToolModel).where(AILiveToolModel.session_id == session_id)
                               .order_by(AILiveToolModel.created_at.desc()).limit(200)).all()
             return {"session": session, "events": [x.event_json for x in reversed(events)],
-                    "tools": [self.tool_dict(x) for x in reversed(tools)]}
+                    "tools": [self.tool_dict(x, db) for x in reversed(tools)]}
 
     def clear(self, session_id, actor):
         self.owned(session_id, actor)
@@ -154,7 +154,7 @@ class AILiveRepository:
             rows = db.scalars(select(AILiveToolModel).where(
                 AILiveToolModel.session_id == session_id,
                 AILiveToolModel.status.not_in(TERMINAL_TOOLS))).all()
-            return [self.tool_dict(row) for row in rows]
+            return [self.tool_dict(row, db) for row in rows]
 
     def add_tool(self, session_id, provider_id, name, arguments, context_version, approval):
         # Provider IDs only identify calls within one application session.
@@ -162,21 +162,21 @@ class AILiveRepository:
         with self.factory() as db:
             previous = db.get(AILiveToolModel, record_id)
             if previous:
-                return self.tool_dict(previous), False
+                return self.tool_dict(previous, db), False
             row = AILiveToolModel(id=record_id, session_id=session_id, provider_id=provider_id,
                 name=name, arguments=arguments, context_version=context_version,
                 status="awaiting_approval" if approval else "pending", requires_approval=approval,
                 created_at=to_iso_z(utc_now()), expires_at=to_iso_z(utc_now() + timedelta(minutes=5)))
             db.add(row)
             db.commit()
-            return self.tool_dict(row), True
+            return self.tool_dict(row, db), True
 
     def tool(self, session_id, tool_id):
         with self.factory() as db:
             row = db.get(AILiveToolModel, f"{session_id}:{tool_id}")
             if row is None:
                 raise HTTPException(404, "AI tool call not found.")
-            return self.tool_dict(row)
+            return self.tool_dict(row, db)
 
     def set_tool(self, session_id, tool_id, status, result=None):
         with self.factory() as db:
@@ -186,7 +186,7 @@ class AILiveRepository:
             row.status = status
             row.result_json = result
             db.commit()
-            return self.tool_dict(row)
+            return self.tool_dict(row, db)
 
     @staticmethod
     def session_dict(row):
@@ -201,8 +201,11 @@ class AILiveRepository:
                 "liveUrl": f"/api/ai/sidebar/sessions/{row.id}/live", "modelId": row.model_id}
 
     @staticmethod
-    def tool_dict(row):
+    def tool_dict(row, db):
+        generation = db.get(AIResearchGenerationModel, row.id) if row.name == "research_run" else None
         return {"toolCallId": row.provider_id, "name": row.name, "args": row.arguments,
                 "contextVersion": row.context_version, "status": row.status,
                 "requiresApproval": row.requires_approval, "result": row.result_json,
-                "expiresAt": row.expires_at}
+                "expiresAt": row.expires_at,
+                "research": {"providerId": generation.provider, "modelId": generation.model_id,
+                    "recordedAt": generation.recorded_at} if generation else None}

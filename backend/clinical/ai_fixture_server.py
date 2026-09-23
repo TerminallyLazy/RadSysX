@@ -37,6 +37,9 @@ class FixtureResearchSupervisor:
         type(self).peak = max(type(self).peak, type(self).active)
         try:
             number = "one" if "one" in query else "two"
+            if on_progress:
+                await on_progress({"stage": "waiting_model"})
+                await on_progress({"stage": "searching_pubmed"})
             await asyncio.sleep(1.2 if number == "one" else 1.8)
             if os.environ.get('RADSYSX_DESKTOP_EVIDENCE_FIXTURE')=='1':
                 summary = 'The synthetic study reports 10 samples [s1]. EXCLUDED_SENTINEL [s1].' if number=='one' else 'The second synthetic study reports 20 samples [s1].'

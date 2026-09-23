@@ -6,9 +6,21 @@ import { EventGate, TranscriptStore, parseEvent, safeUrl, toolFromWire } from '.
 import { OHIFAdapter } from '../.cache/live-runtime/ohif.js';
 import { LiveAudio } from '../.cache/live-runtime/audio.js';
 import { LiveController } from '../.cache/live-runtime/controller.js';
-import { credentialSettingsMarkup, renderToolResult } from '../.cache/live-runtime/panel.js';
+import { credentialSettingsMarkup, renderToolResult, renderResearchActivity, researchStatus } from '../.cache/live-runtime/panel.js';
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+test('research cards distinguish actual stages, recorded models, and terminal failures', () => {
+  const tool = toolFromWire({ toolCallId: 'r1', name: 'research_run', status: 'running', args: { query: '<private>' }, research: { providerId: 'nvidia_nim', modelId: 'z-ai/glm-5.3-flash', recordedAt: 'synthetic timestamp' } });
+  tool.progress = 'waiting_model';
+  const html = renderResearchActivity(tool);
+  assert.match(html, /NVIDIA NIM/); assert.match(html, /z-ai\/glm-5.3-flash/);
+  assert.match(html, /Waiting for model response/); assert.match(html, /&lt;private&gt;/);
+  assert.equal(researchStatus({ ...tool, progress: 'searching_pubmed' }), 'Searching PubMed');
+  assert.equal(researchStatus({ ...tool, status: 'failed', result: { error: 'research_timeout' } }), 'Timed out');
+  assert.equal(researchStatus({ ...tool, status: 'cancelled' }), 'Cancelled');
+  assert.match(renderResearchActivity({ ...tool, research: undefined }), /Provider not recorded/);
+});
 
 test('wire gate rejects old context, another owner session, malformed sequence, and replay', () => {
   const gate = new EventGate('session-a', 2);
@@ -167,6 +179,28 @@ class FakeAudioContext {
     this.sources.push(source); return source;
   }
 }
+test('ending a session replaces running research with owned terminal receipts or unconfirmed status', async () => {
+  const originalFetch = globalThis.fetch;
+  for (const unavailable of [false, true]) {
+    globalThis.fetch = async url => {
+      if (String(url).endsWith('/sessions/ending')) {
+        if (unavailable) throw Error('offline');
+        return new Response(JSON.stringify({ events: [], tools: [{ toolCallId: 'research', name: 'research_run', args: {}, status: 'cancelled' }] }));
+      }
+      return new Response(JSON.stringify({ availability: 'disabled', providers: [] }));
+    };
+    const { adapter, browser } = fixture();
+    const controller = new LiveController(adapter, { ...browser, addEventListener() {} });
+    try {
+      await tick();
+      controller.session = { sessionId: 'ending', contextVersion: 1, status: 'ready' };
+      controller.tools.set('research', toolFromWire({ toolCallId: 'research', name: 'research_run', args: {}, status: 'running' }));
+      await controller.end();
+      assert.equal(controller.tools.get('research').status, unavailable ? 'outcome_unknown' : 'cancelled');
+      assert.equal(controller.status, 'disconnected');
+    } finally { controller.session = undefined; controller.dispose(); globalThis.fetch = originalFetch; }
+  }
+});
 test('barge-in stops every scheduled audio buffer immediately', async () => {
   const previous = globalThis.AudioContext; globalThis.AudioContext = FakeAudioContext;
   try {

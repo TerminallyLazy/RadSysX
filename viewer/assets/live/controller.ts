@@ -284,7 +284,12 @@ export class LiveController {
       }
       case 'tool': {
         const id = String(event.toolCallId);
-        this.tools.set(id, toolFromWire(event));
+        this.tools.set(id, { ...toolFromWire(event), progress: this.tools.get(id)?.progress });
+        break;
+      }
+      case 'research_progress': {
+        const tool = this.tools.get(String(event.toolCallId));
+        if (tool?.name === 'research_run' && tool.status === 'running') tool.progress = String(event.stage);
         break;
       }
       case 'viewer_action': {
@@ -446,6 +451,10 @@ export class LiveController {
     this.transcript.interrupt(); // A new provider may reuse turn IDs; never merge with interrupted saved speech.
     this.tools.clear();
     for (const entry of (history.tools ?? []).slice(-100)) this.tools.set(String(entry.toolCallId), toolFromWire(entry, true));
+    for (const event of history.events.filter(event => event.kind === 'research_progress')) {
+      const tool = this.tools.get(String(event.toolCallId));
+      if (tool?.name === 'research_run') tool.progress = String(event.stage);
+    }
     this.citations = []; this.suggestionsHtml = '';
     const sources = history.events.filter(event => event.kind === 'citations').at(-1);
     if (sources) {
@@ -574,8 +583,22 @@ export class LiveController {
     this.recoverySessionId = undefined;
     this.closed = true; this.interaction = 'IDLE'; this.generation += 1; clearTimeout(this.reconnectTimer);
     this.audio.close(); this.stopSpeaking(); await this.stopSharing(); this.socket?.close(); this.socket = undefined;
-    if (this.session) try { await request(this.base() + '/close', {}); } catch {}
-    this.status = 'disconnected'; this.message = 'Session ended. Conversation history is saved locally.'; this.emit();
+    const sessionId = this.session?.sessionId, generation = this.generation;
+    let receiptsRefreshed = true;
+    if (sessionId) try {
+      await request(this.base(sessionId) + '/close', {});
+      const history = await request<SavedConversation>(this.base(sessionId));
+      if (generation === this.generation && this.session?.sessionId === sessionId) {
+        for (const entry of history.tools ?? []) this.tools.set(String(entry.toolCallId), toolFromWire(entry, true));
+      }
+    } catch {
+      receiptsRefreshed = false;
+      if (generation === this.generation) for (const tool of this.tools.values()) {
+        if (['pending', 'running', 'awaiting_approval'].includes(tool.status)) { tool.status = 'outcome_unknown'; tool.approval = false; }
+      }
+    }
+    if (generation !== this.generation) return;
+    this.status = 'disconnected'; this.message = receiptsRefreshed ? 'Session ended. Conversation history is saved locally.' : 'Connection ended. Task status could not be refreshed; open saved research to check.'; this.emit();
   }
   private failMessage(error: unknown): void { this.message = error instanceof Error ? error.message : 'The assistant is unavailable.'; }
   private fail(error: unknown): void { this.failMessage(error); this.status = 'unavailable'; this.audio.close(); this.emit(); }

@@ -21,7 +21,7 @@ from .ai_research_worker import normalize_result, validate_research_model
 _LOOP_SLOTS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 _MAX_LINE_BYTES = 128 * 1024
 _MAX_OUTPUT_BYTES = 512 * 1024
-_PROGRESS_STAGES = {"starting", "searching_web", "searching_pubmed", "reading_source", "synthesizing"}
+RESEARCH_PROGRESS_STAGES = frozenset({"queued", "starting", "waiting_model", "searching_web", "searching_pubmed", "reading_source", "synthesizing"})
 
 
 def _slots() -> asyncio.Semaphore:
@@ -53,9 +53,9 @@ def _child_environment(api_key: str, *, provider: str = "gemini") -> dict[str, s
 def _failure(code: str) -> dict[str, Any]:
     return {
         "error": code,
-        "summary": "Research did not complete.",
+        "summary": "Research timed out." if code == "research_timeout" else "Research did not complete.",
         "sources": [],
-        "limitations": ["The research service is unavailable or its execution limit was reached."],
+        "limitations": ["The research provider or job did not respond within its time limit. No evidence review was run." if code == "research_timeout" else "The research service is unavailable or its execution limit was reached."],
         "usage": {},
     }
 
@@ -145,6 +145,7 @@ class ResearchSupervisor:
             process.stdin.close()
             total_bytes = 0
             result = None
+            failure = None
             while line := await process.stdout.readline():
                 total_bytes += len(line)
                 if total_bytes > _MAX_OUTPUT_BYTES:
@@ -152,17 +153,23 @@ class ResearchSupervisor:
                 event = json.loads(line)
                 if not isinstance(event, dict):
                     raise ValueError("Invalid research event")
+                if failure is not None:
+                    raise ValueError("Research error must be terminal")
                 if event.get("kind") == "progress":
                     stage = event.get("stage")
-                    if stage in _PROGRESS_STAGES and on_progress is not None:
+                    if stage in RESEARCH_PROGRESS_STAGES and on_progress is not None:
                         callback = on_progress({"stage": stage})
                         if inspect.isawaitable(callback):
                             await callback
                 elif event.get("kind") == "result" and result is None:
                     result = normalize_result(event.get("result"))
+                elif event == {"kind": "error", "code": "research_timeout"} and result is None:
+                    failure = "research_timeout"
                 else:
                     raise ValueError("Invalid research event")
             return_code = await process.wait()
+            if return_code != 0 and failure:
+                return _failure(failure)
             if return_code != 0 or result is None:
                 return _failure("research_failed")
             return result

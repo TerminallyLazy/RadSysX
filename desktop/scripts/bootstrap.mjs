@@ -5,6 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { publicChildEnvironment } from "../src/environment.mjs";
 import { inspectAiDependencies } from "./ai-dependencies.mjs";
+import { npmInstallEnvironment } from "./npm-environment.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, "..");
@@ -22,7 +23,7 @@ async function main() {
   }
 
   if (checkOnly) {
-    await checkBootstrap(python);
+    await checkBootstrap();
     return;
   }
 
@@ -30,6 +31,7 @@ async function main() {
   if (!fs.existsSync(venvPython())) await run("python", python.command, [...python.args, "-m", "venv", ".venv"]);
   await run("pip", venvPython(), ["-m", "pip", "install", "--upgrade", "pip"]);
   await run("python-deps", venvPython(), ["-m", "pip", "install", "-r", requirementsPath]);
+  await run("python-consistency", venvPython(), ["-m", "pip", "check"]);
   await run("npm", npmCommand(), ["install", "--legacy-peer-deps"]);
   await run("doctor", npmCommand(), ["run", "desktop:doctor"]);
 
@@ -38,8 +40,8 @@ async function main() {
   console.log("Next: npm run desktop");
 }
 
-async function checkBootstrap(python) {
-  console.log(`Python candidate: ${python.label}`);
+async function checkBootstrap() {
+  console.log(`Python runtime: ${venvPython()}`);
   assertFile(requirementsPath, "Desktop AI and clinical requirements file");
   assertFile(venvPython(), "Virtualenv Python");
   assertDirectory(path.join(workspaceRoot, "node_modules"), "Workspace node_modules");
@@ -48,8 +50,9 @@ async function checkBootstrap(python) {
   if (mismatches.length) throw new Error(`Python AI dependencies do not match the repository pins: ${mismatches.join("; ")}. Run npm run desktop:bootstrap.`);
   await run("python-imports", venvPython(), [
     "-c",
-    "import fastapi, pydicom, sqlalchemy, uvicorn, deepagents; from google import genai; print('clinical and AI Python imports ready')",
+    "import fastapi, pydicom, sqlalchemy, uvicorn; from deepagents import create_deep_agent; from langgraph.graph.state import CompiledStateGraph; from langchain_nvidia_ai_endpoints import ChatNVIDIA; from langchain_google_genai import ChatGoogleGenerativeAI; from google import genai; print('clinical, DeepAgents/LangGraph, Gemini and NVIDIA imports ready')",
   ]);
+  await run("python-consistency", venvPython(), ["-m", "pip", "check"]);
   await run("npm-version", npmCommand(), ["--version"]);
   console.log("RadSysX desktop bootstrap check passed.");
 }
@@ -119,7 +122,8 @@ function run(label, command, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: workspaceRoot,
-      env: label === "doctor" ? process.env : publicChildEnvironment(process.env),
+      env: label === "doctor" ? process.env : label === "npm"
+        ? npmInstallEnvironment(process.env, workspaceRoot, command) : publicChildEnvironment(process.env),
       stdio: "inherit",
     });
     child.once("error", reject);
