@@ -130,7 +130,7 @@ status = 'complete' if delivered == all_frames else ('partial' if attempted else
 
 **Interfaces:** `ActionBroker(live)`; `prepare(session_id, call_id, name, args, actor, *, context_version, grant=None) -> (tool, fresh)`; `decide(session_id, call_id, decision, actor, *, grant=None) -> tool`; `execute(session_id, call_id, actor, *, check, dispatch) -> ActionResult`. `dispatch(operation_id: str, name: str, args: dict) -> Awaitable[dict]` is injected by voice or the HTTP channel. Existing repository tool rows remain the shared action journal.
 
-- [ ] Add a regression around actual existing fixtures `live` and `authorize` from `backend/tests/test_ai_live.py`: duplicate `viewer_jump_to_slice` executes once; same call ID with different index fails; deletion/report-save requires immutable approval; report write uses the bound backend study. Use an async fake dispatch with a counter, not an alternate implementation:
+- [x] Add a regression around actual existing fixtures `live` and `authorize` from `backend/tests/test_ai_live.py`: duplicate `viewer_jump_to_slice` executes once; same call ID with different index fails; deletion/report-save requires immutable approval; report write uses the bound backend study. Use an async fake dispatch with a counter, not an alternate implementation:
 
 ```python
 calls = []
@@ -141,12 +141,12 @@ async def dispatch(operation_id, name, args):
 # then request its receipt; assert len(calls) == 1 and state.index == 2.
 ```
 
-- [ ] Run `.venv/bin/python -m pytest backend/tests/test_ai_actions.py -q`; expect failure until `ActionBroker` exists.
-- [ ] Move validation, repository identity checks, approval binding, audit and report-save authorization out of `LiveRuntime.schedule_tool/decide/execute` into the broker. Keep provider responses, voice transport and research orchestration in the existing runtime. Do not make the broker depend on a WebSocket or assume the model owns the viewer.
-- [ ] Share the viewer-mutation lock across voice and text for the same actor/renderer, not just inside each transport. A tool-enabled exploration grant owns that renderer's mutation channel until completion/takeover; voice may continue talking or researching, but conflicting voice mutations return a fixed busy result. Observation-only tasks do not acquire mutation permission. Test a voice action racing a Codex action and assert only the granted command executes.
-- [ ] Add broker tests where `check()` revokes after an awaited renderer operation: persist `outcome_unknown` for a dispatched mutation with no valid receipt, reject subsequent dispatch, and never rewrite the result to success because the provider completed. Explicit denied/expired proposals never call dispatch.
-- [ ] Preserve the voice approval TTL and use the same two-minute ceiling for new tasks. Run action tests and the existing Live/OpenAI/connection-race files; confirm no voice schema or audio behavior changes. Update clinical DOX to name the shared owner.
-- [ ] Commit: `refactor: share viewer action authority across transports`.
+- [x] Run `.venv/bin/python -m pytest backend/tests/test_ai_actions.py -q`; expect failure until `ActionBroker` exists.
+- [x] Move validation, repository identity checks, approval binding, audit and report-save authorization out of `LiveRuntime.schedule_tool/decide/execute` into the broker. Keep provider responses, voice transport and research orchestration in the existing runtime. Do not make the broker depend on a WebSocket or assume the model owns the viewer.
+- [x] Share the viewer-mutation lock across voice and text for the same actor/renderer, not just inside each transport. A tool-enabled exploration grant owns that renderer's mutation channel until completion/takeover; voice may continue talking or researching, but conflicting voice mutations return a fixed busy result. Observation-only tasks do not acquire mutation permission. Test a voice action racing a Codex action and assert only the granted command executes.
+- [x] Add broker tests where `check()` revokes after an awaited renderer operation: persist `outcome_unknown` for a dispatched mutation with no valid receipt, reject subsequent dispatch, and never rewrite the result to success because the provider completed. Explicit denied/expired proposals never call dispatch.
+- [x] Preserve the voice approval TTL and use the same two-minute ceiling for new tasks. Run action tests and the existing Live/OpenAI/connection-race files; confirm no voice schema or audio behavior changes. Update clinical DOX to name the shared owner.
+- [x] Commit: `refactor: share viewer action authority across transports`.
 
 ## Task 3: Owned task channel, claims and lifecycle
 

@@ -159,7 +159,7 @@ class AILiveRepository:
                 AILiveToolModel.status.not_in(TERMINAL_TOOLS))).all()
             return [self.tool_dict(row, db) for row in rows]
 
-    def add_tool(self, session_id, provider_id, name, arguments, context_version, approval):
+    def add_tool(self, session_id, provider_id, name, arguments, context_version, approval, *, approval_seconds=300):
         # Provider IDs only identify calls within one application session.
         record_id = f"{session_id}:{provider_id}"
         with self.factory() as db:
@@ -169,7 +169,7 @@ class AILiveRepository:
             row = AILiveToolModel(id=record_id, session_id=session_id, provider_id=provider_id,
                 name=name, arguments=arguments, context_version=context_version,
                 status="awaiting_approval" if approval else "pending", requires_approval=approval,
-                created_at=to_iso_z(utc_now()), expires_at=to_iso_z(utc_now() + timedelta(minutes=5)))
+                created_at=to_iso_z(utc_now()), expires_at=to_iso_z(utc_now() + timedelta(seconds=approval_seconds)))
             db.add(row)
             db.commit()
             return self.tool_dict(row, db), True
