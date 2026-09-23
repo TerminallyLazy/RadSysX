@@ -138,9 +138,11 @@ class ResearchSupervisor:
                 process = await spawn
                 raise
             assert process.stdin is not None and process.stdout is not None
-            request = {"query": query, "model": self._model}
-            if self._provider != "gemini": request["provider"] = self._provider
-            process.stdin.write((json.dumps(request) + "\n").encode())
+            request = self.worker_request(query)
+            encoded = (json.dumps(request, ensure_ascii=False) + "\n").encode()
+            if len(encoded) > 16384:
+                raise ValueError("Worker input limit exceeded")
+            process.stdin.write(encoded)
             await process.stdin.drain()
             process.stdin.close()
             total_bytes = 0
@@ -181,3 +183,6 @@ class ResearchSupervisor:
                 except asyncio.CancelledError:
                     await cleanup
                     raise
+
+    def worker_request(self, query):
+        return {"query": query, "model": self._model, "provider": self._provider}

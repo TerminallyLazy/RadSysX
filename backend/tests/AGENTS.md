@@ -48,3 +48,5 @@ The evidence-review CLI tests exercise real private artifacts and mocked capture
 - Pre-merge Live regressions cover privacy-class attestation revocation, required update context, unchanged sessions on oversized input, private credential-database failures and invalid mode rejection before research imports. CI includes all three Jev sidebar service/routes/provenance modules as well as the pure evaluator suite.
 
 - Research observability regressions cover actual graph model-wait/tool stages, fixed private timeout frames, persisted broker progress, recorded provider/model history and no late progress after terminal completion. Adapt supervisor fixtures to the optional `on_progress` callback without contacting hosted models.
+
+- `test_ai_text.py` verifies chat/research without Realtime keys, native text adapter input, public research isolation, owner/Origin/private-error gates, idempotency, cancellation before execution and context invalidation. Use synthetic keys/workers; never let tests read owner `.env.ai`.

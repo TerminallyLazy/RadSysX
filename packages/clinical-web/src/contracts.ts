@@ -407,6 +407,7 @@ export type AISidebarSessionCreateRequest = {
 };
 
 export type AISidebarSessionResponse = {
+  mode?: "voice" | "text";
   sessionId: string;
   status: "allocated" | "ready" | "unavailable" | "closed" | "interrupted" | "connecting" | "reconnecting" | "fallback" | "failed";
   createdAt: string;
@@ -420,10 +421,13 @@ export type AISidebarSessionResponse = {
   attestation: "synthetic" | "deidentified" | null;
   viewerContext: AISidebarViewerContext | null;
   modelId: string;
-  providerId: "gemini" | "openai";
-  inputSampleRate: 16000 | 24000;
-  outputSampleRate: 24000;
+  providerId: "gemini" | "openai" | "nvidia_nim";
+  inputSampleRate: 16000 | 24000 | null;
+  outputSampleRate: 24000 | null;
 };
+
+export type AITextSessionRequest = { viewerContext: AISidebarViewerContext; attestation: "synthetic" | "deidentified" };
+export type AITextTurnRequest = { contextVersion: number; idempotencyKey: string; action: "chat" | "research"; text: string };
 
 export type AISidebarAttachment = {
   id: string;

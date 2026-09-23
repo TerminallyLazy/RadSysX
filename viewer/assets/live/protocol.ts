@@ -19,11 +19,12 @@ export type ViewerContext = {
   state: Json;
 };
 export type Session = {
+  mode?: 'voice' | 'text';
   sessionId: string;
-  providerId?: ProviderId;
+  providerId?: ProviderId | 'nvidia_nim';
   modelId?: string;
-  inputSampleRate?: 16000 | 24000;
-  outputSampleRate?: 24000;
+  inputSampleRate?: 16000 | 24000 | null;
+  outputSampleRate?: 24000 | null;
   status: string;
   contextVersion: number;
   liveUrl?: string | null;
@@ -116,7 +117,7 @@ export class TranscriptStore {
 
 export async function request<T>(path: string, body?: unknown, method?: string): Promise<T> {
   const response = await fetch(path, {
-    credentials: 'include', method: method ?? (body === undefined ? 'GET' : 'POST'),
+    credentials: 'include', cache: 'no-store', method: method ?? (body === undefined ? 'GET' : 'POST'),
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });

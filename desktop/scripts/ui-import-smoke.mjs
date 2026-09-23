@@ -518,6 +518,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         fs.writeFileSync(credentialScreenshotPath, Buffer.from(screenshot.data, "base64"));
         await evaluateInRenderer(cdp, `document.querySelector('radsysx-ai-chat-panel [data-action="close-credentials"]').click()`);
       }
+      const textState = evidenceReviewSmoke ? await evaluateInRenderer(cdp, `(${exerciseTextWithoutVoice.toString()})()`, 45000) : undefined;
       const aiLiveState = aiViewerSmoke ? await evaluateInRenderer(cdp, `(${exerciseLiveViewer.toString()})(${JSON.stringify(aiProviderId)}, ${evidenceReviewSmoke})`, 45000) : undefined;
       let evidenceState;
       if (evidenceReviewSmoke) {
@@ -560,6 +561,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         ...(credentialScreenshotPath ? { credentialScreenshotPath } : {}),
         ...(aiLiveState ? { aiLiveState } : {}),
         ...(evidenceState ? { evidenceState } : {}),
+        ...(textState ? { textState } : {}),
         ...(credentialsState ? { credentialsState } : {}),
         ...(adapterState ? { adapterState } : {}),
         ...(audioPlaybackState ? { audioPlaybackState } : {}),
@@ -2586,4 +2588,36 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   card('smoke-research-one').querySelectorAll('details').forEach(node=>{if(node.querySelector('summary')?.textContent.includes('Execution receipt'))node.open=true;});
   card('smoke-research-one').scrollIntoView({block:'start'});
   return {...prior,status:receipt.status,resolvedModel:receipt.assessments[0].resolvedModel,submitted:2,completedPairs:1,excludedSubmitted:false,unknownUsageAttempts:1,unchangedAnswer:true,reopenWithoutInference:true,repreparedWithoutInference:true,endVoiceIndependent:true,staleHistoryReplyDiscarded:true,geometry,nvidiaModelCount:catalog.models.length};
+}
+
+
+async function exerciseTextWithoutVoice() {
+  const panel = () => document.querySelector('radsysx-ai-chat-panel');
+  const wait = async (fn) => { const end=Date.now()+18000; while(Date.now()<end) {if(await fn())return;await new Promise(r=>setTimeout(r,50));} throw Error('Text-only desktop acceptance timed out: '+panel().innerText); };
+  const api=async(path)=>{const r=await fetch('/api/ai/'+path,{credentials:'include',cache:'no-store'});if(!r.ok)throw Error('Synthetic text API failure');return r.json();};
+  await wait(()=>panel()?.querySelector('[data-action="research"]'));
+  if((await api('_fixture/media')).activeProviders!==0)throw Error('Voice was active before text test');
+  const confirmation=panel().querySelector('#radsysx-live-attestation');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));
+  const fill=text=>{const input=panel().querySelector('textarea');input.value=text;input.dispatchEvent(new Event('input',{bubbles:true}));};
+  fill('Discuss this synthetic CT series without voice.');
+  panel().querySelector('.radsysx-ai-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+  await wait(()=>panel().querySelector('[data-role="thread"]').textContent.includes('Synthetic text reply without a Realtime connection'));
+  const sid=panel().state.backendSessionId;
+  const chat=await api('sidebar/sessions/'+sid);
+  if(chat.session.mode!=='text' || chat.session.liveUrl!==null)throw Error('Text request allocated a voice session');
+  fill('Find public literature for synthetic research one.');panel().querySelector('[data-action="research"]').click();
+  await wait(async()=> (await api('sidebar/sessions/'+sid)).tools.some(t=>t.name==='research_run' && t.status==='completed'));
+  await wait(()=> !panel().querySelector('[data-action="review-latest"]').disabled);
+  const completed=await api('sidebar/sessions/'+sid);
+  if(!completed.events.some(e=>e.kind==='research_progress'&&e.stage==='searching_pubmed'))throw Error('Text-only research omitted progress');
+  if((await api('_fixture/media')).activeProviders!==0)throw Error('Text or research opened a Realtime connection');
+  panel().querySelector('[data-action="end-text"]').click();
+  await wait(()=>panel().state.backendStatus==='disconnected');
+  panel().querySelector('[data-action="history"]').click();
+  await wait(()=>panel().querySelector(`[data-action="clear-history"][data-id="${sid}"]`));
+  const originalConfirm=window.confirm;window.confirm=()=>true;
+  try {panel().querySelector(`[data-action="clear-history"][data-id="${sid}"]`).click();} finally {window.confirm=originalConfirm;}
+  await wait(()=>!panel().state.backendSessionId);
+  if(!panel().querySelector('[data-role="history"]').hidden)panel().querySelector('[data-action="history"]').click();
+  return {chat:true,research:true,jevEligible:true,voiceConnections:0,modelRecorded:completed.tools.every(t=>Boolean(t.research?.modelId))};
 }

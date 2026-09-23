@@ -44,3 +44,5 @@
 - `test:live` compiles once and runs both `test-live.mjs` and `test-evidence.mjs`. Review tests use synthetic wire fixtures and mock timers to prove confirmation/selection, stable uncertain idempotency, old-response rejection, bounded polling, no inference on reopen/refresh and escaped abstract-scoped presentation. The guarded Electron smoke owns actual DOM/focus/layout acceptance.
 
 - Research presentation checks distinguish model waiting, PubMed search and terminal timeout/cancellation; recorded model identity must remain unknown when absent. Ending-session tests require backend terminal receipts or explicit unconfirmed status, never a stale running card.
+
+- Text-controller regressions prove Send/Research without voice or audio allocation, preserved draft/operation identity on uncertain submission, and stale polling rejection after End. Keep these separate from actual hosted-model acceptance.

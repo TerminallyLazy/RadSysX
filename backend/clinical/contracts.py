@@ -476,6 +476,7 @@ class AISidebarSessionCreateRequest(ClinicalModel):
 
 
 class AISidebarSessionResponse(ClinicalModel):
+    mode: Literal["voice", "text"] = "voice"
     session_id: str = Field(alias="sessionId")
     status: Literal["allocated", "ready", "unavailable", "closed", "interrupted", "connecting", "reconnecting", "fallback", "failed"]
     created_at: str = Field(alias="createdAt")
@@ -489,9 +490,9 @@ class AISidebarSessionResponse(ClinicalModel):
     attestation: Literal["synthetic", "deidentified"] | None = None
     viewer_context: AISidebarViewerContext | None = Field(default=None, alias="viewerContext")
     model_id: str = Field(default="gemini-3.8-live-extended-thinking", alias="modelId")
-    provider_id: Literal["gemini", "openai"] = Field(default="gemini", alias="providerId")
-    input_sample_rate: Literal[16000, 24000] = Field(default=16000, alias="inputSampleRate")
-    output_sample_rate: Literal[24000] = Field(default=24000, alias="outputSampleRate")
+    provider_id: Literal["gemini", "openai", "nvidia_nim"] = Field(default="gemini", alias="providerId")
+    input_sample_rate: Literal[16000, 24000] | None = Field(default=16000, alias="inputSampleRate")
+    output_sample_rate: Literal[24000] | None = Field(default=24000, alias="outputSampleRate")
 
 
 class AILiveContextUpdate(AISidebarSessionCreateRequest):
@@ -507,7 +508,7 @@ class AILiveDecision(ClinicalModel):
 class AILiveEvent(ClinicalModel):
     """Application envelope; binary audio never appears in the durable journal."""
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True, extra="allow")
-    kind: Literal["session", "transcript", "interaction", "interrupted", "tool", "viewer_action", "citations", "error", "pong", "audio_chunk", "screen_status"]
+    kind: Literal["session", "transcript", "interaction", "interrupted", "tool", "viewer_action", "citations", "error", "pong", "audio_chunk", "screen_status", "research_progress"]
     session_id: str = Field(alias="sessionId")
     sequence: int
     context_version: int = Field(alias="contextVersion")

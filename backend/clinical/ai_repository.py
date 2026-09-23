@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select, update
 
 from .contracts import SessionClaims, to_iso_z, utc_now, parse_iso_z
-from .models import AILiveEventModel, AILiveSessionModel, AILiveToolModel, AIResearchPreferenceModel, AIResearchGenerationModel
+from .models import AILiveEventModel, AILiveSessionModel, AILiveToolModel, AIResearchPreferenceModel, AIResearchGenerationModel, AITextSessionModel
 from .ai_config import profile_for_model
 
 TERMINAL_TOOLS = {"completed", "failed", "cancelled", "interrupted", "outcome_unknown", "denied"}
@@ -36,7 +36,7 @@ class AILiveRepository:
         with self.factory() as db:
             key = f"{session_id}:{tool_id}"
             tool = db.get(AILiveToolModel, key)
-            if tool is None or tool.name != "research_run" or tool.status != "running":
+            if tool is None or tool.name not in {"research_run", "text_chat"} or tool.status != "running":
                 raise HTTPException(409, "Research dispatch is unavailable.")
             existing = db.get(AIResearchGenerationModel, key)
             if existing:
@@ -63,15 +63,17 @@ class AILiveRepository:
             ).values(status="interrupted"))
             db.commit()
 
-    def create(self, actor, context, attestation, status, model):
+    def create(self, actor, context, attestation, status, model, *, text_provider=None):
         with self.factory() as db:
             row = AILiveSessionModel(id=f"ais-{uuid4().hex}", owner=actor.sub,
                 created_at=to_iso_z(utc_now()), expires_at=actor.expires_at,
                 status=status, model_id=model, context_json=context, attestation=attestation,
                 context_version=1, sequence=0)
             db.add(row)
+            if text_provider:
+                db.add(AITextSessionModel(id=row.id, provider=text_provider))
             db.commit()
-            return self.session_dict(row)
+            return self.session_dict(row, db)
 
     def owned(self, session_id: str, actor: SessionClaims, *, active=False):
         with self.factory() as db:
@@ -80,20 +82,20 @@ class AILiveRepository:
                 raise HTTPException(404, "AI session not found.")
             if active and (row.status == "closed" or parse_iso_z(row.expires_at) <= utc_now()):
                 raise HTTPException(409, "AI session is closed or expired. Start a new session.")
-            return self.session_dict(row)
+            return self.session_dict(row, db)
 
     def get(self, session_id):
         with self.factory() as db:
             row = db.get(AILiveSessionModel, session_id)
             if row is None:
                 raise HTTPException(404, "AI session not found.")
-            return self.session_dict(row)
+            return self.session_dict(row, db)
 
     def list(self, actor):
         with self.factory() as db:
             rows = db.scalars(select(AILiveSessionModel).where(AILiveSessionModel.owner == actor.sub)
                               .order_by(AILiveSessionModel.created_at.desc()).limit(100)).all()
-            return [self.session_dict(row) for row in rows]
+            return [self.session_dict(row, db) for row in rows]
 
     def change(self, session_id, **values):
         with self.factory() as db:
@@ -103,14 +105,14 @@ class AILiveRepository:
             for key, value in values.items():
                 setattr(row, key, value)
             db.commit()
-            return self.session_dict(row)
+            return self.session_dict(row, db)
 
     def active_sessions(self, actor):
         with self.factory() as db:
             rows = db.scalars(select(AILiveSessionModel).where(
                 AILiveSessionModel.owner == actor.sub,
                 AILiveSessionModel.status != "closed")).all()
-            return [self.session_dict(row) for row in rows]
+            return [self.session_dict(row, db) for row in rows]
 
     def event(self, session_id, kind, payload, *, persist=True):
         # This method deliberately cannot accept audio/screen blobs.
@@ -147,6 +149,7 @@ class AILiveRepository:
             for cls in (AILiveEventModel, AILiveToolModel, AIResearchGenerationModel):
                 db.execute(delete(cls).where(cls.session_id == session_id))
             db.execute(delete(AILiveSessionModel).where(AILiveSessionModel.id == session_id))
+            db.execute(delete(AITextSessionModel).where(AITextSessionModel.id == session_id))
             db.commit()
 
     def active_tools(self, session_id):
@@ -189,20 +192,21 @@ class AILiveRepository:
             return self.tool_dict(row, db)
 
     @staticmethod
-    def session_dict(row):
-        profile = profile_for_model(row.model_id)
+    def session_dict(row, db):
+        text = db.get(AITextSessionModel, row.id)
+        profile = {"id": text.provider, "label": "Text", "inputSampleRate": None, "outputSampleRate": None} if text else profile_for_model(row.model_id)
         return {"sessionId": row.id, "status": row.status, "createdAt": row.created_at,
-                "expiresAt": row.expires_at, "backendBound": True, "voiceFirst": True,
+                "expiresAt": row.expires_at, "backendBound": True, "voiceFirst": not bool(text), "mode": "text" if text else "voice",
                 "orchestrationMode": "api", "message": f"Synthetic/deidentified {profile['label']} session.",
                 "providerId": profile["id"], "inputSampleRate": profile["inputSampleRate"],
                 "outputSampleRate": profile["outputSampleRate"],
                 "contextVersion": row.context_version, "attestation": row.attestation,
                 "viewerContext": row.context_json,
-                "liveUrl": f"/api/ai/sidebar/sessions/{row.id}/live", "modelId": row.model_id}
+                "liveUrl": None if text else f"/api/ai/sidebar/sessions/{row.id}/live", "modelId": row.model_id}
 
     @staticmethod
     def tool_dict(row, db):
-        generation = db.get(AIResearchGenerationModel, row.id) if row.name == "research_run" else None
+        generation = db.get(AIResearchGenerationModel, row.id) if row.name in {"research_run", "text_chat"} else None
         return {"toolCallId": row.provider_id, "name": row.name, "args": row.arguments,
                 "contextVersion": row.context_version, "status": row.status,
                 "requiresApproval": row.requires_approval, "result": row.result_json,

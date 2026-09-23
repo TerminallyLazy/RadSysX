@@ -37,3 +37,11 @@ The normal desktop-served sidebar connected to OpenAI Realtime with microphone a
 A subsequent test from the actual native sidebar, using only a generated checkerboard DICOM and public query, recorded `queued → starting → waiting_model`. The user changed the viewer study during that test; the job was cancelled and the session closed, with no sources returned. The new Jev entry was visibly verified in that native window.
 
 These observations prove dispatch and identify a hosted request timeout; they do not establish successful live NIM research or a new live Jev review. Earlier provider acceptance remains separately recorded in `NIM_IMPLEMENTATION.md` and `JEV_SIDEBAR_IMPLEMENTATION.md`. Physical microphone/speaker, real-patient use, clinical validation, Orthanc and MLX VoiceChat were not tested in this activation work.
+
+## Voice-independent chat and research
+
+Typed Send now uses the selected standard Gemini/NVIDIA model without Realtime; Research explicitly dispatches the bounded DeepAgents graph. Both retain synthetic/deidentified confirmation, owned idempotent jobs, cancellation, saved progress/results and exact dispatch model receipts. Text-only context contains neutral modality/count/series metadata, not pixels or patient records. Chat adds bounded prior completed chat turns; public research receives no chat history. No model or provider is silently substituted. Connect voice starts a new voice conversation. Settings is labeled Text & research models.
+
+Focused validation after this addition: 333 backend tests, 45 viewer tests, frontend/viewer type checks and rebuilt viewer. Guarded Electron acceptance additionally exercises chat and research with zero voice connections; hosted-provider acceptance remains separate.
+
+The real text-only NVIDIA test used `z-ai/glm-5.3-flash` with a fixed synthetic “Reply with OK” question and no image or patient data. It reached the native hosted adapter but timed out after 60.8 seconds. Therefore independent text/research software acceptance passed, while successful hosted GLM output remains unverified. The selected model was not substituted.

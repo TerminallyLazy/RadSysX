@@ -933,9 +933,12 @@ body.radsysx-local-viewer [data-radsysx-local-upload-modal="true"] button:focus-
 .radsysx-live-history > div { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
 .radsysx-live-history > div button:first-child { flex: 1; text-align: left; }
 .radsysx-live-shell .radsysx-ai-composer { flex-shrink: 0; margin: 0 0.8rem 0.8rem; background: #131e28; border-color: #3d4f5e; }
-.radsysx-live-shell .radsysx-ai-send-button { background: #314e60; color: #e0e8ef; font-size: 1.15rem; }
+.radsysx-live-shell .radsysx-ai-send-button { width: auto; flex-shrink: 0; padding: 0 0.55rem; background: #314e60; color: #e0e8ef; font-size: 0.74rem; }
+.radsysx-live-shell [data-action="research"], .radsysx-live-shell [data-action="end-text"] { flex-shrink: 0; border: 1px solid #394e5c; border-radius: 0.4rem; padding: 0.45rem 0.55rem; background: #1a2934; color: #b4c8d5; font-size: 0.74rem; cursor: pointer; }
+.radsysx-live-shell [data-action="research"]:disabled { opacity: 0.6; cursor: wait; }
+.radsysx-live-shell [data-action="end-text"] { margin-top: 0.4rem; }
 .radsysx-live-shell textarea { font-size: 0.78rem; min-height: 3.75rem; }
-.radsysx-live-hint { margin-left: auto; margin-right: 0.7rem; color: #94a6b4; font-size: 0.65rem; }
+.radsysx-live-hint { margin-left: auto; min-width: 0; color: #94a6b4; font-size: 0.65rem; }
 
 .radsysx-live-report { border: 1px solid #3d5060; border-radius: 12px; padding: 12px; margin: 0 12px 10px; font-size: 12px; }
 .radsysx-live-report p { color: #a8b5c0; line-height: 1.5; }

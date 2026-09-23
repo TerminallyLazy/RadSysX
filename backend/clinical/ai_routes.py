@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse
 
 from .ai_evidence_routes import evidence_router
+from .ai_text_routes import text_router
 from .ai_config import PROVIDER_PROFILES
 from .ai_credentials import validate_api_key
 from .contracts import (AIResearchSettings, AIResearchModels, AICredentialStatusResponse, AILiveContextUpdate, AILiveDecision,
@@ -170,7 +171,12 @@ def live_router(service, session_manager):
 
     @router.post("/sessions/{session_id}/tools/{tool_id}/cancel")
     async def cancel(session_id: str, tool_id: str, request: Request):
-        service.repository.owned(session_id, actor(request), active=True)
+        claims = actor(request)
+        row = service.repository.owned(session_id, claims, active=True)
+        if row.get("mode") == "text":
+            if request.headers.get("origin") not in service.platform.allowed_origins:
+                raise HTTPException(403, "An allowed Origin is required to cancel text work.")
+            return await service.text.cancel(session_id, tool_id, claims)
         runtime = service.runtimes.get(session_id)
         if not runtime:
             raise HTTPException(409, "AI session is not active.")
@@ -200,4 +206,5 @@ def live_router(service, session_manager):
                 pass
 
     router.include_router(evidence_router(service.evidence_reviews, actor))
+    router.include_router(text_router(service, actor))
     return router

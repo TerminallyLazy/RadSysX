@@ -680,3 +680,53 @@ test('Gemini key changes immediately update research availability without replac
     assert.equal(controller.researchProviderId, 'nvidia_nim'); assert.equal(controller.researchModelId, 'openai/gpt-oss-20b');
   } finally { controller.dispose(); globalThis.fetch = originalFetch; }
 });
+
+test('typed chat and explicit research work with voice unavailable, without audio or WebSocket allocation', async () => {
+  const originalFetch = globalThis.fetch, originalSocket = globalThis.WebSocket;
+  const requests = []; let currentTool;
+  globalThis.WebSocket = class { static OPEN = 1; constructor() { throw Error('Voice must not open'); } };
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body && JSON.parse(init.body); requests.push([String(url), body]);
+    let value = {};
+    if (String(url).endsWith('/capabilities')) value = { availability: 'unavailable' };
+    else if (String(url).endsWith('/research-settings')) value = { providerId:'nvidia_nim',modelId:'z-ai/glm-5.3-flash',providers:[{id:'nvidia_nim',configured:true}] };
+    else if (String(url).endsWith('/text-sessions')) value = { sessionId:'text-one',mode:'text',status:'ready',providerId:'nvidia_nim',modelId:'z-ai/glm-5.3-flash',contextVersion:1,liveUrl:null };
+    else if (String(url).endsWith('/text-turns')) value = currentTool = { toolCallId:body.idempotencyKey,name:body.action === 'chat' ? 'text_chat' : 'research_run',status:'completed',args:{query:body.text},result:{summary:'Synthetic answer.',sources:[]} };
+    else if (String(url).endsWith('/text-one')) value = { events:[{kind:'transcript',role:'assistant',text:'Synthetic answer.',finished:true}],tools:[currentTool] };
+    return new Response(JSON.stringify(value));
+  };
+  const { adapter,browser } = fixture(); const c = new LiveController(adapter,{...browser,addEventListener(){}});
+  try {
+    await tick(); c.draft='Discuss synthetic CT'; await c.sendText();
+    assert.equal(requests.some(([url])=>url.endsWith('/text-sessions')),false); assert.equal(c.draft,'Discuss synthetic CT');
+    c.initializing=true; await c.sendText('synthetic'); assert.equal(c.session,undefined); c.initializing=false;
+    await c.sendText('synthetic'); await tick();
+    assert.equal(c.session.mode,'text'); assert.equal(c.ready,false); assert.equal(c.audio.context,undefined);
+    assert.equal(c.textBusy,false); assert.equal(c.draft,''); assert.equal(c.transcript.items[0].text,'Synthetic answer.');
+    c.draft='Find public evidence'; await c.research(); await tick();
+    assert.equal(requests.filter(([url])=>url.endsWith('/text-sessions')).length,1);
+    assert.equal(requests.filter(([url])=>url.endsWith('/text-turns')).at(-1)[1].action,'research');
+  } finally { c.session=undefined;c.dispose(); globalThis.fetch=originalFetch;globalThis.WebSocket=originalSocket; }
+});
+
+test('uncertain typed sends retain one identity, preserve newer drafts, and discard late polling after End', async () => {
+  const oldFetch=globalThis.fetch; let fail=true, resolveTurn, resolvePoll; const keys=[];
+  globalThis.fetch=async (url,init)=>{
+    const body=init?.body && JSON.parse(init.body); let value={availability:'unavailable'};
+    if(String(url).endsWith('/text-sessions')) value={sessionId:'typed',mode:'text',contextVersion:1,status:'ready'};
+    if(String(url).endsWith('/text-turns')) {
+      keys.push(body.idempotencyKey); if(fail){fail=false;throw Error('offline');}
+      return new Promise(resolve=>{resolveTurn=()=>resolve(new Response(JSON.stringify({toolCallId:body.idempotencyKey,name:'text_chat',status:'running',args:{}})));});
+    }
+    if(String(url).endsWith('/typed')) return new Promise(resolve=>{resolvePoll=()=>resolve(new Response(JSON.stringify({events:[{kind:'transcript',role:'assistant',text:'late'}],tools:[]})));});
+    return new Response(JSON.stringify(value));
+  };
+  const {adapter,browser}=fixture();const c=new LiveController(adapter,{...browser,addEventListener(){}});
+  try {
+    await tick();c.draft='Question';await c.sendText('synthetic');assert.equal(c.draft,'Question');assert.equal(c.textBusy,false);
+    const retry=c.sendText('synthetic');await tick();c.draft='New unsent draft';resolveTurn();await retry;await tick();
+    assert.equal(keys[0],keys[1]);assert.equal(c.draft,'New unsent draft');
+    const late=resolvePoll;const ended=c.end();await tick();resolvePoll();await ended;late();await tick();
+    assert.equal(c.transcript.items.some(x=>x.text==='late'),false);assert.equal(c.textBusy,false);
+  } finally {c.session=undefined;c.dispose();globalThis.fetch=oldFetch;}
+});

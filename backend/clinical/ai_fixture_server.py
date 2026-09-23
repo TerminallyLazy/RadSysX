@@ -10,7 +10,7 @@ if os.environ.get("RADSYSX_DESKTOP_ALLOW_TEST_SHUTDOWN") != "1":
 
 from google.genai import types
 from backend.server import app, ai_live_service
-from backend.clinical import ai_research
+from backend.clinical import ai_research, ai_text
 
 
 _media = {"audioBytes": 0, "audioFrames": 0, "audioEnds": 0, "videoFrames": 0, "activeProviders": 0}
@@ -29,7 +29,7 @@ class FixtureResearchSupervisor:
     active = 0
     peak = 0
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         pass
 
     async def run(self, query, on_progress=None):
@@ -195,6 +195,16 @@ ai_live_service.config.readiness = lambda provider_id="gemini": ("configured", "
 ai_live_service.provider_factory = FixtureProvider
 ai_live_service.openai_provider_factory = OpenAIFixtureProvider
 ai_research.ResearchSupervisor = FixtureResearchSupervisor
+ai_text.ResearchSupervisor = FixtureResearchSupervisor
+
+class FixtureChatSupervisor:
+    def __init__(self, *args, **kwargs): pass
+    async def run(self, query, on_progress=None):
+        if on_progress: await on_progress({"stage": "waiting_model"})
+        await asyncio.sleep(0.4)
+        return {"summary": "Synthetic text reply without a Realtime connection. No image pixels were shared.", "sources": []}
+
+ai_text.ChatSupervisor = FixtureChatSupervisor
 
 
 if os.environ.get('RADSYSX_DESKTOP_EVIDENCE_FIXTURE')=='1':

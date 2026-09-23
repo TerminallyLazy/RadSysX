@@ -78,6 +78,14 @@ async function requestEvidence<T>(path: string, init: RequestInit, options?: Cli
   return response.json() as Promise<T>;
 }
 
+async function requestAIText<T>(path: string, init: RequestInit, options?: ClinicalApiOptions): Promise<T> {
+  const response = await fetch(resolveClinicalApiUrl(path, options), {
+    ...init, credentials: "include", cache: "no-store", headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) throw new Error(`Text/research request failed (${response.status}). Check the model settings and current data confirmation.`);
+  return response.json() as Promise<T>;
+}
+
 async function requestMultipart<T>(
   path: string,
   form: FormData,
@@ -256,6 +264,14 @@ export function createClinicalApi(options?: ClinicalApiOptions) {
         method: "POST",
         body: JSON.stringify(payload),
       }, options);
+    },
+
+    createAITextSession(payload: import("./contracts").AITextSessionRequest): Promise<AISidebarSessionResponse> {
+      return requestAIText("/api/ai/sidebar/text-sessions", { method: "POST", body: JSON.stringify(payload) }, options);
+    },
+
+    submitAITextTurn(sessionId: string, payload: import("./contracts").AITextTurnRequest): Promise<import("./ai-live").AILiveTool> {
+      return requestAIText(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/text-turns`, { method: "POST", body: JSON.stringify(payload) }, options);
     },
 
     submitAISidebarMessage(

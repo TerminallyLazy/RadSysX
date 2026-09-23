@@ -77,6 +77,13 @@ class AILiveSessionModel(Base):
     sequence: Mapped[int] = mapped_column(default=0)
 
 
+class AITextSessionModel(Base):
+    """Additive transport marker; existing live sessions need no migration."""
+    __tablename__ = "ai_text_sessions"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32))
+
+
 class AILiveEventModel(Base):
     __tablename__ = "ai_live_events"
     id: Mapped[str] = mapped_column(String(128), primary_key=True)

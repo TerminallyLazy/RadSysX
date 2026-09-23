@@ -78,6 +78,8 @@ class AILiveService:
         self.research_catalog_cache = None
         from .ai_evidence_review import EvidenceReviewService
         self.evidence_reviews = EvidenceReviewService(self)
+        from .ai_text import TextService
+        self.text = TextService(self)
 
     def _openai_provider(self, settings):
         from .ai_openai import OpenAIRealtimeProvider
@@ -282,6 +284,7 @@ class AILiveService:
             await self._stop(session_id, status=status)
 
     async def _stop(self, session_id, *, status="closed"):
+        await self.text.stop(session_id, status="interrupted" if status == "interrupted" else "cancelled")
         runtime = self.runtimes.pop(session_id, None)
         if runtime:
             await runtime.close(status)
@@ -296,6 +299,7 @@ class AILiveService:
 
     async def shutdown(self):
         await self.evidence_reviews.shutdown()
+        await self.text.shutdown()
         for session_id in list(self.runtimes):
             await self.stop(session_id, status="interrupted")
 
@@ -308,6 +312,8 @@ class AILiveService:
     async def _accept(self, websocket, session_id, actor):
         self.require_actor(actor)
         row = self.repository.owned(session_id, actor, active=True)
+        if row.get("mode") == "text":
+            raise HTTPException(409, "Text sessions do not open a Realtime connection.")
         if not row["attestation"]:
             raise HTTPException(403, "Confirm synthetic/deidentified content before starting the assistant.")
         readiness = self.readiness(row["providerId"], actor)
