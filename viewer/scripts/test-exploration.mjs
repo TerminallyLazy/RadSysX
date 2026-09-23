@@ -128,3 +128,95 @@ test('fusion rejects a layer absent from the selected pane before changing prese
   await assert.rejects(f.adapter.execute('viewer_set_fusion',{displaySetId:other,opacity:0.2}),/outside/);
   assert.equal(f.memos.length,0);
 });
+
+test('measurement geometry is native-specific, bounded and nondegenerate',async()=>{
+  const {measurementSpecs,validateGeometry}=await import('../.cache/live-runtime/measurements.js');
+  const pts=[[0.1,0.2],[0.5,0.2],[0.5,0.8],[0.1,0.8]];
+  for(const [name,spec] of Object.entries(measurementSpecs)) {
+    const valid=name==='RectangleROI' ? [[0.1,0.2],[0.5,0.8]] : pts.slice(0,spec.min);
+    if(spec.min<=4)assert.equal(validateGeometry(name,valid,'canvas').length,spec.min);
+    if(spec.min>1)assert.throws(()=>validateGeometry(name,Array(spec.min).fill([0.1,0.2]),'canvas'));
+  }
+  assert.throws(()=>validateGeometry('Length',[[0.1,0.2],[Infinity,0.8]],'canvas'));
+  assert.throws(()=>validateGeometry('Angle',pts.slice(0,2),'canvas'));
+  assert.throws(()=>validateGeometry('Length',[[0.1,0.2],[0.8,0.8]],'world'));
+});
+
+test('measurement readback omits labels and never fabricates calibrated units',async()=>{
+  const {measurementValue}=await import('../.cache/live-runtime/measurements.js');
+  const one=measurementValue({annotationUID:'secret',metadata:{toolName:'Length'},data:{label:'PRIVATE NAME',handles:{points:[[1,2,3],[2,3,4]]},cachedStats:{image:{length:8}}}},'measurement-1');
+  assert.equal(one.unit,null);assert.equal(one.calculationStatus,'uncalibrated');
+  assert.doesNotMatch(JSON.stringify(one),/PRIVATE|secret/);
+  const calibrated=measurementValue({metadata:{toolName:'Length'},data:{cachedStats:{image:{length:8,unit:'mm'}}}},'measurement-2');
+  assert.equal(calibrated.value,8);assert.equal(calibrated.unit,'mm');
+});
+
+function measurementFixture(){
+  const annotations=new Map(), measurements=new Map(), memos=[];let register=true, revoked=false;
+  const instance={constructor:{createAnnotationMemo(_element,annotation,options){memos.push({annotation,options});}},createAnnotation(_evt,points){return {metadata:{toolName:'Length'},data:{handles:{points},cachedStats:{}},invalidated:true};}};
+  const element={clientWidth:100,clientHeight:100};
+  const viewport={id:'native',element,getCurrentImageId:()=> 'native-frame',canvasToWorld:([x,y])=>[x,y,0],worldToCanvas:([x,y])=>[x,y],render(){}};
+  const tools={Enums:{Events:{ANNOTATION_COMPLETED:'completed',ANNOTATION_MODIFIED:'modified'},ChangeTypes:{}},utilities:{},annotation:{state:{getAnnotation:id=>annotations.get(id),addAnnotation:a=>annotations.set(a.annotationUID,a),removeAnnotation:id=>annotations.delete(id)}}};
+  const core={eventTarget:{},triggerEvent(_target,_event,{annotation}){if(register)measurements.set(annotation.annotationUID,{uid:annotation.annotationUID,displaySetInstanceUID:'native-series'});setTimeout(()=>{annotation.data.cachedStats={image:{length:14,unit:'mm'}};annotation.invalidated=false;},40);}};
+  const services={measurementService:{getMeasurement:id=>measurements.get(id),getMeasurements:()=>[...measurements.values()]}};
+  const host={viewport,viewportId:'native',tools,core,services,group:{getToolInstance:()=>instance},seriesIds:['native-series'],imageIds:['native-frame']};
+  const aliases=new Map();
+  const adapter={measurementHost:()=>host,measurementAlias:(_kind,id)=>{if(!aliases.has(id))aliases.set(id,`measurement-${aliases.size+1}`);return aliases.get(id);},resolveMeasurement:id=>[...aliases.entries()].find(([,alias])=>alias===id)?.[0],assertMeasurementFrame(){if(revoked)throw new Error('Capture again');},runMeasurementCommand:async()=>{}};
+  return {adapter,annotations,measurements,memos,disableRegistration(){register=false;},revoke(){revoked=true;}};
+}
+
+test('measurement waits for native calculation and geometry edits discard stale statistics',async()=>{
+  const {applyMeasurement}=await import('../.cache/live-runtime/measurements.js');const f=measurementFixture();
+  const args={operation:'create',type:'Length',points:[[0.2,0.3],[0.6,0.7]]};
+  const result=await applyMeasurement(f.adapter,args,new AbortController().signal);
+  assert.equal(result.measurement.value,14);assert.equal(result.measurement.unit,'mm');
+  const anno=[...f.annotations.values()][0];anno.data.cachedStats={image:{length:999,unit:'mm'}};
+  const updated=await applyMeasurement(f.adapter,{...args,operation:'update',measurementId:result.measurement.id,points:[[0.1,0.1],[0.5,0.5]]},new AbortController().signal);
+  assert.equal(updated.measurement.value,14);assert.equal(f.memos.length,2);
+  await assert.rejects(applyMeasurement(f.adapter,{operation:'read',measurementId:'measurement-missing'},new AbortController().signal),/outside/);
+});
+
+test('a lost measurement registration cannot claim success and late revoked geometry stays stopped',async()=>{
+  const {applyMeasurement}=await import('../.cache/live-runtime/measurements.js');let f=measurementFixture();f.disableRegistration();
+  await assert.rejects(applyMeasurement(f.adapter,{operation:'create',type:'Length',points:[[0.2,0.3],[0.6,0.7]]},new AbortController().signal),/unconfirmed/);
+  f=measurementFixture();const pending=applyMeasurement(f.adapter,{operation:'create',type:'Length',points:[[0.2,0.3],[0.6,0.7]]},new AbortController().signal);f.revoke();await assert.rejects(pending,/Capture/);
+});
+
+test('segmentation edits require attached same-study references and preserve native undo',async()=>{
+  const {applySegmentation}=await import('../.cache/live-runtime/measurements.js');const f=measurementFixture();const host=f.adapter.measurementHost();
+  let visible=true;const memos=[];
+  const segmentation={segmentationId:'private-seg',segments:{1:{}},representationData:{Labelmap:{referencedImageIds:['foreign-image']}}};
+  host.services.segmentationService={getSegmentation:()=>segmentation,getSegmentationRepresentations:()=>[{segmentationId:'private-seg',type:'Labelmap'}],setSegmentVisibility:(_v,_s,_i,value)=>{visible=value;}};
+  host.tools.segmentation={config:{visibility:{getSegmentIndexVisibility:()=>visible}}};
+  host.core.utilities={HistoryMemo:{DefaultHistoryMemo:{push:m=>memos.push(m)}}};
+  f.adapter.resolveSegmentation=()=> 'private-seg';
+  const args={operation:'segment_visibility',segmentationId:'segmentation-1',segmentIndex:1,visible:false};
+  await assert.rejects(applySegmentation(f.adapter,args,new AbortController().signal),/outside/);
+  assert.equal(visible,true);segmentation.representationData.Labelmap.referencedImageIds=['native-frame'];
+  await applySegmentation(f.adapter,args,new AbortController().signal);assert.equal(visible,false);
+  memos[0].restoreMemo();assert.equal(visible,true);
+});
+
+test('world-space rectangle corners convert to the native four handles and reject an off-plane edit',async()=>{
+  const {applyMeasurement}=await import('../.cache/live-runtime/measurements.js');const f=measurementFixture();
+  await applyMeasurement(f.adapter,{operation:'create',type:'RectangleROI',coordinateSpace:'world',points:[[10,20,0],[50,80,0]]},new AbortController().signal);
+  assert.deepEqual([...f.annotations.values()][0].data.handles.points,[[10,20,0],[50,20,0],[10,80,0],[50,80,0]]);
+  await assert.rejects(applyMeasurement(f.adapter,{operation:'create',type:'RectangleROI',coordinateSpace:'world',points:[[10,20,2],[50,80,2]]},new AbortController().signal),/plane/);
+});
+
+test('calibration undo restores absence of a prior calibration rather than inventing scale one',async()=>{
+  const {applyCalibration}=await import('../.cache/live-runtime/measurements.js');const f=measurementFixture();const host=f.adapter.measurementHost();let calibration;const memos=[];
+  host.core.metaData={get:()=>calibration};host.viewport.getRenderingEngine=()=>({});
+  host.core.utilities={HistoryMemo:{DefaultHistoryMemo:{push:m=>memos.push(m)}}};
+  host.tools.utilities.calibrateImageSpacing=(_image,_engine,value)=>{calibration=value;};
+  await applyCalibration(f.adapter,{points:[[0.1,0.1],[0.6,0.1]],knownLengthMm:10},new AbortController().signal);
+  assert.equal(calibration.scale,5);memos[0].restoreMemo();assert.equal(calibration,undefined);
+});
+
+test('Livewire traces native image edges between control points instead of drawing straight segments',async()=>{
+  const {applyMeasurement}=await import('../.cache/live-runtime/measurements.js');const f=measurementFixture();const host=f.adapter.measurementHost();const tool=host.group.getToolInstance();let searches=0,cleared=false;
+  tool.setupBaseEditData=()=>{tool.editData={worldToSlice:p=>p.slice(0,2),sliceToWorld:p=>[...p,0]};tool.scissors={findPathToPoint:p=>{searches++;return [[15,15],[p[0],p[1]]];},startSearch(){}};};
+  tool.clearEditData=()=>{cleared=true;tool.editData=null;tool.scissors=null;};
+  await applyMeasurement(f.adapter,{operation:'create',type:'LivewireContour',points:[[0.2,0.2],[0.6,0.2],[0.6,0.6]]},new AbortController().signal);
+  assert.equal(searches,3);assert.equal(cleared,true);assert.equal([...f.annotations.values()][0].data.contour.polyline.length,6);
+});

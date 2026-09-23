@@ -1,4 +1,5 @@
-import { capabilities, READING_TOOLS } from './capabilities.js';
+import { applyMeasurement, applyCalibration, applySegmentation, applyRegion, readMeasurements, measurementSpecs } from './measurements.js';
+import { capabilities, READING_TOOLS, ANNOTATION_TOOLS, validateArguments } from './capabilities.js';
 import { executeReadingTool } from './reading-tools.js';
 import { alive, abortable, CornerstoneSeriesRenderer, type SeriesSource, type PrivateFrame } from './series.js';
 import type { Presentation, RendererBinding } from './protocol.js';
@@ -9,7 +10,7 @@ type Host = Record<string, any>;
 export type Managers = { servicesManager: { services: Host }; commandsManager: Host; extensionManager: Host };
 export type Attachment = { id: string; kind: 'measurement' | 'roi' | 'segmentation'; label: string; summary: Json };
 
-const TOOL_NAMES = new Set(['WindowLevel', 'Pan', 'Zoom', 'StackScroll', 'Length', 'RectangleROI', 'EllipticalROI', 'ArrowAnnotate', 'Probe', 'Angle', 'Crosshairs']);
+const TOOL_NAMES = new Set(['WindowLevel', 'Pan', 'Zoom', 'StackScroll', 'Length', 'RectangleROI', 'EllipticalROI', 'CircleROI', 'ArrowAnnotate', 'Probe', 'Angle', 'CobbAngle', 'Bidirectional', 'PlanarFreehandROI', 'SplineROI', 'LivewireContour', 'UltrasoundDirectionalTool', 'CalibrationLine', 'Magnify', 'AdvancedMagnify', 'WindowLevelRegion', 'TrackballRotate', 'Crosshairs', 'PlanarFreehandContourSegmentationTool', 'SegmentLabelTool']);
 function number(value: unknown, min: number, max: number, name: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw new Error(`Invalid ${name}.`);
   return value;
@@ -23,7 +24,9 @@ function list(value: unknown): Host[] { return Array.isArray(value) ? value : []
 /** Semantic adapter; no model-provided JavaScript, selectors, paths, or arbitrary commands. */
 export class OHIFAdapter {
   private managers?: Managers;
+  private readingResources = new Map<string, () => void>();
   private cineOwned = new Map<string, Host>();
+  private geometryFrames = new Map<string, { frameId: string; revision: number; fingerprint: string }>();
   private aliases = new Map<string, string>();
   private actual = new Map<string, string>();
   private subscriptions: Array<{ unsubscribe(): void }> = [];
@@ -110,7 +113,7 @@ export class OHIFAdapter {
         canvasWidth: viewport.element?.clientWidth ?? 0, canvasHeight: viewport.element?.clientHeight ?? 0,
         series: displays.map((item, index) => ({ id: this.alias('series', item.displaySetInstanceUID), studyId: this.alias('study', item.StudyInstanceUID), label: `Series ${index + 1}`, modality: item.Modality, imageCount: item.numImageFrames ?? item.images?.length ?? 0 })),
         viewports: [...this.services.viewportGridService.getState().viewports.keys()].map((key: string) => ({ id: this.alias('viewport', key), active: key === id })),
-        measurements: this.attachments().filter(item => item.kind !== 'segmentation').map(item => item.summary),
+        measurements: this.measurementValues(),
         segmentations: this.attachments().filter(item => item.kind === 'segmentation').map(item => item.summary),
       };
       // Only resolved launch identifiers go to the backend; none are sent as tool-readable state.
@@ -200,6 +203,10 @@ export class OHIFAdapter {
     }
     return result;
   }
+  private measurementValues(): Json[] {
+    try { return readMeasurements(this,this.studyBinding().seriesIds.map(id => this.resolve(id,'series'))).slice(0,20).map(value => ({...value,points:value.points.slice(0,8),pointCount:value.pointCount,geometryComplete:value.geometryComplete && value.points.length<=8,values:value.values.slice(0,8)})) as unknown as Json[]; }
+    catch { return this.attachments().filter(item => item.kind !== 'segmentation').map(item => item.summary); }
+  }
   capture(): Pick<CaptureRequest, 'viewportId' | 'rect'> {
     const { id, viewport } = this.viewport();
     const element = viewport.element as HTMLElement;
@@ -230,6 +237,10 @@ export class OHIFAdapter {
       const disabled = (button: string) => toolbar[button]?.props?.disabled === true || toolbar[button]?.props?.visible === false;
       let available = true;
       switch (name) {
+        case 'viewer_region': available = (args.tool ? [String(args.tool)] : ['WindowLevelRegion','Magnify','AdvancedMagnify','TrackballRotate']).some(tool => !disabled(tool) && this.services.toolGroupService?.getToolGroupForViewport(id)?.hasTool(tool)); break;
+        case 'viewer_calibrate': available = Boolean(viewport.getCurrentImageId?.() && this.libraries().cornerstoneTools.utilities?.calibrateImageSpacing); break;
+        case 'viewer_segmentation': available = Boolean(this.services.segmentationService?.getSegmentationRepresentations?.(id)?.length); break;
+        case 'viewer_measurement': { const tool = args.type === 'UltrasoundDirectional' ? 'UltrasoundDirectionalTool' : args.type; available = Boolean(this.services.measurementService && this.services.toolGroupService?.getToolGroupForViewport(id) && (!tool || !disabled(String(tool)) && this.services.toolGroupService.getToolGroupForViewport(id).hasTool(tool))); break; }
         case 'viewer_set_orientation': available = Boolean(reconstructable && native?.canReorientInPlace() && !disabled('orientationMenu')); break;
         case 'viewer_set_mpr': available = Boolean(reconstructable && this.services.hangingProtocolService?.getProtocolById?.(String(args.layout ?? 'mpr'))); break;
         case 'viewer_set_crosshair': available = Boolean(native?.isVolumeRendering() && viewport.jumpToWorld && this.services.toolGroupService?.getToolGroupForViewport?.(id)?.hasTool('Crosshairs')); break;
@@ -287,10 +298,13 @@ export class OHIFAdapter {
       viewport.render();
     };
   }
+  ownReadingResource(key: string, cleanup?: () => void): void {
+    this.readingResources.get(key)?.(); this.readingResources.delete(key); if (cleanup) this.readingResources.set(key,cleanup);
+  }
   stopReadingActivity(): void {
+    this.readingResources.forEach(cleanup => { try { cleanup(); } catch {} }); this.readingResources.clear();
     for (const [id, viewport] of this.cineOwned) {
-      this.services.cineService?.setCine?.({ id, isPlaying: false });
-      this.services.cineService?.stopClip?.(viewport.element);
+      try { this.services.cineService?.setCine?.({ id, isPlaying: false }); this.services.cineService?.stopClip?.(viewport.element); } catch {}
     }
     this.cineOwned.clear();
   }
@@ -478,6 +492,14 @@ export class OHIFAdapter {
   }
   async execute(name: string, args: Json, signal = new AbortController().signal): Promise<Json> {
     if (name === 'viewer_get_capabilities') return { capabilities: capabilities(this) };
+    if (ANNOTATION_TOOLS[name as keyof typeof ANNOTATION_TOOLS]) {
+      validateArguments(args,ANNOTATION_TOOLS[name as keyof typeof ANNOTATION_TOOLS].schema);
+      if (!this.readingAvailability(name,args).available) throw new Error('This reading tool is unavailable for the current pane.');
+    }
+    if (name === 'viewer_measurement') return applyMeasurement(this,args,signal);
+    if (name === 'viewer_region') return applyRegion(this,args,signal);
+    if (name === 'viewer_calibrate') return applyCalibration(this,args,signal);
+    if (name === 'viewer_segmentation') return applySegmentation(this,args,signal);
     if (READING_TOOLS[name]) return executeReadingTool(this, name, args, signal);
     alive(signal); const result = await this.executeLegacy(name, args, signal); alive(signal); return result;
   }
@@ -553,7 +575,12 @@ export class OHIFAdapter {
       case 'viewer_set_tool': {
         const toolName = text(args.tool, 80);
         if (!TOOL_NAMES.has(toolName)) throw new Error('This tool is not available to the assistant.');
-        await run('setToolActive', { toolName }); break;
+        const group = this.services.toolGroupService?.getToolGroupForViewport(id);
+        if (!group?.hasTool(toolName) || this.services.toolbarService?.state?.buttons?.[toolName]?.props?.disabled) throw new Error('This native tool is unavailable.');
+        for (const pane of group.getViewportsInfo()) this.assertPaneStudy(pane.viewportId,this.studyBinding().studyId);
+        await run('setToolActive', { toolName, toolGroupId:group.id });
+        if (group.getActivePrimaryMouseButtonTool() !== toolName) throw new Error('Native tool activation is unconfirmed.');
+        break;
       }
       case 'viewer_set_view':
         if (args.reset === true) await run('resetViewport');
@@ -564,22 +591,7 @@ export class OHIFAdapter {
         if (typeof args.flipVertical === 'boolean') await run('setViewportVerticalFlip', { flipped: args.flipVertical });
         if (typeof args.invert === 'boolean') viewport.setProperties({ invert: args.invert });
         viewport.render(); break;
-      case 'viewer_measurement': await this.measurement(args, viewport, id); break;
-      case 'viewer_segmentation': {
-        const segmentationId = this.resolve(args.segmentationId, 'segmentation');
-        if (!this.services.segmentationService.getSegmentation(segmentationId)) throw new Error('Segmentation no longer exists.');
-        if (args.operation === 'select') await run('setActiveSegmentation', { segmentationId, viewportId: id });
-        else if (args.operation === 'visibility' && typeof args.visible === 'boolean') {
-          const service = this.services.segmentationService;
-          const libs = this.libraries();
-          const visibility = libs.cornerstoneTools.segmentation.config.visibility;
-          const reps = service.getSegmentationRepresentations(id).filter((rep: Host) => rep.segmentationId === segmentationId);
-          if (!reps.length) throw new Error('Segmentation is not attached to this viewport.');
-          reps.forEach((rep: Host) => visibility.setSegmentationRepresentationVisibility(id, { segmentationId, type: rep.type }, args.visible));
-          viewport.render();
-        } else throw new Error('Unsupported segmentation operation.');
-        break;
-      }
+      case 'viewer_measurement': return applyMeasurement(this,args,signal);
       case 'viewer_undo': await run('undo'); break;
       case 'viewer_redo': await run('redo'); break;
       default: throw new Error('Unsupported viewer action.');
@@ -593,40 +605,29 @@ export class OHIFAdapter {
     if (!libraries?.cornerstoneTools) throw new Error('Annotation tools are unavailable.');
     return libraries;
   }
-  private async measurement(args: Json, viewport: Host, viewportId: string): Promise<void> {
-    const service = this.services.measurementService;
-    if (args.operation !== 'create') {
-      const uid = this.resolve(args.measurementId, 'measurement');
-      const measurement = service.getMeasurement(uid);
-      if (!measurement) throw new Error('Measurement no longer exists.');
-      if (args.operation === 'jump') await this.run('jumpToMeasurement', { uid });
-      else if (args.operation === 'delete') service.remove(uid);
-      else if (args.operation === 'update') await this.run('updateMeasurement', { uid, textLabel: text(args.label ?? '') });
-      else throw new Error('Unsupported measurement operation.');
-      return;
-    }
-    const type = args.type ?? 'Length';
-    if (!['Length', 'RectangleROI', 'ArrowAnnotate'].includes(String(type))) throw new Error('Use Length, RectangleROI, or ArrowAnnotate.');
-    if (!Array.isArray(args.points) || args.points.length !== 2) throw new Error('Provide two normalized image points.');
-    let points = args.points.map(point => {
-      if (!Array.isArray(point) || point.length !== 2) throw new Error('Invalid image point.');
-      return [number(point[0], 0, 1, 'x coordinate'), number(point[1], 0, 1, 'y coordinate')];
-    });
-    if (type === 'RectangleROI') { const [a, b] = points; points = [a, [b[0], a[1]], [a[0], b[1]], b]; }
-    const canvas = viewport.element as HTMLElement;
-    const world = points.map(([x, y]) => viewport.canvasToWorld([x * canvas.clientWidth, y * canvas.clientHeight]));
+  measurementHost(args: Json): { viewport: Host; viewportId: string; services: Host; core: Host; tools: Host; group: Host; seriesIds: string[]; imageIds: string[] } {
+    const { id, viewport } = this.viewport(args.viewportId);
+    this.assertPaneStudy(id,this.studyBinding().studyId);
     const { cornerstone, cornerstoneTools } = this.libraries();
-    const ToolClass = cornerstoneTools[`${type}Tool`];
-    if (!ToolClass?.createAnnotationForViewport) throw new Error('This annotation cannot be created in the current viewport.');
-    const label = text(args.label ?? '');
-    const annotation = ToolClass.createAnnotationForViewport(viewport, {
-      annotationUID: crypto.randomUUID(), highlighted: false, invalidated: true,
-      data: { handles: { points: world, activeHandleIndex: null, textBox: { hasMoved: false, worldPosition: [0, 0, 0], worldBoundingBox: {} } }, label, text: label, cachedStats: {} },
-    });
-    cornerstoneTools.annotation.state.addAnnotation(annotation, canvas);
-    cornerstone.triggerEvent(cornerstone.eventTarget, cornerstoneTools.Enums.Events.ANNOTATION_COMPLETED, { annotation, viewportId, renderingEngineId: viewport.renderingEngineId });
-    await this.run('triggerCreateAnnotationMemo', { annotation, FrameOfReferenceUID: annotation.metadata.FrameOfReferenceUID, options: { newAnnotation: true } });
-    viewport.render();
-    if (!service.getMeasurement(annotation.annotationUID)) throw new Error('Annotation was added, but measurement registration needs review.');
+    return { viewport, viewportId: id, services: this.services, core: cornerstone, tools: cornerstoneTools,
+      group: this.services.toolGroupService?.getToolGroupForViewport(id), seriesIds: this.studyBinding().seriesIds.map(alias => this.resolve(alias,'series')),
+      imageIds: list(this.services.displaySetService.activeDisplaySets).filter(ds => this.studyBinding().seriesIds.includes(this.alias('series',ds.displaySetInstanceUID))).flatMap(ds => this.managers!.extensionManager.getActiveDataSource?.()?.getImageIdsForDisplaySet?.(ds) ?? ds.imageIds ?? []) };
+  }
+  measurementAlias(kind: string, id: string): string { return this.alias(kind,id); }
+  resolveMeasurement(id: unknown): string { return this.resolve(id,'measurement'); }
+  resolveSegmentation(id: unknown): string { return this.resolve(id,'segmentation'); }
+  async runMeasurementCommand(name: string, args: Json): Promise<unknown> { return this.run(name,args); }
+  private measurementFingerprint(viewport: Host): string {
+    return JSON.stringify({ image: viewport.getCurrentImageId?.(), reference: viewport.getViewReference?.(), camera: viewport.getCamera?.(), view: this.viewportAdapter(viewport)?.getViewState(), width: viewport.element.clientWidth, height: viewport.element.clientHeight });
+  }
+  registerMeasurementObservation(viewportId: string, frameId: string, revision: number): void {
+    const { viewport, id } = this.viewport(viewportId);
+    this.geometryFrames.set(id,{ frameId, revision, fingerprint: this.measurementFingerprint(viewport) });
+  }
+  clearMeasurementObservations(): void { this.geometryFrames.clear(); }
+  assertMeasurementFrame(args: Json): void {
+    if (args.frameId === undefined && args.revision === undefined) return; // Existing voice tools retain their context-version policy.
+    const { viewport, id } = this.viewport(args.viewportId), bound = this.geometryFrames.get(id);
+    if (!bound || bound.frameId !== args.frameId || bound.revision !== args.revision || bound.fingerprint !== this.measurementFingerprint(viewport)) throw new Error('Capture this frame again before placing or editing geometry.');
   }
 }

@@ -1,3 +1,4 @@
+import { measurementSpecs } from './measurements.js';
 import type { Json } from './protocol.js';
 export type Schema = { type?: string; properties?: Record<string,Schema>; required?: string[]; additionalProperties?: boolean; enum?: (string|number|boolean)[]; minimum?: number; maximum?: number; minItems?: number; maxItems?: number; items?: Schema; pattern?: string };
 export type ViewerCapability = { name: string; schema: Schema; permission: 'observe'|'mutate'; available: boolean; reason?: string; nativeHandler: string };
@@ -10,6 +11,16 @@ const b:Schema={type:'boolean'}, v:Schema={type:'string',pattern:'^viewport-[A-Z
 const choice=(...values:string[]):Schema=>({type:'string',enum:values});
 const schema=(properties:Record<string,Schema>,required:string[]=[]):Schema=>({type:'object',properties:{viewportId:v,...properties},required,additionalProperties:false});
 const entry=(nativeHandler:string,properties:Record<string,Schema>,required:string[]=[])=>({nativeHandler,schema:schema(properties,required)});
+const point: Schema = {type:'array',minItems:2,maxItems:3,items:n(-1000000,1000000)};
+export const MEASUREMENT_SCHEMA = schema({operation:choice('create','update','delete','jump','read','visibility'), measurementId:{type:'string',pattern:'^measurement-[A-Za-z0-9_-]{1,110}$'}, type:choice(...Object.keys(measurementSpecs)), label:{type:'string'}, points:{type:'array',minItems:1,maxItems:256,items:point}, coordinateSpace:choice('canvas','world'), frameId:{type:'string',pattern:'^frame-[A-Za-z0-9_-]{1,110}$'}, revision:{type:'integer',minimum:0}, visible:b},['operation']);
+const capture = {frameId:{type:'string',pattern:'^frame-[A-Za-z0-9_-]{1,110}$'} as Schema,revision:{type:'integer',minimum:0} as Schema};
+const shapePoints: Schema = {type:'array',minItems:1,maxItems:256,items:point};
+export const ANNOTATION_TOOLS = {
+  viewer_measurement: {nativeHandler:'Cornerstone annotation / measurementService',schema:MEASUREMENT_SCHEMA},
+  viewer_calibrate: entry('calibrateImageSpacing',{...capture,points:{...shapePoints,minItems:2,maxItems:2},knownLengthMm:n(0.001,10000)},['points','knownLengthMm']),
+  viewer_region: entry('native WindowLevelRegion / Magnify / Trackball',{...capture,tool:choice('WindowLevelRegion','Magnify','AdvancedMagnify','TrackballRotate'),points:{...shapePoints,maxItems:2},zoom:n(1,10),close:b},['tool']),
+  viewer_segmentation: entry('segmentationService and native contour tools',{...capture,operation:choice('select','visibility','active_segment','segment_visibility','segment_lock','segment_color','segment_label','contour'),segmentationId:{type:'string',pattern:'^segmentation-[A-Za-z0-9_-]{1,110}$'},segmentIndex:{type:'integer',minimum:1,maximum:65535},visible:b,locked:b,color:{type:'array',minItems:4,maxItems:4,items:{type:'integer',minimum:0,maximum:255}},label:{type:'string'},points:{...shapePoints,minItems:3}},['operation','segmentationId']),
+};
 export const READING_TOOLS: Record<string,{nativeHandler:string;schema:Schema}> = {
   viewer_select_viewport:entry('viewportGridService.setActiveViewportId',{},['viewportId']),
   viewer_set_orientation:entry('setViewportOrientation',{orientation:choice('axial','coronal','sagittal')},['orientation']),
@@ -29,7 +40,7 @@ export const READING_TOOLS: Record<string,{nativeHandler:string;schema:Schema}> 
   viewer_set_view:entry('native viewport presentation',{zoom:n(0.1,20),panX:n(-5000,5000),panY:n(-5000,5000),rotation:n(-360,360),invert:b,flipHorizontal:b,flipVertical:b,reset:b}),
 };
 export function capabilities(adapter: ReadingAdapter): ViewerCapability[] {
-  return Object.entries(READING_TOOLS).map(([name,entry])=>({name,...entry,permission:'mutate',...adapter.readingAvailability(name)}));
+  return Object.entries({...READING_TOOLS,...ANNOTATION_TOOLS}).map(([name,entry])=>({name,...entry,permission:'mutate',...adapter.readingAvailability(name)}));
 }
 export function validateArguments(value: unknown, schema: Schema): void {
   if(schema.type==='object') {

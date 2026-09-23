@@ -494,6 +494,8 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
       });
       await cdp.send("Network.enable");
     }
+    cdp.on("Inspector.detached", params => console.log('[smoke] inspector detached:', params.reason));
+    cdp.on("Page.frameNavigated", params => { if (!params.frame.parentId) console.log('[smoke] main frame:', new URL(params.frame.url).pathname); });
     cdp.on("Runtime.exceptionThrown", (params) => {
       const details = params.exceptionDetails;
       const location = details?.url
@@ -525,6 +527,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
       }
       const visionState = visionSmoke ? await evaluateInRenderer(cdp, `(${exerciseVisionWithoutVoice.toString()})()`, 45000) : undefined;
       const textState = evidenceReviewSmoke ? await evaluateInRenderer(cdp, `(${exerciseTextWithoutVoice.toString()})()`, 45000) : undefined;
+      if (aiViewerSmoke) console.log('[smoke] actual sidebar live path');
       const aiLiveState = aiViewerSmoke ? await evaluateInRenderer(cdp, `(${exerciseLiveViewer.toString()})(${JSON.stringify(aiProviderId)}, ${evidenceReviewSmoke})`, 45000) : undefined;
       let evidenceState;
       if (evidenceReviewSmoke) {
@@ -1133,9 +1136,15 @@ async function exerciseAdapter() {
   await adapter.execute('viewer_set_layout', { rows: 1, columns: 1 });
   await waitFor(() => services.viewportGridService.getState().layout.numCols === 1 && viewport()?.element?.isConnected && viewport()?.getImageIds?.()?.length === 1, 'Actual layout restore failed');
   results.push('layout-restore');
+  const imagePoint = (x,y) => {
+    const pane=services.cornerstoneViewportService.getCornerstoneViewport(services.viewportGridService.getActiveViewportId());
+    const data=pane.getImageData().imageData, dims=data.getDimensions();
+    const point=pane.worldToCanvas(data.indexToWorld([(dims[0]-1)*x,(dims[1]-1)*y,0]));
+    return [point[0]/pane.element.clientWidth,point[1]/pane.element.clientHeight];
+  };
   for (const type of ['Length', 'RectangleROI']) {
     const previous = services.measurementService.getMeasurements().length;
-    await adapter.execute('viewer_measurement', { operation: 'create', type, points: [[0.25, 0.25], [0.7, 0.7]], label: 'Synthetic ' + type });
+    await adapter.execute('viewer_measurement', { operation: 'create', type, points: [imagePoint(0.25,0.25), imagePoint(0.7,0.7)], label: 'Synthetic ' + type });
     await waitFor(() => services.measurementService.getMeasurements().length === previous + 1, type + ' registration failed');
     let attachment = adapter.attachments().find(item => item.summary.type === type);
     assert(attachment, type + ' attachment unavailable');
@@ -1162,7 +1171,7 @@ async function exerciseAdapter() {
   assert(adapter.draftReport?.findings === 'Synthetic draft', 'Local draft redo failed');
   results.push('draft-undo-redo');
   const previous = services.measurementService.getMeasurements().length;
-  await adapter.execute('viewer_measurement', { operation: 'create', type: 'Length', points: [[0.2, 0.3], [0.8, 0.6]], label: 'Synthetic mixed history' });
+  await adapter.execute('viewer_measurement', { operation: 'create', type: 'Length', points: [imagePoint(0.2,0.3), imagePoint(0.8,0.6)], label: 'Synthetic mixed history' });
   await waitFor(() => services.measurementService.getMeasurements().length === previous + 1, 'Mixed-history annotation creation failed');
   await adapter.execute('viewer_undo', {});
   await waitFor(() => services.measurementService.getMeasurements().length === previous, 'Mixed-history undo must remove the latest annotation first');
@@ -2295,7 +2304,7 @@ class CdpClient {
       this.pending.delete(message.id);
       clearTimeout(pending.timeout);
       if (message.error) {
-        pending.reject(new Error(`${message.error.message}: ${message.error.data ?? ""}`));
+        pending.reject(new Error(`${pending.method}: ${message.error.message}: ${message.error.data ?? ""}`));
       } else {
         pending.resolve(message.result);
       }
@@ -2330,7 +2339,7 @@ class CdpClient {
         reject(new Error(`CDP command timed out: ${method}`));
       }, timeoutMs);
       timeout.unref();
-      this.pending.set(id, { resolve, reject, timeout });
+      this.pending.set(id, { resolve, reject, timeout, method });
       this.socket.send(payload);
     });
   }

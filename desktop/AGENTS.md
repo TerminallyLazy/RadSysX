@@ -138,3 +138,5 @@
 - `study-capture.test.mjs` covers sender/origin/claim boundaries, sensitive panels, changing views, lease/concurrency limits, scaled crops, byte limits and pane grouping. Native capture acceptance remains a separate isolated Electron fixture.
 
 - `node desktop/scripts/ui-import-smoke.mjs --local-start --vision --study-inventory` records enabled toolbar controls, native tool-group membership and adapter capability availability against the generated CT. It uses only the guarded synthetic provider and a test-only bundle of the production adapter. The inventory alone does not prove all native tools or hosted subscription inference.
+
+- Native adapter measurement fixtures derive normalized canvas points from known synthetic image indices via Cornerstone. Never place a measurement in viewport letterboxing or relax image bounds to satisfy a smoke. Scope/navigation diagnostics identify only fixed synthetic test phases and CDP methods.

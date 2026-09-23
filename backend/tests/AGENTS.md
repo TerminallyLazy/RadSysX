@@ -61,3 +61,5 @@ The evidence-review CLI tests exercise real private artifacts and mocked capture
 - Exploration route/lifecycle tests use signed owner routes and synthetic renderer claims against production persistence. Cover body/origin/mode gates, duplicate and changed completions, old epochs, expiry, owner/global capacity, account/model/context invalidation, history deletion and restart. Rejected results must not poison valid retries; completion futures and history retain no image bytes. No provider calls or actual viewer execution are implied.
 
 - `test_ai_exploration_tools.py` checks the native reading allowlist, finite arguments, pane/layer handles, constrained panels and advanced rendering bounds. Actual geometry/rendering remains a separate native desktop acceptance gate.
+
+- Geometry regressions cover per-tool point counts, duplicate/nonfinite/out-of-range coordinates, captured-frame pairs, bounded regions and reviewed calibration. The existing context-change deletion fixture uses an actual opaque measurement-handle format so it still reaches the approval/cancellation path.

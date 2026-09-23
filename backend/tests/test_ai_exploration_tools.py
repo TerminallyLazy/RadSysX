@@ -35,3 +35,30 @@ def test_enabled_advanced_render_controls_have_explicit_bounded_contracts():
 def test_volume_opacity_shift_is_bounded():
     assert validate_tool('viewer_set_volume', {'opacityShift': 10.0})
     with pytest.raises(ValueError):validate_tool('viewer_set_volume', {'opacityShift': 1000001.0})
+
+@pytest.mark.parametrize('tool,count', [('Length',2),('ArrowAnnotate',2),('Angle',3),('CobbAngle',4),('Bidirectional',4),('Probe',1),('RectangleROI',2),('EllipticalROI',4),('CircleROI',2),('PlanarFreehandROI',3),('SplineROI',3),('LivewireContour',3),('UltrasoundDirectional',2)])
+def test_calibrated_geometry_contracts(tool,count):
+    points=([[0.1,0.2],[0.5,0.8]] if tool=='RectangleROI' else [[0.1,0.2],[0.5,0.2],[0.5,0.8],[0.1,0.8]][:count])
+    assert validate_tool('viewer_measurement',{'operation':'create','type':tool,'points':points})
+    with pytest.raises(ValueError):validate_tool('viewer_measurement',{'operation':'create','type':tool,'points':points+[points[0]]})
+
+@pytest.mark.parametrize('points', [[[0.2,0.3]]*2,[[float('nan'),0.1],[0.2,0.8]],[[0.1,0.2],[2.0,0.8]]])
+def test_degenerate_geometry_never_enters_native_tools(points):
+    with pytest.raises(ValueError):validate_tool('viewer_measurement',{'operation':'create','type':'Length','points':points})
+
+def test_measurement_geometry_edits_and_capture_identity():
+    args={'operation':'update','measurementId':'measurement-1','type':'Angle','points':[[0.1,0.2],[0.4,0.6],[0.7,0.2]], 'coordinateSpace':'canvas','frameId':'frame-1','revision':4}
+    assert validate_tool('viewer_measurement',args)
+    with pytest.raises(ValueError):validate_tool('viewer_measurement',{**args,'coordinateSpace':'javascript'})
+
+def test_segmentation_edits_remain_typed_and_calibration_requires_review():
+    from backend.clinical.ai_tools import requires_approval
+    assert validate_tool('viewer_segmentation',{'operation':'segment_visibility','segmentationId':'segmentation-1','segmentIndex':1,'visible':False})
+    assert validate_tool('viewer_calibrate',{'points':[[0.1,0.1],[0.8,0.8]],'knownLengthMm':10.0})
+    assert requires_approval('viewer_calibrate',{})
+    assert requires_approval('viewer_measurement',{'operation':'delete'})
+
+def test_native_region_tools_are_explicit_not_arbitrary_pointer_actions():
+    assert validate_tool('viewer_region',{'tool':'WindowLevelRegion','points':[[0.1,0.2],[0.6,0.8]]})
+    assert validate_tool('viewer_region',{'tool':'AdvancedMagnify','points':[[0.5,0.5]],'zoom':3.0})
+    with pytest.raises(ValueError):validate_tool('viewer_region',{'tool':'evaluate','points':[[0.5,0.5]]})
