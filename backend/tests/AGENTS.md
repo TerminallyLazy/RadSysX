@@ -66,3 +66,5 @@ The evidence-review CLI tests exercise real private artifacts and mocked capture
 
 - `test_ai_codex_exploration.py` covers dynamic tool identity, image acknowledgment/release, duplicate mutation receipts, geometry authority, grant expiry and bounded private stdio failure using synthetic data. Native desktop and real subscription acceptance are recorded separately in `roadmap/ai-backend/CODEX_STUDY_EXPLORATION.md`.
 - Its initial-input regression checks actual image items before clearing buffers and rejects the former conflicting text-only instructions. `test_ai_radiology.py` checks exact report offsets/units/qualifiers and DICOM technical allowlisting against injected patient fields. PubMed tests preserve original labelled abstract text and exact search/PMID receipts. These checks do not establish clinical interpretation or OpenMed NER inference.
+
+- Scoped Codex regressions also enforce whole-view frame denial, terminal-only continuation, preservation of Stop/Take over status, remaining-frame capture, and nullable/bounded PubMed limits with actionable errors. Public network and signed-in subscription probes remain separate from these synthetic tests.

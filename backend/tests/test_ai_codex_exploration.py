@@ -146,3 +146,51 @@ async def test_writer_is_bounded_and_private(tmp_path,monkeypatch):
     client.process=process
     with pytest.raises(RuntimeError,match='Codex message exceeds limit'):
         await client.send({'private':'a'*ai_codex.MAX_LINE_BYTES})
+
+@pytest.mark.anyio
+async def test_reading_view_has_no_offscreen_frame_tool_or_continuation(live):
+    service,grant,binding=await make_task(live)
+    task=service.tasks[grant.task_id]
+    task.snapshot.grant.scope.kind='entire_view'
+    bridge=CodexToolBridge(service,grant.task_id,live.actor)
+    assert 'series_read_frames' not in {t['name'] for t in bridge.declarations()}
+    with pytest.raises(HTTPException,match='Active series'):
+        await bridge.call('bad-scope','series_read_frames',{'manifestId':'manifest-1','frameIds':['frame-0']})
+    await service.revoke(grant.task_id,live.actor)
+    assert not (await service.snapshot(grant.task_id,live.actor)).can_continue
+    await service.shutdown()
+
+@pytest.mark.anyio
+async def test_continuation_initial_batch_starts_after_acknowledged_frames(live):
+    from backend.clinical.ai_exploration_coverage import CoverageLedger
+    from backend.clinical.ai_exploration_contracts import CoverageReceipt
+    service,grant,binding=await make_task(live,frames=34)
+    task=service.tasks[grant.task_id]
+    ledger=task.ledgers['manifest-1']
+    first=list(ledger.frames)[:8];ledger.requested(first);ledger.captured(first)
+    ledger.submitted('prior',first,'frame');ledger.acknowledge('prior')
+    task.ledgers['manifest-1']=CoverageLedger.restore(CoverageReceipt.model_validate(ledger.receipt().wire()))
+    bridge=CodexToolBridge(service,grant.task_id,live.actor)
+    requested=[]
+    async def record(_call,name,args):
+        requested.extend(args['frame_ids'])
+        return SimpleNamespace(success=True,content_items=[{'type':'inputImage'}])
+    bridge.call=record
+    await bridge.initial_observation()
+    assert requested==[f'frame-{i}' for i in range(8,16)]
+    await service.revoke(grant.task_id,live.actor,status='paused')
+    snapshot=await service.snapshot(grant.task_id,live.actor)
+    assert snapshot.can_continue and snapshot.coverage[0].delivered==list(range(8))
+    assert snapshot.status=='paused' and snapshot.activity
+    await service.shutdown()
+
+@pytest.mark.anyio
+async def test_pubmed_optional_limit_and_invalid_arguments_have_actionable_receipts(tmp_path):
+    client=CodexProcess(tmp_path);client.send=AsyncMock();client.account={'type':'chatgpt'}
+    tools=SimpleNamespace(search_pubmed=AsyncMock(return_value={'sources':[]}))
+    client.job={'thread':'thread-1','turn':'turn-1','check':lambda:None,'research':True,'calls':0,'all_calls':0,'records':{},'tools':tools,'progress':AsyncMock(),'bridge':None}
+    for i,limit in enumerate([None,10,True]):
+        await client.dispatch({'id':i,'method':'item/tool/call','params':{'threadId':'thread-1','turnId':'turn-1','callId':f'search-{i}','namespace':None,'tool':'search_pubmed','arguments':{'query':'public synthetic question','limit':limit}}})
+    assert [call.args[1] for call in tools.search_pubmed.await_args_list]==[5,10]
+    result=client.send.call_args.args[0]['result']
+    assert not result['success'] and 'integer limit' in result['contentItems'][0]['text']

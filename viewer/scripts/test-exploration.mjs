@@ -220,3 +220,29 @@ test('Livewire traces native image edges between control points instead of drawi
   await applyMeasurement(f.adapter,{operation:'create',type:'LivewireContour',points:[[0.2,0.2],[0.6,0.2],[0.6,0.6]]},new AbortController().signal);
   assert.equal(searches,3);assert.equal(cleared,true);assert.equal([...f.annotations.values()][0].data.contour.polyline.length,6);
 });
+
+test('review status uses cumulative coverage and whole-view counts stay separate',async()=>{
+  const {explorationMarkup}=await import('../.cache/live-runtime/exploration-panel.js');
+  const snapshot={status:'paused',grant:{scope:{kind:'series'}},coverage:[{frameCount:34,delivered:Array.from({length:8},(_,i)=>i)}],actions:[],canContinue:true};
+  const text=explorationMarkup(snapshot);
+  assert.match(text,/Review paused/);assert.match(text,/8 of 34 frames sent/);assert.match(text,/Review remaining 26 frames/);assert.doesNotMatch(text,/No images delivered/);
+  const view=explorationMarkup({...snapshot,status:'completed',grant:{scope:{kind:'entire_view'}},actions:[{status:'delivered',result:{images:[{},{}]}}]});
+  assert.match(view,/2 images sent/);assert.doesNotMatch(view,/34|study-continue|frames sent/);
+  assert.match(explorationMarkup({...snapshot,status:'failed'}),/Review failed/);
+});
+
+test('viewer state reads survive an adjacent unshared localizer and incidental statistic updates',async()=>{
+  const {ExplorationController,studyFingerprint}=await import('../.cache/live-runtime/exploration.js');
+  const old=globalThis.fetch,calls=[];
+  const state={studyId:'study-1',seriesId:'series-1',viewportId:'viewport-1',index:1,viewports:[{id:'viewport-1',seriesIds:['series-1']},{id:'viewport-2',seriesIds:['series-localizer']}],series:[{id:'series-1'},{id:'series-localizer'}],measurements:[{value:10}],canvasWidth:500};
+  const host={studyBinding:()=>({studyId:'study-1',seriesIds:['series-1','series-localizer']}),context:()=>({state}),execute:async()=>structuredClone(state)};
+  const c=new ExplorationController(host,{addEventListener(){},removeEventListener(){}},()=>{});
+  c.abort=new AbortController();c.snapshot={status:'running',grant:{sessionId:'session-1',taskId:'task-1',binding}};c.expected=studyFingerprint(state);c.poll=async()=>{};
+  globalThis.fetch=async(url,init)=>{const body=JSON.parse(init.body);calls.push([url,body]);return new Response(JSON.stringify(url.endsWith('/claim')?{claimId:'claim-1'}:{revision:0}));};
+  try {
+    c.contextChanged();state.canvasWidth=600;state.measurements[0].value=11;c.contextChanged();assert.equal(c.active,true);
+    await c.execute({operationId:'op-1',kind:'action',name:'viewer_get_state',args:{},expectedRevision:0,binding});
+    const result=calls.find(([url])=>url.endsWith('/result'))[1].result;
+    assert.equal(result.status,'completed');assert.equal(result.state.viewports.length,1);assert.equal(c.active,true);
+  } finally {c.release();globalThis.fetch=old;}
+});

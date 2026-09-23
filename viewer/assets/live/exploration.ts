@@ -2,6 +2,12 @@ import { OHIFAdapter } from './ohif.js';
 import { ObservationService, DesktopWorkspaceObserver } from './observations.js';
 import { request, type DesktopStudyCapture, type ExplorationGrant, type TaskSnapshot, type ShareSelection, type RendererCommand, type ObservationRequest, type RendererBinding } from './protocol.js';
 
+// Derived measurement statistics and panel resizing are not a change of shared images.
+export function studyFingerprint(state: Record<string,unknown>): string {
+  const keys=['studyId','seriesId','viewportId','index','windowWidth','windowCenter','zoom','panX','panY','rotation','invert','flipHorizontal','flipVertical','layout','viewports'];
+  return JSON.stringify(Object.fromEntries(keys.map(key=>[key,state[key]])));
+}
+
 /** A renderer lease, never a replay of commands stored in history. */
 export class ExplorationController {
   snapshot?: TaskSnapshot;
@@ -33,7 +39,7 @@ export class ExplorationController {
   }
   contextChanged(): void {
     if (!this.active || this.working) return;
-    if (JSON.stringify(this.adapter.context().state)!==this.expected) void this.takeover();
+    if (studyFingerprint(this.adapter.context().state)!==this.expected) void this.takeover();
   }
   async prepare(sessionId: string, contextVersion: number, selection: ShareSelection, previous?: TaskSnapshot): Promise<void> {
     await this.stop();
@@ -46,7 +52,7 @@ export class ExplorationController {
     this.snapshot={grant,status:'prepared',activity:'Reading series inventory',coverage:[],actions:[],canContinue:false};
     this.adapter.explorationSeries=selection.seriesIds;
     this.observations=new ObservationService(this.adapter,null);
-    this.expected=JSON.stringify(this.adapter.context().state);
+    this.expected=studyFingerprint(this.adapter.context().state);
     this.heartbeat=setInterval(()=>void this.poll(),1500);
     this.changed(); void this.poll();
   }
@@ -102,23 +108,31 @@ export class ExplorationController {
           const selection=command.args as unknown as ObservationRequest;
           if(selection.kind==='series_frames') result=await this.observations!.observe(selection,binding,signal);
           else {
-            this.assertVisibleScope(binding);
-            const desktop=(this.browser as any).radsysxDesktop as DesktopStudyCapture;
-            if(desktop?.studyCaptureVersion!==1)throw new Error('Desktop observation is unavailable.');
-            observer=new DesktopWorkspaceObserver(desktop,{sessionId:this.snapshot!.grant.sessionId,taskId:this.snapshot!.grant.taskId,operationId:command.operationId},b=>this.adapter.registerCaptureSurface(b));
-            const observed=await observer.observe(selection,binding,signal); current();
-            for(const image of observed.images)if(image.kind==='pane' && image.frameId && image.viewportId)this.adapter.registerMeasurementObservation(image.viewportId,image.frameId,binding.revision);
-            result={...observed,revision:binding.revision};
+            try {
+              this.assertVisibleScope(binding,selection.kind==='workspace'?undefined:selection.viewportIds.length?selection.viewportIds:[String(this.adapter.context().state.viewportId)]);
+              const desktop=(this.browser as any).radsysxDesktop as DesktopStudyCapture;
+              if(desktop?.studyCaptureVersion!==1)throw new Error('Desktop observation is unavailable.');
+              observer=new DesktopWorkspaceObserver(desktop,{sessionId:this.snapshot!.grant.sessionId,taskId:this.snapshot!.grant.taskId,operationId:command.operationId},b=>this.adapter.registerCaptureSurface(b));
+              const observed=await observer.observe(selection,binding,signal); current();
+              for(const image of observed.images)if(image.kind==='pane' && image.frameId && image.viewportId)this.adapter.registerMeasurementObservation(image.viewportId,image.frameId,binding.revision);
+              result={...observed,revision:binding.revision};
+            } catch {
+              current();
+              result={revision:binding.revision,images:[],failures:(selection.viewportIds.length?selection.viewportIds:[String(this.adapter.context().state.viewportId)]).map(id=>({id,reason:'unsupported'}))};
+            }
           }
           current(); result={...(result as object),operationId:command.operationId,claimId:claimed.claimId};
         } else {
-          this.assertVisibleScope(binding);
+          const reading=['viewer_get_state','viewer_get_capabilities'].includes(command.name);
+          let permitted=true;
+          try { if(!reading)this.assertVisibleScope(binding,[String(command.args.viewportId??this.adapter.context().state.viewportId)]); } catch {permitted=false;}
           try {
+            if(!permitted)throw new Error('Selected pane is outside the shared scope.');
             const raw=await this.adapter.execute(command.name,command.args,signal); current();
             const revision=binding.revision+(command.name==='viewer_get_state' || command.name==='viewer_get_capabilities'?0:1);
             result={operationId:command.operationId,claimId:claimed.claimId,status:'completed',beforeRevision:binding.revision,revision,state:{...raw,...(raw.state?{state:this.scopedState(raw.state as Record<string,unknown>,binding)}:this.scopedState(raw,binding))},canUndo:raw.canUndo===true};
           } catch {
-            current(); result={operationId:command.operationId,claimId:claimed.claimId,status:'outcome_unknown',beforeRevision:binding.revision,revision:binding.revision, state:{},canUndo:false,error:'unknown'};
+            current(); result={operationId:command.operationId,claimId:claimed.claimId,status:!permitted||reading?'failed':'outcome_unknown',beforeRevision:binding.revision,revision:binding.revision, state:{},canUndo:false,error:!permitted||reading?'unavailable':'unknown'};
           }
         }
         current();
@@ -126,17 +140,19 @@ export class ExplorationController {
         current(); if(accepted.revision!==undefined)this.snapshot!.grant.binding.revision=accepted.revision;
         if((result as {status?:string}).status==='outcome_unknown'){await this.takeover();return;}
       }
-      this.expected=JSON.stringify(this.adapter.context().state);
+      this.expected=studyFingerprint(this.adapter.context().state);
     } catch {
       if(generation===this.generation && !signal.aborted)void this.takeover();
     } finally { observer?.dispose(); if(generation===this.generation){this.working=false;this.changed();void this.poll();} }
   }
   private scopedState(state:Record<string,unknown>,binding:RendererBinding):Record<string,unknown> {
-    return {...state,...(Array.isArray(state.series)?{series:state.series.filter(s=>binding.seriesIds.includes(s.id))}:{})};
+    return {...state,...(Array.isArray(state.series)?{series:state.series.filter(s=>binding.seriesIds.includes(s.id))}:{}),
+      ...(Array.isArray(state.viewports)?{viewports:state.viewports.filter(p=>p.seriesIds?.length&&p.seriesIds.every((id:string)=>binding.seriesIds.includes(id)))}:{})};
   }
-  private assertVisibleScope(binding: RendererBinding): void {
-    const panes=this.adapter.context().state.viewports as {seriesIds?:string[]}[];
-    if(!panes?.length || panes.some(p=>!p.seriesIds?.length || p.seriesIds.some(id=>!binding.seriesIds.includes(id))))throw new Error('A visible pane is outside the shared scope.');
+  private assertVisibleScope(binding: RendererBinding, viewportIds?:string[]): void {
+    const all=this.adapter.context().state.viewports as {id:string;seriesIds?:string[]}[];
+    const panes=viewportIds?viewportIds.map(id=>all.find(p=>p.id===id)):all;
+    if(!panes?.length || panes.some(p=>!p?.seriesIds?.length || p.seriesIds.some(id=>!binding.seriesIds.includes(id))))throw new Error('A selected pane is outside the shared scope.');
   }
   async decide(operationId:string,approved:boolean): Promise<void> {
     this.check(); await request(this.base()+`/decisions/${encodeURIComponent(operationId)}`,{contextVersion:this.snapshot!.grant.binding.contextVersion,approved}); void this.poll();
@@ -147,8 +163,17 @@ export class ExplorationController {
   }
   async stop(kind:'stop'|'takeover'='stop'): Promise<void> {
     const path=this.active?this.base()+'/'+kind:undefined;
-    this.generation++;this.release();this.working=false;this.polling=false;
-    if(path)try{this.snapshot=await request<TaskSnapshot>(path,{});}catch{if(this.snapshot)this.snapshot.status='interrupted';}
+    const generation=++this.generation;this.release();this.working=false;this.polling=false;
+    if(path)try{const snapshot=await request<TaskSnapshot>(path,{});if(generation===this.generation)this.snapshot=snapshot;}catch{if(generation===this.generation&&this.snapshot)this.snapshot.status='interrupted';}
+    this.changed();
+  }
+  async refresh(): Promise<void> {
+    if(!this.snapshot)return;
+    const generation=this.generation;
+    const snapshot=await request<TaskSnapshot>(this.base());
+    if(generation!==this.generation)return;
+    this.snapshot=snapshot;
+    if(!['prepared','running'].includes(snapshot.status))this.release();
     this.changed();
   }
   async takeover():Promise<void>{await this.stop('takeover');}

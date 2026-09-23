@@ -51,7 +51,8 @@ export class StudyCapture {
     if((surface.excluded??[]).some(excluded=>overlaps(rect,excluded))) throw new Error('The reading view is covered by an excluded panel.');
     for(const pane of surface.panes) {
       token(pane.id);
-      if(pane.visible===false || pane.studyId!==grant.scope.studyId || !pane.seriesIds.length || pane.seriesIds.some(id=>!grant.scope.seriesIds.includes(id))) throw new Error('Visible panes are outside the shared scope.');
+      if(pane.visible===false || !pane.seriesIds.length) throw new Error('Visible pane inventory is unavailable.');
+      if(grant.scope.kind==='entire_view' && (pane.studyId!==grant.scope.studyId || pane.seriesIds.some(id=>!grant.scope.seriesIds.includes(id)))) throw new Error('Visible panes are outside the shared scope.');
       const p=validatedRectangle(pane.rect,pane.rect,surface.bounds);
       if(p.x<rect.x || p.y<rect.y || p.x+p.width>rect.x+rect.width || p.y+p.height>rect.y+rect.height)throw new Error('Pane is outside the reading workspace.');
     }
@@ -82,7 +83,9 @@ export class StudyCapture {
       if(!same(surface,lease.surface))throw new Error('The reading view changed.');
       if(!task.actions.some(a=>a.operationId===input.operationId && a.kind==='observe' && a.status==='claimed'))throw new Error('Capture operation is not claimed.');
       if(input.kind==='workspace' && task.grant.scope.kind!=='entire_view')throw new Error('The reading overview was not shared.');
-      const panes=input.viewportIds.length?input.viewportIds.map(id=>surface.panes.find(p=>p.id===id)):surface.panes;
+      const inScope=p=>p && p.studyId===task.grant.scope.studyId && p.seriesIds.every(id=>task.grant.scope.seriesIds.includes(id));
+      const panes=input.viewportIds.length?input.viewportIds.map(id=>surface.panes.find(p=>p.id===id)):surface.panes.filter(inScope);
+      if(!panes.length || panes.some(p=>!inScope(p)))throw new Error('Selected panes are outside the shared scope.');
       if(panes.some(p=>!p) || panes.length+(input.kind==='workspace'?1:0)>8)throw new Error('Choose a bounded group of visible panes.');
       const regions=[...(input.kind==='workspace'?[{kind:'overview',rect:surface.rect,presentation:{}}]:[]),...panes.map(p=>({...p,kind:'pane'}))];
       const images=[];let bytes=0;

@@ -266,15 +266,21 @@ if os.environ.get('RADSYSX_DESKTOP_VISION_FIXTURE') == '1':
         async def study_run(self):
             bridge=self.job['bridge'];grant=bridge.check().snapshot.grant
             await self.study_call('viewer_get_capabilities',{})
-            for series_id in grant.scope.series_ids:
-                page=await self.study_call('series_get_manifest',{'seriesId':series_id})
-                for offset in range(0,len(page['frames']),8):
-                    await self.study_call('series_read_frames',{'manifestId':page['manifestId'],'frameIds':[f['id'] for f in page['frames'][offset:offset+8]]})
-            if 'mutate' in grant.permissions:
-                await self.study_call('viewer_jump_to_slice',{'index':31})
-                await self.study_call('viewer_set_window_level',{'windowWidth':800,'windowCenter':80})
-                _vision['studyActions']+=2
-            await self.study_call('viewer_observe',{'kind':'workspace'})
+            await self.study_call('viewer_get_state',{})
+            if grant.scope.kind=='series':
+                # First run deliberately ends at one batch to exercise the real Continue action.
+                if not bridge.check().continuation: return
+                for series_id in grant.scope.series_ids:
+                    page=await self.study_call('series_get_manifest',{'seriesId':series_id})
+                    delivered=set(bridge.check().ledgers[page['manifestId']].receipt().delivered)
+                    remaining=[f for f in page['frames'] if f['index'] not in delivered]
+                    for offset in range(0,len(remaining),8):
+                        await self.study_call('series_read_frames',{'manifestId':page['manifestId'],'frameIds':[f['id'] for f in remaining[offset:offset+8]]})
+                if 'mutate' in grant.permissions:
+                    await self.study_call('viewer_jump_to_slice',{'index':31})
+                    await self.study_call('viewer_set_window_level',{'windowWidth':800,'windowCenter':80})
+                    _vision['studyActions']+=2
+                await self.study_call('viewer_observe',{'kind':'panes'})
         async def call(self, method, params=None):
             if method == 'account/read': return {'account': {'type': 'chatgpt', 'email': 'synthetic@example.invalid', 'planType': 'pro'}}
             if method == 'model/list': return {'data': [{'model': 'synthetic-vision', 'inputModalities': ['text', 'image']}], 'nextCursor': None}
@@ -286,6 +292,10 @@ if os.environ.get('RADSYSX_DESKTOP_VISION_FIXTURE') == '1':
                         await asyncio.sleep(0)  # turn/start accepts initial inputs before tool dispatch
                         try:
                             await self.study_run()
+                            if self.job['research']:
+                                self.job['calls']=1
+                                self.job['tools'].ledger.add('Synthetic evidence only','https://pubmed.ncbi.nlm.nih.gov/123/')
+                                await self.job['progress']({'stage':'searching_pubmed'})
                             self.job['answer']='Synthetic image transport verified.'
                             self.job['status']='completed'
                         except Exception:

@@ -186,7 +186,7 @@ class TextService:
         finally:
             if exploration:
                 current=self.live.exploration.tasks.get(exploration)
-                if current:
+                if current and not current.closing:
                     try:
                         outcome=self.repo.tool(sid,tid)['status']
                         await self.live.exploration._expire(exploration,current,status='completed' if outcome=='completed' else 'failed' if outcome=='failed' else 'cancelled')

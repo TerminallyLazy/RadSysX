@@ -134,7 +134,7 @@ export function registerPanel(controller: LiveController): void {
               <p class="radsysx-live-status" data-role="capture-scope" title="Shares the selected image viewport, not the whole app screen or other windows."></p>
             </section>
             </details>
-            <p class="radsysx-live-status" role="status" aria-live="polite" data-role="status"></p>
+
             <div class="radsysx-live-conversation" data-role="conversation">
             <section class="radsysx-live-history" data-role="history" hidden></section>
             <section data-role="review-view" aria-label="Jev evidence review" hidden>
@@ -163,6 +163,8 @@ export function registerPanel(controller: LiveController): void {
             </section>
             </div>
             <section data-role="study-progress" aria-label="Image delivery and viewer activity"></section>
+            <p class="radsysx-live-status" role="status" aria-live="polite" data-role="status"></p>
+            <button type="button" data-action="retry-text" hidden>Retry unconfirmed request</button>
             <form class="radsysx-ai-composer" data-role="composer">
               <label class="radsysx-data-confirmation" for="radsysx-live-attestation">Data
                 <select id="radsysx-live-attestation" aria-label="Displayed data confirmation"><option value="">Choose before sending…</option><option value="synthetic">Synthetic / test data</option><option value="deidentified">Deidentified data</option></select>
@@ -170,7 +172,7 @@ export function registerPanel(controller: LiveController): void {
               <div class="radsysx-ai-attachment-row" data-role="selected"></div>
               <div class="radsysx-ai-mention-menu" data-role="attachments" data-open="false"></div>
               <div class="radsysx-study-share" data-role="study-share" hidden>
-                <label class="radsysx-image-select">Images<select data-role="share-kind" aria-label="Images to send"><option value="off">None · text only</option><option value="current_image">Active viewport</option><option value="entire_view">Whole reading view</option><option value="series">Active series · all frames</option></select></label>
+                <label class="radsysx-image-select">Images<select data-role="share-kind" aria-label="Images to send"><option value="off">None · text only</option><option value="current_image">Active viewport · 1 image</option><option value="entire_view">Whole reading view · visible panes</option><option value="series">Active series · all frames</option></select></label>
                 <label class="radsysx-study-permission" data-role="viewer-permission"><input type="checkbox" data-role="share-tools"><span>Let AI use viewer tools <small>Navigate &amp; edit; saves require review</small></span></label>
               </div>
               <button type="button" class="radsysx-attach-view" data-action="attach-view" hidden>Attach current view</button>
@@ -190,7 +192,8 @@ export function registerPanel(controller: LiveController): void {
           else if (action === 'connect') void (controller.providers.length ? controller.connect(this.attestation) : controller.initialize());
           else if (action === 'study-stop') void controller.exploration.stop();
           else if (action === 'study-takeover') void controller.exploration.takeover();
-          else if (action === 'study-continue') { const scope=controller.exploration.snapshot?.grant.scope;if(scope){controller.shareKind=scope.kind;controller.allowViewerTools=scope.allowViewerTools;void controller.prepareStudy(this.attestation,true);} }
+          else if (action === 'study-continue') void controller.continueStudy(this.attestation);
+          else if (action === 'retry-text') void controller.retryPendingText();
           else if (action === 'study-approve' || action === 'study-deny') void controller.exploration.decide(button.dataset.operation!,action==='study-approve');
           else if (action === 'attach-view') void controller.attachCurrentView(this.attestation);
           else if (action === 'remove-view') controller.removeView();
@@ -227,8 +230,8 @@ export function registerPanel(controller: LiveController): void {
             if (window.confirm('Clear this saved conversation and its tool history?')) void controller.clearHistory(button.dataset.id!);
           }
         });
-        this.node<HTMLSelectElement>('share-kind').addEventListener('change',event=>{controller.shareKind=(event.target as HTMLSelectElement).value as typeof controller.shareKind;void controller.exploration.stop();controller.removeView();controller.emit();});
-        this.node<HTMLInputElement>('share-tools').addEventListener('change',event=>{controller.allowViewerTools=(event.target as HTMLInputElement).checked;void controller.exploration.stop();});
+        this.node<HTMLSelectElement>('share-kind').addEventListener('change',event=>{void controller.selectImageScope((event.target as HTMLSelectElement).value as typeof controller.shareKind);});
+        this.node<HTMLInputElement>('share-tools').addEventListener('change',event=>{void controller.selectImageScope(controller.shareKind,(event.target as HTMLInputElement).checked);});
         this.node<HTMLSelectElement>('research-provider').addEventListener('change', event => void controller.selectResearchProvider((event.target as HTMLSelectElement).value as ResearchProviderId));
         this.node<HTMLSelectElement>('research-model').addEventListener('change', event => { controller.researchModelId = (event.target as HTMLSelectElement).value; controller.emit(); });
         this.node<HTMLFormElement>('research-settings-form').addEventListener('submit', event => { event.preventDefault(); void controller.saveResearchSettings(); });
@@ -345,10 +348,12 @@ export function registerPanel(controller: LiveController): void {
       this.node('disclosure').textContent = controller.canShareStudy && controller.shareKind !== 'off' ? 'Send captures fresh images. Image pixels stay out of saved history.' : controller.viewAttachment ? 'Sends the previewed image with your question.' : 'Text and neutral context only. Select images to give the model sight.';
       this.node('study-share').hidden=!controller.canShareStudy;
       this.node<HTMLSelectElement>('share-kind').value = controller.shareKind;
-      this.node<HTMLSelectElement>('share-kind').disabled = controller.textBusy || controller.shareBusy;
-      this.node<HTMLInputElement>('share-tools').disabled = controller.textBusy || controller.shareBusy;
+      this.node<HTMLSelectElement>('share-kind').disabled = controller.textBusy || controller.shareBusy || controller.unconfirmedSend;
+      this.node<HTMLInputElement>('share-tools').disabled = controller.textBusy || controller.shareBusy || controller.unconfirmedSend;
+      this.button('retry-text').hidden = !controller.unconfirmedSend;
+      this.node<HTMLInputElement>('share-tools').checked = controller.allowViewerTools;
       this.node('viewer-permission').hidden = !['series', 'entire_view'].includes(controller.shareKind);
-      const studyHost=this.node('study-progress'), studyHtml=explorationMarkup(controller.exploration.snapshot);
+      const studyHost=this.node('study-progress'), studyHtml=explorationMarkup(controller.exploration.snapshot,controller.textBusy||controller.shareBusy);
       if(studyHost.dataset.rendered!==studyHtml){const open=studyHost.querySelector('details')?.open;studyHost.innerHTML=studyHtml;studyHost.dataset.rendered=studyHtml;if(open&&studyHost.querySelector('details'))studyHost.querySelector('details')!.open=true;}
       this.button('attach-view').hidden = !controller.canAttachView || controller.canShareStudy;
       this.button('attach-view').disabled = controller.textBusy || controller.viewCaptureBusy || controller.credentialsBusy;
@@ -376,7 +381,7 @@ export function registerPanel(controller: LiveController): void {
       this.button('connect').disabled = controller.credentialsBusy || controller.status === 'loading';
       this.button('connect').textContent = controller.providers.length ? 'Connect voice' : 'Retry setup';
       this.node('status').textContent = controller.message === 'Viewing saved conversation. Audio and image frames are not recorded.' ? 'Saved conversation' : controller.message;
-      this.node('status').hidden = !controller.message || controller.message === 'Confirm the displayed data to begin.' || (controller.exploration.active && controller.textBusy);
+      this.node('status').hidden = !controller.message || controller.message === 'Confirm the displayed data to begin.' || Boolean(controller.exploration.snapshot && (controller.textBusy || /^(Images ready|\d+ images delivered|Request (completed|failed|cancelled|interrupted))/.test(controller.message)));
       this.node('voice-label').textContent = controller.audio.listening ? 'Mic on' : 'Mic off';
       this.node('interaction').textContent = controller.ready && controller.interaction === 'IN_PROGRESS' ? 'Thinking and working…' : controller.ready ? 'Connected · interrupt anytime' : active ? 'Connecting…' : '';
       this.node('media-controls').setAttribute('data-listening', String(controller.audio.listening));
@@ -421,7 +426,8 @@ export function registerPanel(controller: LiveController): void {
         let card = this.evidenceCards.get(tool.id);
         if (!card) {
           const article = document.createElement('article'); article.className = 'radsysx-live-tool';
-          const body = document.createElement('div'); body.className = 'radsysx-live-tool-body'; article.append(body); this.node(tool.name === 'research_run' ? 'research-tools' : 'tools').append(article);
+          const body = document.createElement('div'); body.className = 'radsysx-live-tool-body'; article.append(body);
+          if(tool.name==='research_run')this.node('research-tools').prepend(article);else this.node('tools').append(article);
           card = { article, body, signature: '' }; this.evidenceCards.set(tool.id, card);
         }
         const reviewSummary = controller.evidence.reviewForTool(tool.id);
@@ -457,6 +463,7 @@ export function registerPanel(controller: LiveController): void {
         this.querySelector(`nav [data-action="view-${name}"]`)!.setAttribute('aria-pressed', String(view === name));
       }
       this.node('composer').hidden = view === 'review';
+      studyHost.hidden = view === 'review';
       this.node('voice-options').hidden = !active && (!this.voiceOptionsOpen || view !== 'chat');
       this.button('voice-options').setAttribute('aria-expanded', String(!this.node('voice-options').hidden));
       this.button('research').hidden = view !== 'research';

@@ -63,3 +63,15 @@ test('large grids use explicit groups under one frozen revision; oversized JPEGs
   g.contents.capturePage=async()=>({isEmpty:()=>false,getSize:()=>({width:64,height:64}),toJPEG:()=>Buffer.alloc(1024*1024)});
   await assert.rejects(g.capture.capture(g.event,{leaseId:large.leaseId,operationId:'op-1',kind:'panes',viewportIds:['viewport-1']}));
 });
+
+test('series pane capture excludes adjacent localizer and refuses its explicit selection',async()=>{
+  const f=fixture();f.task.grant.scope.kind='series';
+  f.surface.panes.push({...f.surface.panes[0],id:'viewport-localizer',seriesIds:['series-localizer']});
+  let lease=await f.capture.start(f.event,f.input);
+  const result=await f.capture.capture(f.event,{leaseId:lease.leaseId,operationId:'op-1',kind:'panes',viewportIds:['viewport-1']});
+  assert.equal(result.images.length,1);assert.equal(f.calls(),1);assert.equal(result.images[0].viewportId,'viewport-1');
+  lease=await f.capture.start(f.event,f.input);
+  await assert.rejects(f.capture.capture(f.event,{leaseId:lease.leaseId,operationId:'op-1',kind:'panes',viewportIds:['viewport-localizer']}));
+  assert.equal(f.calls(),1);
+  f.task.grant.scope.kind='entire_view';await assert.rejects(f.capture.start(f.event,f.input));
+});

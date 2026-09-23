@@ -58,3 +58,5 @@
 - `test-exploration.mjs` covers complete multiframe order, private ID omission, bounded manifest paging, changed/mixed study invalidation, sequential offscreen observations, failed late frames, aborts and encoding limits. Rendering doubles prove lifecycle only; native pixel/calibration acceptance remains a separate desktop fixture gate.
 
 - The build fingerprint also includes `ohif-build/study-tools.patch`; apply it independently from the security source patch so existing caches remain reproducible. The pinned adapter export and neutral panel marker support native semantic tooling. Navigation regressions reject native no-ops, manual case switches, foreign fusion layers and cross-study cine.
+
+- Continuation regressions submit exactly one original research request, preserve the unsent draft and cumulative coverage, and clear stale scope receipts. Scope regressions allow filtered state reads beside an unshared localizer, while presentation-change/manual takeover and native pane capture remain governed. Delivery markup must not show zero delivery alongside restored frame coverage.
