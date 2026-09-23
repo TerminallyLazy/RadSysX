@@ -36,6 +36,7 @@
     "desktop:smoke:ai-viewer": "npm run smoke:ai-viewer --workspace @radsysx/desktop"
   },
   "devDependencies": {
+    "@openai/codex": "0.154.0",
     "patch-package": "^8.0.0",
     "pnpm": "11.27.1"
   },

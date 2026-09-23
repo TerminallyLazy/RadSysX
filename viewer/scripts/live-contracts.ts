@@ -21,6 +21,10 @@ import type { AIResearchSettings as ViewerResearchSettings, AIResearchModels as 
 type ResearchSettingsMatches = Assert<AIResearchSettings extends ViewerResearchSettings ? true : false>;
 type ResearchSettingsComplete = Assert<ViewerResearchSettings extends AIResearchSettings ? true : false>;
 type ResearchModelsMatches = Assert<AIResearchModels extends ViewerResearchModels ? true : false>;
+import type { AICodexAccount } from '@radsysx/clinical-web/contracts';
+import type { CodexAccount } from '../assets/live/subscription';
+type CodexAccountMatches = Assert<AICodexAccount extends CodexAccount ? true : false>;
+type CodexAccountComplete = Assert<CodexAccount extends AICodexAccount ? true : false>;
 
 import type * as SharedEvidence from '@radsysx/clinical-web/contracts';
 import type * as ViewerEvidence from '../assets/live/protocol';

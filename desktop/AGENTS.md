@@ -124,3 +124,7 @@
 - The evidence-review smoke also checks the visible Jev entry, the latest-result action, research activity cards, persisted progress and recorded dispatch models. Keep these fixture-only assertions separate from actual hosted-provider availability.
 
 - The evidence-review smoke first drives typed Send and explicit Research through the real sidebar before voice connects, verifies zero fixture Realtime providers, saved progress/model receipts and Jev eligibility, then ends text and exercises the existing voice/review flow. This uses isolated synthetic workers and does not prove hosted availability.
+
+## Local subscription runtime
+
+- The normal launcher enables backend-only `RADSYSX_CODEX_ENABLED=true` by default. Bootstrap/doctor check the root-pinned `@openai/codex` dependency; no global CLI is required. The backend owns private per-actor stdio and keyring storage. Linux/macOS need a functioning OS keyring; failure never enables plaintext credential fallback. Existing external-link handling opens the strictly validated official login URL in the system browser. User authentication is a handoff, not automated credential entry. No Realtime subscription entitlement is implied.

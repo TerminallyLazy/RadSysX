@@ -21,7 +21,7 @@ export type ViewerContext = {
 export type Session = {
   mode?: 'voice' | 'text';
   sessionId: string;
-  providerId?: ProviderId | 'nvidia_nim';
+  providerId?: ProviderId | 'nvidia_nim' | 'codex';
   modelId?: string;
   inputSampleRate?: 16000 | 24000 | null;
   outputSampleRate?: 24000 | null;
@@ -131,7 +131,7 @@ export async function request<T>(path: string, body?: unknown, method?: string):
   return response.json() as Promise<T>;
 }
 
-export type ResearchProviderId = 'gemini' | 'nvidia_nim';
+export type ResearchProviderId = 'gemini' | 'nvidia_nim' | 'codex';
 export type AIResearchSettings = { providerId: ResearchProviderId; modelId: string; source: 'saved' | 'environment'; providers: { id: ResearchProviderId; label: string; configured: boolean }[] };
 export type AIResearchModels = { providerId: ResearchProviderId; models: string[]; capabilitiesVerified: boolean };
 

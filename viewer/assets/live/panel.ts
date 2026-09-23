@@ -11,7 +11,7 @@ export function researchStatus(tool: Tool): string {
 }
 
 export function renderResearchActivity(tool: Tool): string {
-  const provider = tool.research?.providerId === 'nvidia_nim' ? 'NVIDIA NIM' : tool.research?.providerId === 'gemini' ? 'Gemini' : 'Provider not recorded';
+  const provider = tool.research?.providerId === 'codex' ? 'ChatGPT / Codex subscription' : tool.research?.providerId === 'nvidia_nim' ? 'NVIDIA NIM' : tool.research?.providerId === 'gemini' ? 'Gemini' : 'Provider not recorded';
   return `<p class="radsysx-research-model">${escape(provider)}${tool.research?.modelId ? ` · ${escape(tool.research.modelId)}` : ''}</p>
     <p role="status" aria-live="polite">${escape(researchStatus(tool))}</p>
     <details><summary>Request and model</summary><p>${escape(tool.args.query)}</p><p>Requested model recorded: ${escape(tool.research?.recordedAt ?? 'Not recorded')}</p></details>`;
@@ -21,6 +21,14 @@ export function renderResearchActivity(tool: Tool): string {
 export function credentialSettingsMarkup(): string {
   return `<section class="radsysx-live-credentials" data-role="credentials" role="dialog" aria-modal="true" aria-label="Assistant settings" hidden>
     <header><div><span class="radsysx-panel-kicker">ASSISTANT SETTINGS</span><h3>Settings</h3></div><button type="button" data-action="close-credentials" aria-label="Close assistant settings">×</button></header>
+    <section aria-label="ChatGPT subscription">
+      <h4>ChatGPT / Codex subscription</h4>
+      <p data-role="codex-account">Checking account…</p>
+      <p data-role="codex-message" role="status" aria-live="polite"></p>
+      <div><button type="button" data-action="codex-login">Sign in with ChatGPT</button><button type="button" data-action="codex-refresh">Refresh status</button><button type="button" data-action="codex-logout" hidden>Sign out</button></div>
+      <a data-role="codex-login-link" target="_blank" rel="noopener noreferrer" hidden>Continue sign-in in browser ↗</a>
+      <p>Uses your plan’s Codex allowance for text and research. Realtime voice uses API billing. Sign-in is separate from your other Codex apps; credentials stay in the OS keyring.</p>
+    </section>
     <form data-role="research-settings-form">
       <h4>Text &amp; research models</h4>
       <p>Choose the model for typed chat and literature research. Voice is optional. Saving ends active sessions and tasks; your next conversation uses this selection.</p>
@@ -142,6 +150,9 @@ export function registerPanel(controller: LiveController): void {
           else if (action === 'close-credentials') { this.clearKeyInputs(); controller.closeCredentials(); this.button('credentials').focus(); }
           else if (action === 'refresh-research-models') void controller.loadResearchModels(true);
           else if (action === 'reload-research-settings') void controller.loadResearchSettings();
+          else if (action === 'codex-login') void controller.subscription.login();
+          else if (action === 'codex-refresh') void controller.subscription.refresh();
+          else if (action === 'codex-logout') void controller.subscription.logout();
           else if (action === 'reload-credentials') void controller.loadCredentials();
           else if (action === 'remove-key') { this.clearKeyInputs(); void controller.removeCredential(button.dataset.provider as ProviderId); }
           else if (action === 'undo-draft') void controller.adapter.execute('viewer_undo', {}).then(() => controller.emit());
@@ -194,7 +205,7 @@ export function registerPanel(controller: LiveController): void {
       void controller.evidence.selectSession(controller.evidenceSessionId);
       this.unsubscribe = controller.subscribe(() => this.render());
     }
-    disconnectedCallback(): void { controller.evidence.dispose(); this.evidenceCards.forEach(card => card.review?.dispose()); this.evidenceCards.clear(); this.node('tools').replaceChildren(); this.clearKeyInputs(); this.unsubscribe?.(); this.unsubscribe = undefined; }
+    disconnectedCallback(): void { controller.subscription.stop(); controller.evidence.dispose(); this.evidenceCards.forEach(card => card.review?.dispose()); this.evidenceCards.clear(); this.node('tools').replaceChildren(); this.clearKeyInputs(); this.unsubscribe?.(); this.unsubscribe = undefined; }
     private clearKeyInputs(): void { this.querySelectorAll<HTMLInputElement>('input[data-key-provider]').forEach(input => { input.value = ''; }); }
     private renderCredentials(): void {
       if (this.credentialInputEpoch !== controller.credentialInputEpoch) { this.credentialInputEpoch = controller.credentialInputEpoch; this.clearKeyInputs(); }
@@ -202,6 +213,18 @@ export function registerPanel(controller: LiveController): void {
       this.querySelectorAll<HTMLElement>('.radsysx-live-shell > *').forEach(node => { if (node !== this.node('credentials')) node.inert = controller.credentialsOpen; });
       this.button('credentials').setAttribute('aria-expanded', String(controller.credentialsOpen));
       this.node('credential-message').textContent = controller.credentialMessage;
+      const subscription = controller.subscription, account = subscription.account;
+      this.node('codex-account').textContent = account?.signedIn ? `${account.email || 'ChatGPT account'}${account.plan ? ` · ${account.plan}` : ''}` : 'Not signed in';
+      this.node('codex-message').textContent = subscription.message;
+      this.button('codex-login').hidden = Boolean(account?.signedIn || account?.loginState === 'pending');
+      this.button('codex-login').disabled = subscription.busy || !account?.available || controller.credentialsBusy;
+      this.button('codex-refresh').disabled = subscription.busy || controller.credentialsBusy;
+      this.button('codex-logout').hidden = !account?.signedIn && account?.loginState !== 'pending';
+      this.button('codex-logout').disabled = subscription.busy || controller.credentialsBusy;
+      this.button('codex-logout').textContent = account?.signedIn ? 'Sign out' : 'Cancel sign-in';
+      const loginLink = this.node<HTMLAnchorElement>('codex-login-link');
+      loginLink.hidden = !subscription.loginUrl || account?.signedIn === true;
+      if (subscription.loginUrl) loginLink.href = subscription.loginUrl; else loginLink.removeAttribute('href');
       const jev = controller.evidenceAvailability;
       this.node('jev-availability').textContent = jev ? `Jev · ${jev.modelId} · ${jev.availability.charAt(0).toUpperCase() + jev.availability.slice(1)}. ${jev.reason} Open a completed PubMed research card to review its evidence.` : 'Jev · availability not loaded.';
       const provider = this.node<HTMLSelectElement>('research-provider'), model = this.node<HTMLSelectElement>('research-model');

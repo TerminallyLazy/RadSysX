@@ -38,3 +38,5 @@
 - `Evidence*` DTOs mirror `backend/clinical/ai_evidence_contracts.py`. Explicit prepare/list/detail/start/retry/cancel methods use signed cookies, no-store and fixed errors; only GET detail accepts a polling abort signal. Claim IDs and preview hashes refer to backend-frozen text, not browser-provided evidence. `AISidebarCapabilities.evidenceReview` reports configuration separately from saved completion receipts.
 
 - `AITextSessionRequest`/`AITextTurnRequest` mirror the focused `ai_text_routes.py` contracts. `createAITextSession` and `submitAITextTurn` use cookies/no-store/fixed errors. Text sessions return `mode=text`, standard Gemini/NVIDIA model identity and null audio rates/live URL; never interpret these as a live provider profile.
+
+- `AICodexAccount` and get/start/sign-out subscription methods expose status and an official transient login URL only. The codex text/research provider is distinct from the Gemini/OpenAI voice provider catalog. Never add tokens, raw RPC, filesystem paths or account identity inputs to browser contracts.

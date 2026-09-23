@@ -46,6 +46,7 @@ async function checkBootstrap() {
   assertFile(venvPython(), "Virtualenv Python");
   assertDirectory(path.join(workspaceRoot, "node_modules"), "Workspace node_modules");
   assertDirectory(path.join(workspaceRoot, "node_modules", "electron"), "Electron dependency");
+  assertDirectory(path.join(workspaceRoot, "node_modules", "@openai", "codex"), "Codex subscription runtime");
   const { mismatches } = inspectAiDependencies(venvPython(), workspaceRoot);
   if (mismatches.length) throw new Error(`Python AI dependencies do not match the repository pins: ${mismatches.join("; ")}. Run npm run desktop:bootstrap.`);
   await run("python-imports", venvPython(), [

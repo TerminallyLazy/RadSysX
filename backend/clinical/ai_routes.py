@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from .ai_evidence_routes import evidence_router
 from .ai_text_routes import text_router
+from .ai_codex_routes import codex_router
 from .ai_config import PROVIDER_PROFILES
 from .ai_credentials import validate_api_key
 from .contracts import (AIResearchSettings, AIResearchModels, AICredentialStatusResponse, AILiveContextUpdate, AILiveDecision,
@@ -47,7 +48,11 @@ def live_router(service, session_manager):
     @router.get("/research-settings", response_model=AIResearchSettings)
     async def research_settings(request: Request):
         try:
-            return JSONResponse(service.research_settings(actor(request)), headers={"Cache-Control":"no-store"})
+            claims = actor(request)
+            if service.config_for(claims).research_provider == "codex":
+                try: await service.codex.status(claims)
+                except Exception: pass  # Preserve the selected model, marked unavailable.
+            return JSONResponse(service.research_settings(claims), headers={"Cache-Control":"no-store"})
         except HTTPException as error:
             raise private_error(error)
 
@@ -207,4 +212,5 @@ def live_router(service, session_manager):
 
     router.include_router(evidence_router(service.evidence_reviews, actor))
     router.include_router(text_router(service, actor))
+    router.include_router(codex_router(service, actor))
     return router

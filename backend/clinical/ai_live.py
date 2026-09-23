@@ -80,6 +80,8 @@ class AILiveService:
         self.evidence_reviews = EvidenceReviewService(self)
         from .ai_text import TextService
         self.text = TextService(self)
+        from .ai_codex import CodexService
+        self.codex = CodexService(self)
 
     def _openai_provider(self, settings):
         from .ai_openai import OpenAIRealtimeProvider
@@ -103,6 +105,7 @@ class AILiveService:
         preference = self.repository.research_preference(actor.sub)
         if preference is not None:
             config.research_provider, config.research_model = preference
+        config.codex_ready = self.codex.ready(actor.sub)
         return config
 
     def readiness(self, provider_id="gemini", actor=None):
@@ -151,11 +154,18 @@ class AILiveService:
             "source":"saved" if self.repository.research_preference(actor.sub) else "environment",
             "providers":[
                 {"id":"gemini", "label":"Gemini", "configured":bool(config.api_key) and "gemini" not in config.credential_errors},
-                {"id":"nvidia_nim", "label":"NVIDIA NIM", "configured":bool(config.nvidia_api_key)}]}
+                {"id":"nvidia_nim", "label":"NVIDIA NIM", "configured":bool(config.nvidia_api_key)},
+                *([{"id":"codex", "label":"ChatGPT / Codex subscription", "configured":config.codex_ready}] if self.codex.enabled() else [])]}
 
     async def research_models(self, actor, provider, *, refresh=False):
         self.require_research_settings(actor)
         config = self.config_for(actor)
+        if provider == "codex":
+            try:
+                return {"providerId":provider, "models":await self.codex.models(actor), "capabilitiesVerified":False}
+            except HTTPException: raise
+            except Exception:
+                raise HTTPException(503, "The Codex model catalog is unavailable. Check subscription sign-in and retry.") from None
         if provider == "gemini":
             return {"providerId":provider, "models":["gemini-3.8-flash"], "capabilitiesVerified":False}
         if provider != "nvidia_nim":
@@ -302,6 +312,7 @@ class AILiveService:
         await self.text.shutdown()
         for session_id in list(self.runtimes):
             await self.stop(session_id, status="interrupted")
+        await self.codex.shutdown()
 
     async def attach(self, websocket: WebSocket, session_id, actor):
         async with self.owner_lock(actor):
@@ -851,7 +862,11 @@ class LiveRuntime:
                     if stage in RESEARCH_PROGRESS_STAGES and self.repo.tool(self.id, tool_id)["status"] == "running":
                         await self.emit("research_progress", toolCallId=tool_id, stage=stage)
                 await research_progress({"stage": "queued"})
-                result = await worker.run(args["query"], on_progress=research_progress)
+                if provider == "codex":
+                    async with asyncio.timeout(120):
+                        result = await self.service.codex.run(self.actor, model, args["query"], research=True, on_progress=research_progress)
+                else:
+                    result = await worker.run(args["query"], on_progress=research_progress)
                 if result.get("sources"):
                     await self.emit("citations", sources=result["sources"], suggestionsHtml=result.get("suggestionsHtml", ""))
             elif name == "research_cancel":
