@@ -20,7 +20,7 @@ class StructureReportRequest(Record):
 
 HEADINGS = re.compile(r'(?im)^[ \t]*(indication|clinical history|history|technique|comparison|findings|impression|conclusion)[ \t]*:[ \t]*')
 SECTIONS = {'clinical history': 'indication', 'history': 'indication', 'conclusion': 'impression'}
-MEASUREMENT = re.compile(r'(?<![\w.])(?:\d+(?:\.\d+)?|\.\d+)(?:\s*[x×]\s*(?:\d+(?:\.\d+)?|\.\d+)){0,2}\s*(?:mm|cm|mL|HU)\b', re.I)
+MEASUREMENT = re.compile(r'(?<![\w.+-])[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*[x×]\s*(?:\d+(?:\.\d+)?|\.\d+)){0,2}\s*(?:mm|cm|mL|HU)\b', re.I)
 
 
 def structure_report(text: str) -> dict:

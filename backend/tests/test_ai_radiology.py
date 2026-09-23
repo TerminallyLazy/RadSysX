@@ -3,12 +3,13 @@ from backend.clinical.ai_radiology import structure_report, series_metadata
 
 
 def test_report_preserves_negation_uncertainty_units_and_unicode_offsets():
-    source = 'Findings: No left pleural effusion. Possible right nodule, 1.2 × 0.8 cm.\nImpression: Indeterminate; compare with prior imaging.'
+    source = 'Findings: No left pleural effusion. Possible right nodule, 1.2 × 0.8 cm, -32 HU.\nImpression: Indeterminate; compare with prior imaging.'
     result = structure_report(source)
     assert [s['section'] for s in result['sections']] == ['findings', 'impression']
     for span in [*result['sections'], *result['measurements']]:
         assert source[span['start']:span['end']] == span['text']
     assert result['measurements'][0]['text'] == '1.2 × 0.8 cm'
+    assert result['measurements'][1]['text'] == '-32 HU'
     assert result['missingSections'] == ['indication', 'technique', 'comparison']
     assert structure_report('No acute findings.')['sections'][0]['section'] == 'unsectioned'
 
