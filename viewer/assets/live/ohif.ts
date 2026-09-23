@@ -177,8 +177,8 @@ export class OHIFAdapter {
       const id = element.getAttribute('data-viewportid')!;
       const native = this.services.viewportGridService.getState().viewports.get(id);
       const included = displays.filter(item => native?.displaySetInstanceUIDs.includes(item.displaySetInstanceUID));
-      if (!included.length || included.some(item => this.alias('study', item.StudyInstanceUID) !== study.studyId || !binding.seriesIds.includes(this.alias('series',item.displaySetInstanceUID)))) throw new Error('Visible panes must belong to the shared study.');
-      element.dataset.radsysxViewport = this.alias('viewport', id); element.dataset.radsysxStudy = study.studyId;
+      if (!included.length || included.some(item => item.StudyInstanceUID !== included[0].StudyInstanceUID)) throw new Error('The pane has no single study.');
+      element.dataset.radsysxViewport = this.alias('viewport', id); element.dataset.radsysxStudy = this.alias('study',included[0].StudyInstanceUID);
       element.dataset.radsysxSeries = JSON.stringify(included.map(item => this.alias('series', item.displaySetInstanceUID)));
       const properties = this.services.cornerstoneViewportService.getCornerstoneViewport(id)?.getProperties?.() ?? {};
       element.dataset.radsysxPresentation = JSON.stringify({ invert: Boolean(properties.invert), ...(properties.voiRange ? {
@@ -263,6 +263,7 @@ export class OHIFAdapter {
     const grid = this.services.viewportGridService.getState().viewports.get(id);
     const displays = list(this.services.displaySetService?.activeDisplaySets).filter(ds => grid?.displaySetInstanceUIDs.includes(ds.displaySetInstanceUID));
     if (!displays.length || displays.some(ds => this.alias('study', ds.StudyInstanceUID) !== studyId)) throw new Error('This pane is outside the shared study.');
+    if(this.explorationSeries && displays.some(ds=>!this.explorationSeries!.includes(this.alias('series',ds.displaySetInstanceUID))))throw new Error('This pane is outside the shared series.');
   }
   private async settleReading(signal: AbortSignal, predicate: () => boolean = () => true, guard: () => void = () => {}): Promise<void> {
     const started = Date.now(); let frames = 0;

@@ -59,7 +59,9 @@ class ExplorationService:
     def persist(self, task):
         if self.tasks.get(task.snapshot.grant.task_id) is not task: return
         task.snapshot.coverage=[ledger.receipt() for ledger in task.ledgers.values()]
-        task.snapshot.can_continue=any(c.status!='complete' for c in task.snapshot.coverage)
+        task.snapshot.can_continue=(task.snapshot.grant.scope.kind == 'series'
+            and task.snapshot.status not in {'prepared', 'running'}
+            and any(c.status!='complete' for c in task.snapshot.coverage))
         self.repo.save(task.snapshot,task.actor.sub,manifests=task.manifests,turn_id=task.turn_id)
 
     def owned(self, task_id, actor):
@@ -182,6 +184,8 @@ class ExplorationService:
             if request.kind=='workspace' and task.snapshot.grant.scope.kind!='entire_view':
                 raise HTTPException(403,'Only panes in the shared series are available. The whole reading view was not shared.')
             if request.kind=='series_frames':
+                if task.snapshot.grant.scope.kind != 'series':
+                    raise HTTPException(403,'Full frames require Active series sharing. The reading view shares visible panes only.')
                 ledger=task.ledgers.get(request.manifest_id)
                 if not ledger or not set(request.frame_ids)<=set(ledger.frames): raise HTTPException(403,'Frames are outside the shared inventory.')
                 ledger.requested(request.frame_ids)
@@ -313,7 +317,8 @@ class ExplorationService:
         task=self.tasks.get(task_id)
         if not task or task.closing: return await self.snapshot(task_id,actor)
         task.closing=True
-        task.snapshot.status=status; task.snapshot.grant.status='revoked'; task.snapshot.activity=None
+        task.snapshot.status=status; task.snapshot.grant.status='revoked'
+        task.snapshot.activity='Viewer control changed. Review paused.' if status=='paused' else 'Review stopped.'
         self.live.actions.release_viewer(actor,task.snapshot.grant.grant_id)
         for key,op in task.operations.items():
             if not op.future.done():
@@ -337,6 +342,8 @@ class ExplorationService:
         previous=self.owned(previous_task_id,actor)
         if previous_task_id in self.tasks: raise HTTPException(409,'Stop the current task before continuing.')
         grant=previous['snapshot']['grant']
+        if grant['scope']['kind'] != 'series' or not previous['snapshot']['canContinue']:
+            raise HTTPException(409,'There are no remaining series frames to continue.')
         if grant['scope']!=selection.wire(): raise HTTPException(409,'Choose the same scope to continue coverage.')
         return await self.prepare(grant['sessionId'],selection,binding,actor,continuation=previous)
 
@@ -348,7 +355,9 @@ class ExplorationService:
                 await self._expire(task_id,task)
 
     async def _expire(self, task_id, task, *, status='interrupted'):
-        task.closing=True; task.snapshot.status=status; task.snapshot.grant.status='revoked'; task.snapshot.activity=None
+        task.closing=True; task.snapshot.status=status; task.snapshot.grant.status='revoked'
+        task.snapshot.activity={'completed':'Answer ready.', 'failed':'The model request failed. Delivered frames are retained for continuation.',
+            'cancelled':'The request was cancelled.', 'interrupted':'The viewer connection or shared access expired. Resume to continue.'}.get(status)
         self.live.actions.release_viewer(task.actor,task.snapshot.grant.grant_id)
         for key,op in task.operations.items():
             if not op.future.done():

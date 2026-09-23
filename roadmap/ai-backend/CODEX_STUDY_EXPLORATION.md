@@ -52,3 +52,22 @@ The repaired path uses coherent scoped instructions and captures initial pixels 
 Real hosted acceptance used the existing signed-in ChatGPT subscription, the normal backend, the actual isolated Electron sidebar, and a generated 34-frame study. `gpt-6-astra` received all 34 distinct frames (50 total observations including repeats/views), correctly reported the randomly generated pixel-only marker count of four, queried technical metadata, navigated the series, set width 800/center 80 and observed the reading view. The expected count was not present in metadata or the prompt. The final answer explicitly reported it. The logo also returned to the local loader. No Realtime session was needed; no patient images were used. This establishes actual vision/tool transport, not clinical accuracy or exhaustive modality/tool parity.
 
 The final UI iteration also passed the isolated scripted 34-frame desktop path with 38 image observations, two native actions, zero voice connections and no saved pixel payloads. Focused backend checks covered subscription transport, literal report extraction, metadata exclusion and research orchestration; viewer type checking/build and targeted controller checks cover the updated path. See the separate OpenMed adaptation note for literature scope. Production activation is recorded separately from these isolated runs.
+
+## 2026-09-23 continuation, scope and cancellation repair
+
+Observed saved receipts showed incomplete series runs stopping on `viewer_get_state`, and prepared continuations with retained coverage but no new submitted question. The renderer incorrectly required every visible pane to belong to the shared series even for a read-only state query, so an adjacent localizer could revoke the task. Background measurement metadata also participated in the takeover fingerprint. Whole-reading-view tool declarations allowed offscreen frame reads, obscuring the difference between image selections.
+
+Read-only state now filters shared panes, pane capture validates only the target, and whole-view overview retains all-visible-pane validation. Takeover tracks presentation and manual interaction rather than derived measurement statistics or canvas resizing. Known read/preflight failures remain tool failures, not uncertain mutations. Terminal cleanup preserves the initial stop/pause reason.
+
+The remaining-frames button submits the original Chat/Research question in one action, skips acknowledged frames and preserves the unsent draft. Scope changes clear the prior delivery display. The sidebar separates model status from cumulative frames sent, names viewer activity, and keeps the newest research result first. The 280 px composer has no horizontal select overflow. Whole-view cannot call offscreen frame capture or offer series continuation.
+
+The failed public-search run retained no PubMed execution receipt; its exact rejected arguments were not available. Codex now accepts omitted/null limits as five and explicit limits up to ten, returns actionable validation failures, and records safe service/timeout/rate-limit errors. Research with only failed searches is marked failed. These changes do not establish the exact rejected arguments in the original run.
+
+Verification was limited to the affected paths:
+
+- Focused backend, controller, scope and native-capture regressions passed; viewer production build passed.
+- Actual isolated synthetic Research UI: first eight of 34 frames, one click to continue to 34/34, two native actions, draft preserved; subsequent whole-view supplied two images with no offscreen frames, then active viewport supplied one image. No Realtime or hosted model calls.
+- Real signed-in `gpt-6-astra` public-only Research request completed with one PubMed search receipt and three returned sources.
+- Real signed-in scoped Electron request delivered 34/34 generated frames (43 total observations), correctly returned the random pixel-only marker count of three, navigated to slice index 31, set window width 800/center 80, observed the pane and returned a cited public PubMed source in that same turn. The screenshot confirmed the actual slice/window state and the compact 280 px layout. The check required saved PubMed receipts and sources, not just the model's assertion. No patient images were used.
+
+These checks establish transport, scope, continuation and the exercised viewer commands. They do not validate diagnostic accuracy or every native tool/modality. Original saved failures remain historical failures; the app does not replay them automatically.

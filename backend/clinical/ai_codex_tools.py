@@ -89,6 +89,8 @@ class CodexToolBridge:
             ('series_get_manifest',ManifestRequest,'Read the complete ordered inventory page of an explicitly shared series. Use its opaque frame IDs; subsequent pages start at offset plus returned frame count.'),
             ('series_read_frames',FramesRequest,'Observe one to eight ordered full frames from a shared manifest. Request every frame for a full-series review. Repeated deliveries consume budget. Image acknowledgment is delivery, not diagnostic validation.'),
             ('viewer_observe',ObservationRequest,'Observe the shared reading workspace or selected visible panes. This is the only current screen awareness. Pane frameId plus revision authorizes geometry on that pane; refresh after any change.')):
+            if name == 'series_read_frames' and task.snapshot.grant.scope.kind != 'series':
+                continue
             declarations.append({'type':'function','name':name,'description':description,'inputSchema':model.model_json_schema(by_alias=True)})
         return declarations
 

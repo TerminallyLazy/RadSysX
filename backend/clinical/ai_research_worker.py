@@ -343,8 +343,18 @@ class ResearchTools:
             return {"articles": articles, "sources": sources, 'search': receipt}
         except asyncio.CancelledError:
             raise
+        except httpx.TimeoutException:
+            return {"error": "PubMed timed out while retrieving search results or abstracts. Retry the search."}
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 429:
+                return {"error": "PubMed rate-limited this request after a retry. Wait briefly, then retry."}
+            return {"error": "PubMed returned an unsuccessful service response. Retry the search."}
+        except (ValueError, ET.ParseError):
+            return {"error": "PubMed returned a response that could not be read. Retry the search."}
+        except httpx.RequestError:
+            return {"error": "The app could not connect to PubMed. Check the connection and retry."}
         except Exception:
-            return {"error": "PubMed research is unavailable."}
+            return {"error": "PubMed search could not be completed. Retry the search."}
 
 
 def validate_research_model(provider: str, model: str):

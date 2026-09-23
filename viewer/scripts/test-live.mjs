@@ -790,3 +790,27 @@ test('vision failures keep uncertain image sends idempotent and make model incom
     c.removeView();assert.equal(c.viewAttachment,undefined);assert.equal(c.draft,'Synthetic question');
   } finally {c.session=undefined;c.dispose();globalThis.fetch=oldFetch;}
 });
+
+test('Continue submits research once with the continued scope and keeps the unsent draft',async()=>{
+  const oldFetch=globalThis.fetch,requests=[];let tool;
+  globalThis.fetch=async(url,init)=>{
+    const body=init?.body&&JSON.parse(init.body);requests.push([String(url),body]);let value={};
+    if(String(url).endsWith('/research-settings'))value={providerId:'codex',modelId:'synthetic',providers:[]};
+    if(String(url).endsWith('/text-turns'))value=tool={toolCallId:body.idempotencyKey,name:'research_run',status:'completed',args:{query:body.text,explorationId:body.explorationId},result:{summary:'Continued'}};
+    if(String(url).endsWith('/continued-session'))value={events:[],tools:tool?[tool]:[]};
+    return new Response(JSON.stringify(value));
+  };
+  const {adapter,browser}=fixture();const c=new LiveController(adapter,{...browser,addEventListener(){},removeEventListener(){},radsysxDesktop:{studyCaptureVersion:1}});
+  try {
+    await tick();c.session={sessionId:'continued-session',mode:'text',contextVersion:1};c.contextVersion=1;c.targetId=adapter.context().targetId;c.status='text_ready';c.attestation='synthetic';c.syncedState=JSON.stringify(adapter.context().state);
+    const previous={status:'paused',canContinue:true,grant:{taskId:'old-task',sessionId:c.session.sessionId,binding:{studyId:adapter.context().state.studyId},scope:{kind:'series',studyId:'study-1',seriesIds:['series-1'],allowViewerTools:true}}};
+    c.exploration.snapshot=previous;c.tools.set('old-turn',{id:'old-turn',name:'research_run',status:'cancelled',args:{query:'Find public evidence',explorationId:'old-task'}});
+    c.draft='Keep this unsent question';let prepared=0;
+    c.prepareStudy=async(_attestation,continuing,sending)=>{assert.ok(continuing&&sending);prepared++;c.exploration.snapshot={...previous,status:'prepared',activity:'Ready to share',grant:{...previous.grant,taskId:'next-task',binding:{studyId:'study-1',seriesIds:[]}}};c.exploration.abort=new AbortController();};
+    c.exploration.start=async()=>c.exploration.snapshot.grant.taskId;c.exploration.refresh=async()=>{};
+    await Promise.all([c.continueStudy('synthetic'),c.continueStudy('synthetic')]);await tick();
+    const sends=requests.filter(([url])=>url.endsWith('/text-turns'));
+    assert.equal(prepared,1);assert.equal(sends.length,1);assert.equal(sends[0][1].action,'research');assert.equal(sends[0][1].explorationId,'next-task');assert.equal(c.draft,'Keep this unsent question');
+    c.exploration.release();await c.selectImageScope('current_image');assert.equal(c.exploration.snapshot,undefined);assert.equal(c.shareKind,'current_image');
+  } finally {c.session=undefined;c.exploration.release();c.dispose();globalThis.fetch=oldFetch;}
+});

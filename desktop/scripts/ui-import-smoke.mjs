@@ -2744,26 +2744,51 @@ async function exerciseStudyExploration(real = false) {
   console.log('study-phase: settings');
   button('credentials').click();await wait(()=>!panel().querySelector('[data-role="research-model"]').disabled,'models');button('close-credentials').click();
   const confirmation=panel().querySelector('#radsysx-live-attestation');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));
-  const scope=panel().querySelector('[data-role="share-kind"]');scope.value='entire_view';scope.dispatchEvent(new Event('change',{bubbles:true}));
+  const scope=panel().querySelector('[data-role="share-kind"]');scope.value='series';scope.dispatchEvent(new Event('change',{bubbles:true}));
+  await wait(()=>!scope.disabled,'scope selection');
   const tools=panel().querySelector('[data-role="share-tools"]');tools.checked=true;tools.dispatchEvent(new Event('change',{bubbles:true}));
   if(panel().querySelector('[data-role="attachments"]').dataset.open==='true')button('toggle-mention').click();
+  await wait(()=>!scope.disabled,'tool permission');
+  if(!real)button('view-research').click();
   console.log('study-phase: send');
-  const input=panel().querySelector('textarea');input.value=real?'Inspect every frame in this synthetic series using your viewer tools. A late frame contains small bright rectangles. Count them from the pixels, not metadata. Navigate to slice index 31, set window width 800 and center 80, and observe the whole reading view. Fetch technical series metadata too. Do not search literature. In your final answer include the exact line Marker count: N with the number you saw.':'Review every frame in this synthetic series, navigate to its late frame, adjust the window and observe the reading workspace.';input.dispatchEvent(new Event('input',{bubbles:true}));
+  const input=panel().querySelector('textarea');input.value=real?'Inspect every frame in this synthetic series using your viewer tools. A late frame contains small bright rectangles. Count them from the pixels, not metadata. Navigate to slice index 31, set window width 800 and center 80, and observe the active pane. Fetch technical series metadata too. Also search PubMed once for a recent lung nodule CT radiomics systematic review as a separate public literature check; cite one returned source. In your final answer include the exact line Marker count: N with the number you saw.':'Review every frame in this synthetic series, navigate to its late frame, adjust the window and observe the reading workspace.';input.dispatchEvent(new Event('input',{bubbles:true}));
   panel().querySelector('[data-role="composer"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
   await wait(()=>panel().state.backendSessionId,'owned text session');
   const sid=panel().state.backendSessionId;
   let history;
-  await wait(async()=>{history=await api('sidebar/sessions/'+sid);return history.tools.some(t=>t.name==='text_chat'&&['completed','failed'].includes(t.status));},'result');
-  const result=history.tools.find(t=>t.name==='text_chat');
+  await wait(async()=>{history=await api('sidebar/sessions/'+sid);return history.tools.some(t=>t.name===(real?'text_chat':'research_run')&&['completed','failed','cancelled'].includes(t.status));},'result');
+  let result=history.tools.find(t=>t.name===(real?'text_chat':'research_run'));
+  if(!real){
+    if(result.status!=='completed'||result.result.explorationReceipt.coverage[0].delivered.length!==8)throw Error('Expected first batch receipt');
+    await wait(()=>button('study-continue')&&!button('study-continue').disabled,'continue available');
+    const previous=result.toolCallId;input.value='Keep this unsent draft';input.dispatchEvent(new Event('input',{bubbles:true}));
+    button('study-continue').click();
+    await wait(async()=>{history=await api('sidebar/sessions/'+sid);result=history.tools.find(t=>t.name==='research_run'&&t.toolCallId!==previous);return result&&['completed','failed','cancelled'].includes(result.status);},'continued research');
+    if(input.value!=='Keep this unsent draft')throw Error('Continue replaced draft');
+  }
   if(result.status!=='completed')throw Error('Study request failed '+JSON.stringify(result.result));
   const coverage=result.result.explorationReceipt.coverage[0];
   if(coverage.frameCount!==34 || coverage.delivered.length!==34 || coverage.status!=='complete')throw Error('Incomplete study delivery');
   if(JSON.stringify(history).includes('data:image'))throw Error('Persisted pixels');
+  if(real&&(!result.result.pubmedSearches?.length||!result.result.sources?.length))throw Error('Real scoped PubMed search did not return sources');
   if (!real) {
     const counters=await api('_fixture/vision');if(counters.studyImages<35||counters.studyActions!==2)throw Error('Missing native observation/action');
     if((await api('_fixture/media')).activeProviders!==0)throw Error('Study review allocated voice');
   }
-  await wait(()=>panel().querySelector('[data-role="study-progress"]').textContent.includes('34/34'),'coverage UI');
-  await wait(()=>!panel().querySelector('[aria-label="Send message"]').disabled && panel().querySelector('[data-role="thread"]').textContent.includes(result.result.summary.split('\n')[0]),'visible completed answer');
-  return {framesDelivered:34,imagesDelivered:result.result.explorationReceipt.imagesDelivered,cloudCalls:real,...(real?{answer:result.result.summary}:{nativeActions:2,workspaceObserved:true,voiceConnections:0})};
+  await wait(()=>panel().querySelector('[data-role="study-progress"]').textContent.includes('34 of 34 frames sent'),'coverage UI');
+  await wait(()=>!panel().querySelector('[aria-label="Send message"]').disabled && panel().querySelector(real?'[data-role="thread"]':'[data-role="research-tools"]').textContent.includes(result.result.summary.split('\n')[0]),'visible completed answer');
+  const seriesImages=result.result.explorationReceipt.imagesDelivered;
+  if(!real){
+    const prior=new Set(history.tools.map(t=>t.toolCallId));
+    scope.value='entire_view';scope.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>!scope.disabled,'reading view selection');
+    input.value='Inspect the visible reading view';input.dispatchEvent(new Event('input',{bubbles:true}));panel().querySelector('[data-role="composer"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+    await wait(async()=>{history=await api('sidebar/sessions/'+sid);result=history.tools.find(t=>t.name==='research_run'&&!prior.has(t.toolCallId));return result&&['completed','failed','cancelled'].includes(result.status);},'reading view research');
+    if(result.status!=='completed'||result.result.explorationReceipt.scopeKind!=='entire_view'||result.result.explorationReceipt.imagesDelivered!==2||result.result.explorationReceipt.coverage.some(c=>c.delivered.length))throw Error('Reading view expanded to offscreen frames');
+    await wait(()=>!scope.disabled,'reading view complete');
+    scope.value='current_image';scope.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>!scope.disabled,'current image selection');
+    prior.add(result.toolCallId);input.value='Inspect this single viewport';input.dispatchEvent(new Event('input',{bubbles:true}));panel().querySelector('[data-role="composer"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+    await wait(async()=>{history=await api('sidebar/sessions/'+sid);result=history.tools.find(t=>t.name==='research_run'&&!prior.has(t.toolCallId));return result&&['completed','failed','cancelled'].includes(result.status);},'single image research');
+    if(result.status!=='completed'||!result.result.imageReceipt||result.result.explorationReceipt)throw Error('Current image did not use single image path');
+  }
+  return {framesDelivered:34,continuedResearch:!real,scopeCounts:real?undefined:{currentImage:1,readingView:2,seriesFrames:34},imagesDelivered:seriesImages,cloudCalls:real,...(real?{answer:result.result.summary}:{nativeActions:2,paneObserved:true,voiceConnections:0})};
 }

@@ -286,7 +286,7 @@ Last updated: 2026-09-22
 - Prefer Linux-native commands and paths.
 - Record durable behavior changes in this file or the nearest relevant child `AGENTS.md`.
 - Keep sidebar information separated into Chat, Research and Jev review views. Use a quiet reading-room palette and progressive disclosure; technical receipts and full abstracts stay collapsed by default. Jev judgment groups use subtle horizontal separators; the old side-accent exception is removed.
-- `.impeccable/config.json` scopes a `broken-image` exception to `viewer/assets/live/panel.ts`: its transient viewport preview is hidden without a capture, gets a validated JPEG data URL before display, and is hidden before its source is cleared. Native vision acceptance verifies the decoded preview; this exception does not permit visible placeholder images.
+- Transient viewport previews are created only with a validated captured JPEG source and removed on release. No broken-image detector exception is required.
 
 ## Child DOX Index
 

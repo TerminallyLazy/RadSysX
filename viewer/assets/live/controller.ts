@@ -368,6 +368,26 @@ export class LiveController {
   async research(attestation?: Attestation): Promise<void> { await this.sendTyped('research', attestation); }
   get canAttachView(): boolean { return this.researchSettings?.providerId === 'codex' && !this.ready && !['connecting', 'reconnecting'].includes(this.status); }
   get canShareStudy(): boolean { return this.canAttachView && (this.browser as any).radsysxDesktop?.studyCaptureVersion === 1; }
+  get unconfirmedSend(): boolean { return Boolean(this.pendingText) && !this.textBusy; }
+  async retryPendingText(): Promise<void> {
+    if(this.pendingText)await this.sendTyped(this.pendingText.action,this.attestation,{text:this.pendingText.text,continuing:true});
+  }
+  async selectImageScope(kind: typeof this.shareKind, allowViewerTools = this.allowViewerTools): Promise<void> {
+    if(this.textBusy || this.shareBusy || this.pendingText){this.emit();return;}
+    this.shareBusy=true;this.shareKind=kind;this.allowViewerTools=allowViewerTools;this.emit();
+    try {
+      await this.exploration.stop();this.exploration.snapshot=undefined;this.clearView();this.message='';
+    } finally {this.shareBusy=false;this.emit();}
+  }
+  async continueStudy(confirmation?: Attestation): Promise<void> {
+    const previous=this.exploration.snapshot;
+    if(!previous?.canContinue || previous.grant.scope.kind!=='series' || this.textBusy || this.shareBusy)return;
+    const prior=[...this.tools.values()].find(tool=>tool.args.explorationId===previous.grant.taskId);
+    if(!prior){this.message='Open the original conversation to continue this review.';this.emit();return;}
+    const scope=previous.grant.scope;
+    this.shareKind=scope.kind;this.allowViewerTools=scope.allowViewerTools;
+    await this.sendTyped(prior.name==='research_run'?'research':'chat',confirmation,{text:String(prior.args.query),continuing:true});
+  }
   async prepareStudy(confirmation?: Attestation, continuing = false, sending = false): Promise<void> {
     const attestation=confirmation??this.attestation;
     if (!this.canShareStudy || (this.textBusy && !sending) || this.shareBusy || this.shareKind === 'off') return;
@@ -384,7 +404,7 @@ export class LiveController {
       if(continuing)await this.exploration.continueReview(this.session!.sessionId,this.contextVersion);
       else await this.exploration.prepare(this.session!.sessionId,this.contextVersion,selection);
       await this.exploration.waitUntilPrepared();
-      this.message='Image scope selected. Images will be captured with your question.';
+      this.message='Images ready to send.';
     } catch(error){if(sending)throw error;this.failMessage(error);}finally{this.shareBusy=false;this.emit();}
   }
   private clearView(): void { this.viewEpoch++; this.viewAttachment = undefined; this.viewCaptureBusy = false; }
@@ -437,8 +457,8 @@ export class LiveController {
       if (epoch === this.viewEpoch) { this.viewCaptureBusy = false; this.emit(); }
     }
   }
-  private async sendTyped(action: 'chat' | 'research', confirmation?: Attestation): Promise<void> {
-    const text = this.draft.trim();
+  private async sendTyped(action: 'chat' | 'research', confirmation?: Attestation, resume?: {text:string;continuing:true}): Promise<void> {
+    const text = resume?.text ?? this.draft.trim();
     if (!text || this.textBusy || this.viewCaptureBusy || this.credentialsBusy || this.shareBusy) return;
     if(!this.pendingText && this.exploration.active && !this.exploration.prepared){this.message='Wait for the shared inventory to finish loading.';this.emit();return;}
     if (this.initializing) { this.message = 'Checking assistant settings; your draft is kept.'; this.emit(); return; }
@@ -456,9 +476,9 @@ export class LiveController {
       if (!await this.ensureTextSession(attestation, generation)) { if (generation === this.generation) this.textBusy = false; return; }
       await this.syncState();
       if (generation !== this.generation || !this.session || this.closed) return;
-      if (!this.pendingText && this.canShareStudy && this.shareKind !== 'off' && !this.exploration.prepared) {
+      if (!this.pendingText && this.canShareStudy && this.shareKind !== 'off' && (resume || !this.exploration.prepared)) {
         this.message = 'Capturing the images you selected…'; this.emit();
-        await this.prepareStudy(attestation, false, true);
+        await this.prepareStudy(attestation, Boolean(resume), true);
         if (generation !== this.generation || this.closed) return;
         if (this.shareKind === 'current_image' ? !this.viewAttachment : !this.exploration.prepared) throw new Error('Images could not be prepared. Your question has not been sent.');
       }
@@ -472,7 +492,7 @@ export class LiveController {
       if (generation !== this.generation) return;
       this.pendingText = undefined;
       this.clearView();
-      if (this.draft.trim() === text) this.draft = '';
+      if (!resume && this.draft.trim() === text) this.draft = '';
       this.tools.set(String(tool.toolCallId), toolFromWire(tool));
       this.message = pending.explorationId ? 'Capturing and delivering your selected images…' : pending.image ? 'Image submitted · waiting for the answer…' : action === 'research' ? 'Searching public literature…' : 'Waiting for the answer · text only.';
       if (this.session.mode === 'text') {
@@ -496,6 +516,8 @@ export class LiveController {
       this.restoreConversation(history); failures = 0;
       const tool = this.tools.get(toolId);
       if (tool && !['pending', 'running'].includes(tool.status)) {
+        if(tool.args.explorationId===this.exploration.snapshot?.grant.taskId)try{await this.exploration.refresh();}catch{}
+        if(!current())return;
         this.textBusy = false;
         const receipt = object(tool.result?.explorationReceipt);
         this.message = tool.status === 'completed' ? tool.result?.explorationReceipt ? `${Number(receipt.imagesDelivered ?? 0)} images delivered · answer ready.` : tool.result?.imageReceipt ? 'Answer ready · one image submitted.' : 'Answer ready · text only.' : `Request ${tool.status}. Review the task details.`;
