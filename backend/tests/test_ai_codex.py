@@ -34,6 +34,7 @@ class FakeCodex(CodexProcess):
         if method == 'model/list': return {'data':[{'model':'synthetic-codex-model','inputModalities':['text','image']}], 'nextCursor': None}
         if method == 'thread/start': return {'model':params['model'], 'modelProvider':'openai', 'instructionSources':[], 'sandbox':{'type':'readOnly','networkAccess':False}, 'thread':{'id':'thread-synthetic'}}
         if method == 'turn/start':
+            self.bind_turn('turn-synthetic')
             self.started.set()
             if not self.block:
                 if self.job['research']:
@@ -41,7 +42,7 @@ class FakeCodex(CodexProcess):
                         source = self.job['tools'].ledger.add('Synthetic evidence', 'https://pubmed.ncbi.nlm.nih.gov/123/')
                         return {'articles':[], 'sources':[source]}
                     self.job['tools'].search_pubmed = search
-                    await self.dispatch({'id':'tool-1', 'method':'item/tool/call', 'params':{'threadId':'thread-synthetic', 'tool':'search_pubmed', 'arguments':{'query':'synthetic public literature', 'limit':3}}})
+                    await self.dispatch({'id':'tool-1', 'method':'item/tool/call', 'params':{'threadId':'thread-synthetic', 'turnId':'turn-synthetic', 'callId':'search-1', 'namespace':None, 'tool':'search_pubmed', 'arguments':{'query':'synthetic public literature', 'limit':3}}})
                 self.job['answer'] = 'Synthetic response [s1].'
                 self.job['status'] = 'completed'
                 self.job['done'].set()
@@ -263,13 +264,15 @@ def test_private_directory_and_official_auth_url(tmp_path):
 async def test_stdio_reader_uses_final_messages_not_private_reasoning(tmp_path):
     client = CodexProcess(tmp_path)
     stream = asyncio.StreamReader()
-    client.process = type('Process', (), {'stdout':stream})()
-    client.job = {'thread':'owned','answer':'','done':asyncio.Event()}
+    client.process = type('Process', (), {'stdout':stream,'returncode':0})()
+    client.job = {'thread':'owned','turn':'turn-1','answer':'','done':asyncio.Event()}
     for method, params in [('item/reasoning/textDelta',{'threadId':'owned','delta':'PRIVATE'}),
         ('item/completed',{'threadId':'other','item':{'type':'agentMessage','text':'OTHER'}}),
         ('item/completed',{'threadId':'owned','item':{'type':'agentMessage','phase':'commentary','text':'COMMENTARY'}}),
         ('item/completed',{'threadId':'owned','item':{'type':'agentMessage','phase':'final_answer','text':'PUBLIC'}}),
         ('turn/completed',{'threadId':'owned','turn':{'status':'completed'}})]:
+        params['turnId']='turn-1'
+        if method=='turn/completed': params['turn']['id']='turn-1'
         stream.feed_data(json.dumps({'method':method,'params':params}).encode()+b'\n')
     stream.feed_eof(); await client.read()
     assert client.job['answer'] == 'PUBLIC' and client.job['status'] == 'completed'

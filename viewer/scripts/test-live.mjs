@@ -70,7 +70,7 @@ test('review controls appear only while approval is pending; receipts render esc
 function fixture() {
   const calls = [], listeners = new Map(); let index = 0;
   const browser = { location: { pathname: '/viewer/dicomlocal', origin: 'http://localhost:3000', protocol: 'http:', assign(url) { calls.push(['navigate', url]); } }, document: { querySelector() { return null; }, addEventListener(name, callback, capture) { listeners.set(name, { callback, capture }); }, removeEventListener(name) { listeners.delete(name); } } };
-  const viewport = { getProperties: () => ({ voiRange: { lower: -160, upper: 239 } }), getCurrentImageIdIndex: () => index, getImageIds: () => ['one', 'two', 'three'], render() {}, element: { isConnected: true, getBoundingClientRect: () => ({ x: 100, y: 120, width: 800, height: 600 }) } };
+  const viewport = { getProperties: () => ({ voiRange: { lower: -160, upper: 239 } }), getCurrentImageIdIndex: () => index, getImageIds: () => ['one', 'two', 'three'], render() {}, element: { querySelectorAll: () => [], isConnected: true, getBoundingClientRect: () => ({ x: 100, y: 120, width: 800, height: 600 }) } };
   const grid = { displaySetInstanceUIDs: ['private-display-uid'] };
   const measurement = { uid: 'private-measurement-uid', displaySetInstanceUID: 'private-display-uid', toolName: 'Length', label: 'PRIVATE PATIENT LABEL', selected: true };
   const services = {
@@ -197,7 +197,7 @@ test('ending a session replaces running research with owned terminal receipts or
       return new Response(JSON.stringify({ availability: 'disabled', providers: [] }));
     };
     const { adapter, browser } = fixture();
-    const controller = new LiveController(adapter, { ...browser, addEventListener() {} });
+    const controller = new LiveController(adapter, { ...browser, addEventListener() {}, removeEventListener() {} });
     try {
       await tick();
       controller.session = { sessionId: 'ending', contextVersion: 1, status: 'ready' };
@@ -237,7 +237,7 @@ test('controller readiness, action receipts, provider reconnect, late capture an
   const stoppedLeases = [];
   const adapter = { context: () => ({ targetId: target, state: { index, imageCount: 3, modality: 'CT' }, captureTarget: 'viewer', privacyClass: 'unknown', route: '/viewer/dicomlocal' }), attachments: () => [], capture: () => ({ viewportId: 'viewport-one', rect: { x: 0, y: 0, width: 100, height: 100 } }), async execute() { actions++; index++; return { applied: true, state: { index } }; } };
   const events = new Map();
-  const browser = { location: { origin: 'http://localhost:3000', protocol: 'http:' }, addEventListener: (name, callback) => events.set(name, callback), radsysxDesktop: { startViewerCapture: () => new Promise(resolve => { resolveLease = resolve; }), stopViewerCapture: async lease => { stoppedLeases.push(lease); } } };
+  const browser = { location: { origin: 'http://localhost:3000', protocol: 'http:' }, addEventListener: (name, callback) => events.set(name, callback), removeEventListener: name => events.delete(name), radsysxDesktop: { startViewerCapture: () => new Promise(resolve => { resolveLease = resolve; }), stopViewerCapture: async lease => { stoppedLeases.push(lease); } } };
   const controller = new LiveController(adapter, browser);
   try {
     await tick(); await controller.connect(); assert.equal(sockets.length, 0);
@@ -327,7 +327,7 @@ test('backend restart recovers same unexpired target after fresh attestation wit
     return new Response(JSON.stringify(result), { status: 200 });
   };
   const adapter = { context: () => ({ targetId: 'same-target', state: {}, captureTarget: 'viewer', route: '/viewer/dicomlocal', privacyClass: 'unknown' }), attachments: () => [], async execute() { actions++; return { applied: true }; } };
-  const browser = { location: { origin: 'http://localhost:3000', protocol: 'http:' }, addEventListener() {} };
+  const browser = { location: { origin: 'http://localhost:3000', protocol: 'http:' }, addEventListener() {}, removeEventListener() {} };
   const controller = new LiveController(adapter, browser);
   const event = (socket, value) => socket.onmessage({ data: JSON.stringify({ sessionId: controller.session.sessionId, contextVersion: controller.contextVersion, ...value }) });
   try {
@@ -474,7 +474,7 @@ test('provider discovery can retry after authentication without allocating or at
       { id: 'openai', label: 'OpenAI Realtime', modelId: 'gpt-realtime-2.1-mini', availability: 'configured', reason: '', inputSampleRate: 24000, outputSampleRate: 24000, screen: true, tools: true },
     ] }), { status: 200 });
   };
-  const controller = new LiveController({ context: () => ({ targetId: 'same-target' }) }, { addEventListener() {} });
+  const controller = new LiveController({ context: () => ({ targetId: 'same-target' }) }, { addEventListener() {}, removeEventListener() {} });
   try {
     await tick(); assert.equal(controller.status, 'unavailable'); assert.equal(controller.providers.length, 0);
     await controller.initialize();
@@ -507,7 +507,7 @@ test('provider selection works with unavailable Gemini, freezes OpenAI audio, an
     return new Response(JSON.stringify(result), { status: 200 });
   };
   const adapter = { context: () => ({ targetId: 'same-target', state: {}, captureTarget: 'viewer', route: '/viewer/dicomlocal', privacyClass: 'unknown' }), attachments: () => [] };
-  const browser = { location: { origin: 'http://localhost:3000', protocol: 'http:' }, addEventListener() {} };
+  const browser = { location: { origin: 'http://localhost:3000', protocol: 'http:' }, addEventListener() {}, removeEventListener() {} };
   const controller = new LiveController(adapter, browser);
   const event = value => sockets.at(-1).onmessage({ data: JSON.stringify({ sessionId: controller.session.sessionId, contextVersion: controller.contextVersion, ...value }) });
   try {
@@ -559,7 +559,7 @@ test('credential changes stop media/session, clear attestation and refresh provi
     }
     return Response.json(url.includes('/credentials') ? statuses() : {});
   };
-  const controller = new LiveController({ context: () => ({ targetId: 'same-target' }) }, { addEventListener() {} });
+  const controller = new LiveController({ context: () => ({ targetId: 'same-target' }) }, { addEventListener() {}, removeEventListener() {} });
   try {
     await tick(); await controller.showCredentials();
     assert.equal(controller.credentialsOpen, true); assert.equal(controller.credentials.providers[1].source, 'none');
@@ -589,7 +589,7 @@ test('credential errors expose no request payload and prevent changes when secur
     if (init.method === 'PUT') { writes++; return new Response('synthetic-sensitive-key', { status: 500 }); }
     return Response.json({ storageAvailable, providers: [{ id: 'gemini', label: 'Gemini', configured: false, source: 'none', environmentConfigured: false }] });
   };
-  const controller = new LiveController({ context: () => ({ targetId: 'target' }) }, { addEventListener() {} });
+  const controller = new LiveController({ context: () => ({ targetId: 'target' }) }, { addEventListener() {}, removeEventListener() {} });
   try {
     await tick(); await controller.showCredentials(); await controller.saveCredential('gemini', 'synthetic-sensitive-key');
     assert.equal(writes, 0); assert.match(controller.credentialMessage, /storage is unavailable/);
@@ -607,7 +607,7 @@ test('an unreadable saved key can be removed even when secure key storage is una
     if (init.method === 'DELETE') removed = true;
     return Response.json({ storageAvailable: false, providers: [{ id: 'gemini', label: 'Gemini', configured: removed, source: removed ? 'environment' : 'saved', environmentConfigured: true }] });
   };
-  const controller = new LiveController({ context: () => ({ targetId: 'target' }) }, { addEventListener() {} });
+  const controller = new LiveController({ context: () => ({ targetId: 'target' }) }, { addEventListener() {}, removeEventListener() {} });
   try {
     await tick(); await controller.showCredentials();
     assert.equal(controller.credentials.storageAvailable, false);
@@ -635,7 +635,7 @@ test('research settings load the saved model and save after ending the active se
     }
     return Response.json({ availability: 'configured' });
   };
-  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {} });
+  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {}, removeEventListener() {} });
   try {
     await tick(); await controller.loadResearchSettings();
     assert.equal(controller.researchModelId, 'z-ai/glm-5.3-flash');
@@ -656,7 +656,7 @@ test('late research catalog cannot replace another provider; catalog failure kee
     if (url.endsWith('/models/gemini')) return Response.json({ providerId: 'gemini', models: ['gemini-3.8-flash'], capabilitiesVerified: false });
     return Response.json({ availability: 'configured' });
   };
-  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {} });
+  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {}, removeEventListener() {} });
   try {
     await tick();
     controller.researchSettings = { providerId: 'nvidia_nim', modelId: 'z-ai/glm-5.3-flash', source: 'saved', providers: [{ id: 'gemini', configured: true }, { id: 'nvidia_nim', configured: true }] };
@@ -676,7 +676,7 @@ test('Gemini key changes immediately update research availability without replac
   globalThis.fetch = async url => Response.json(url.includes('/credentials') ? {
     storageAvailable: true, providers: [{ id: 'gemini', configured: true, source: 'saved', environmentConfigured: false }],
   } : { availability: 'configured' });
-  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {} });
+  const controller = new LiveController({ context: () => ({ targetId: 'same' }) }, { addEventListener() {}, removeEventListener() {} });
   try {
     await tick();
     controller.credentials = { storageAvailable: true, providers: [{ id: 'gemini', configured: false }] };
@@ -702,7 +702,7 @@ test('typed chat and explicit research work with voice unavailable, without audi
     else if (String(url).endsWith('/text-one')) value = { events:[{kind:'transcript',role:'assistant',text:'Synthetic answer.',finished:true}],tools:[currentTool] };
     return new Response(JSON.stringify(value));
   };
-  const { adapter,browser } = fixture(); const c = new LiveController(adapter,{...browser,addEventListener(){}});
+  const { adapter,browser } = fixture(); const c = new LiveController(adapter,{...browser,addEventListener(){},removeEventListener(){}});
   try {
     await tick(); c.draft='Discuss synthetic CT'; await c.sendText();
     assert.equal(requests.some(([url])=>url.endsWith('/text-sessions')),false); assert.equal(c.draft,'Discuss synthetic CT');
@@ -728,7 +728,7 @@ test('uncertain typed sends retain one identity, preserve newer drafts, and disc
     if(String(url).endsWith('/typed')) return new Promise(resolve=>{resolvePoll=()=>resolve(new Response(JSON.stringify({events:[{kind:'transcript',role:'assistant',text:'late'}],tools:[]})));});
     return new Response(JSON.stringify(value));
   };
-  const {adapter,browser}=fixture();const c=new LiveController(adapter,{...browser,addEventListener(){}});
+  const {adapter,browser}=fixture();const c=new LiveController(adapter,{...browser,addEventListener(){},removeEventListener(){}});
   try {
     await tick();c.draft='Question';await c.sendText('synthetic');assert.equal(c.draft,'Question');assert.equal(c.textBusy,false);
     const retry=c.sendText('synthetic');await tick();c.draft='New unsent draft';resolveTurn();await retry;await tick();
@@ -752,7 +752,7 @@ test('Codex view attachment previews locally and sends only with the confirmed q
   };
   const {adapter,browser}=fixture();adapter.capture=()=>({viewportId:'test',rectangle:{x:0,y:0,width:100,height:100}});
   const bridge={startViewerCapture:async request=>{captures.push(request);return {leaseId:'lease'};},captureViewerFrame:async request=>({data:'YWJj',mimeType:'image/jpeg',width:16,height:16,targetId:request.targetId,contextVersion:request.contextVersion}),stopViewerCapture:async()=>captures.push('stopped')};
-  const c=new LiveController(adapter,{...browser,addEventListener(){},radsysxDesktop:bridge});
+  const c=new LiveController(adapter,{...browser,addEventListener(){},removeEventListener(){},radsysxDesktop:bridge});
   try {
     await tick();await c.attachCurrentView();assert.equal(captures.length,0);
     await c.attachCurrentView('synthetic');assert.equal(c.viewAttachment.image.data,'YWJj');assert.equal(captures.at(-1),'stopped');
@@ -779,7 +779,7 @@ test('vision failures keep uncertain image sends idempotent and make model incom
     }
     return new Response('{}');
   };
-  const {adapter,browser}=fixture();const c=new LiveController(adapter,{...browser,addEventListener(){}});
+  const {adapter,browser}=fixture();const c=new LiveController(adapter,{...browser,addEventListener(){},removeEventListener(){}});
   try {
     await tick();c.session={sessionId:'vision',mode:'text',contextVersion:1};c.contextVersion=1;c.closed=false;c.targetId=adapter.context().targetId;c.syncedState=JSON.stringify(adapter.context().state);
     const image={data:'YWJj',mimeType:'image/jpeg',width:16,height:16,capturedAt:new Date().toISOString(),targetId:c.targetId,contextVersion:1};

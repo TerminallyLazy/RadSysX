@@ -14,7 +14,7 @@ const pnpmCli = path.resolve(viewerRoot, '..', 'node_modules', 'pnpm', 'bin', 'p
 
 export function ohifBuildFingerprint() {
   const hash = createHash('sha256');
-  for (const name of ['source.json', 'source.patch', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
+  for (const name of ['source.json', 'source.patch', 'study-tools.patch', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
     hash.update(name).update(fs.readFileSync(path.join(inputs, name)));
   }
   hash.update(fs.readFileSync(path.join(viewerRoot, 'package.json')));
@@ -58,9 +58,11 @@ export function buildOhifSource() {
   }
   const head = run('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: 'pipe' }).stdout.trim();
   if (head !== source.commit) throw new Error('OHIF cache does not match the pinned source commit.');
-  const patch = path.join(inputs, 'source.patch');
-  const alreadyApplied = spawnSync('git', ['apply', '--reverse', '--check', patch], { cwd: sourceRoot, stdio: 'pipe' }).status === 0;
-  if (!alreadyApplied) run('git', ['apply', patch]);
+  for (const name of ['source.patch', 'study-tools.patch']) {
+    const patch = path.join(inputs, name);
+    const alreadyApplied = spawnSync('git', ['apply', '--reverse', '--check', patch], { cwd: sourceRoot, stdio: 'pipe' }).status === 0;
+    if (!alreadyApplied) run('git', ['apply', patch]);
+  }
   for (const name of ['pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
     fs.copyFileSync(path.join(inputs, name), path.join(sourceRoot, name));
   }

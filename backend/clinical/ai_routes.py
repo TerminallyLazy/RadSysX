@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from .ai_evidence_routes import evidence_router
 from .ai_text_routes import text_router
 from .ai_codex_routes import codex_router
+from .ai_exploration_routes import exploration_router
 from .ai_config import PROVIDER_PROFILES
 from .ai_credentials import validate_api_key
 from .contracts import (AIResearchSettings, AIResearchModels, AICredentialStatusResponse, AILiveContextUpdate, AILiveDecision,
@@ -162,6 +163,7 @@ def live_router(service, session_manager):
         service.repository.owned(session_id, claims)
         if request.headers.get("origin") not in service.platform.allowed_origins:
             raise HTTPException(403, "An allowed Origin is required to delete conversation history.")
+        await service.exploration.delete_source(session_id, claims)
         await service.evidence_reviews.delete_source(claims, session_id)
         return {"deleted": True}
 
@@ -213,4 +215,5 @@ def live_router(service, session_manager):
     router.include_router(evidence_router(service.evidence_reviews, actor))
     router.include_router(text_router(service, actor))
     router.include_router(codex_router(service, actor))
+    router.include_router(exploration_router(service.exploration, actor))
     return router

@@ -42,3 +42,9 @@
 - `AICodexAccount` and get/start/sign-out subscription methods expose status and an official transient login URL only. The codex text/research provider is distinct from the Gemini/OpenAI voice provider catalog. Never add tokens, raw RPC, filesystem paths or account identity inputs to browser contracts.
 
 - `AITextTurnRequest.image` is an optional strict JPEG attachment for Codex only, with data, MIME type, dimensions, target/context version and capture timestamp. Keep `AIViewImage` structurally aligned with the viewer `ViewImage` type. These transient request bytes never belong in history/result DTOs; results expose image receipt metadata only.
+
+- `src/exploration.ts` exports strict-shape study exploration records mirrored by `ai_exploration_contracts.py`: explicit sharing scope, renderer binding, observations, grants, task/action results and coverage. `ImageObservation.data` is transient request content; persisted/rendered history uses `ImageReceipt` only. These records do not themselves grant authority or imply runtime activation.
+
+- `DesktopStudyCapture` and `StudyCaptureBinding` declare the versioned desktop observation IPC. Only opaque owned task/binding/operation/pane handles cross its request boundary; capture rectangles and selectors are never caller arguments. Backend task authority remains mandatory.
+
+- `AITextTurnRequest.explorationId` binds an explicitly prepared scope to an owned text task. It is mutually exclusive with a single-image attachment. `exploration.ts` carries renderer grants, command claims, observations and receipt-only coverage; no generic provider/native RPC is exposed.

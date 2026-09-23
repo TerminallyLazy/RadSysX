@@ -585,7 +585,7 @@ def test_cached_success_from_old_viewer_context_is_not_reused(live):
 def test_context_change_cancels_actions_and_requires_new_attestation(live):
     async def scenario():
         runtime = runtime_for(live)
-        await runtime.schedule_tool(call("viewer_measurement", operation="delete", measurementId="synthetic-measurement"))
+        await runtime.schedule_tool(call("viewer_measurement", operation="delete", measurementId="measurement-synthetic"))
         updated = await live.service.update_context(runtime.id, AILiveContextUpdate.model_validate({
             "contextVersion": 1, "viewerContext": {**CONTEXT, "targetId": "new-viewport"},
         }), runtime.actor)

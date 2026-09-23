@@ -294,3 +294,12 @@ class GovernanceDecisionModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     model: Mapped[ModelRegistryModel | None] = relationship(back_populates="governance_decisions")
+
+
+class AIExplorationModel(Base):
+    __tablename__ = 'ai_explorations'
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey('ai_live_sessions.id'), index=True)
+    status: Mapped[str] = mapped_column(String(32))
+    payload_json: Mapped[dict] = mapped_column(JSON)

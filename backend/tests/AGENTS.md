@@ -55,3 +55,13 @@ The evidence-review CLI tests exercise real private artifacts and mocked capture
 - `test_ai_codex.py` uses synthetic App Server frames/factories to cover isolated account login, model selection, subscription chat/research, receipts, tool budgets, cancellation, private HTTP gates and model drift. It must not read real Codex credentials or initiate real sign-in. Native signed-out protocol checks and user-completed subscription inference are separate acceptance evidence.
 
 - Codex vision regressions cover explicit inline image dispatch for chat/research, exact duplicate identity, receipt-only persistence, historical-image disclosure, bounded malformed image/private errors, stale captures and absent model modality. Desktop synthetic capture acceptance and a real subscription image response are distinct checks; never use a patient's viewport as a test fixture.
+
+- `test_ai_exploration_contracts.py` and `test_ai_exploration_coverage.py` verify untrusted metadata/JPEG bounds, receipt-only serialization, distinct acknowledged coverage, duplicate/foreign frames and run budgets. `test_ai_actions.py` verifies the shared broker against real temporary persistence, including immutable approvals, exactly-once native effects, transport-loss uncertainty and backend report authority.
+
+- Exploration route/lifecycle tests use signed owner routes and synthetic renderer claims against production persistence. Cover body/origin/mode gates, duplicate and changed completions, old epochs, expiry, owner/global capacity, account/model/context invalidation, history deletion and restart. Rejected results must not poison valid retries; completion futures and history retain no image bytes. No provider calls or actual viewer execution are implied.
+
+- `test_ai_exploration_tools.py` checks the native reading allowlist, finite arguments, pane/layer handles, constrained panels and advanced rendering bounds. Actual geometry/rendering remains a separate native desktop acceptance gate.
+
+- Geometry regressions cover per-tool point counts, duplicate/nonfinite/out-of-range coordinates, captured-frame pairs, bounded regions and reviewed calibration. The existing context-change deletion fixture uses an actual opaque measurement-handle format so it still reaches the approval/cancellation path.
+
+- `test_ai_codex_exploration.py` covers dynamic tool identity, image acknowledgment/release, duplicate mutation receipts, geometry authority, grant expiry and bounded private stdio failure using synthetic data. Native desktop and real subscription acceptance are recorded separately in `roadmap/ai-backend/CODEX_STUDY_EXPLORATION.md`.

@@ -1,3 +1,4 @@
+import { explorationMarkup } from './exploration-panel.js';
 import { evidenceEligibility, mountEvidencePanel } from './evidence-panel.js';
 import { LiveController } from './controller.js';
 import { answerMarkup } from './presentation.js';
@@ -124,7 +125,7 @@ export function registerPanel(controller: LiveController): void {
             </section>
             </details>
             <p class="radsysx-live-status" role="status" aria-live="polite" data-role="status"></p>
-            <div class="radsysx-live-conversation" data-role="conversation">
+            <div class="radsysx-live-conversation" data-role="conversation"><section data-role="study-progress" aria-label="Study exploration"></section>
             <section class="radsysx-live-history" data-role="history" hidden></section>
             <section data-role="review-view" aria-label="Jev evidence review" hidden>
             <div class="radsysx-section-heading"><h3>Evidence review</h3><button type="button" data-action="view-research">Back to research</button></div>
@@ -157,6 +158,7 @@ export function registerPanel(controller: LiveController): void {
               </label>
               <div class="radsysx-ai-attachment-row" data-role="selected"></div>
               <div class="radsysx-ai-mention-menu" data-role="attachments" data-open="false"></div>
+              <details class="radsysx-study-share" data-role="study-share" hidden><summary>Share images with AI</summary><label>Share scope<select data-role="share-kind"><option value="series">Entire active series</option><option value="entire_view">Entire reading view</option><option value="current_image">Current image</option></select></label><label class="radsysx-study-permission"><input type="checkbox" data-role="share-tools">Allow viewer tools</label><p>Share only the selected study. Viewer tools can navigate and make reversible edits. Saves require review.</p><button type="button" data-action="prepare-study">Prepare sharing</button></details>
               <button type="button" class="radsysx-attach-view" data-action="attach-view" hidden>Attach current view</button>
               <div class="radsysx-view-attachment" data-role="view-attachment" hidden><details><summary>Preview image</summary><img alt="Preview of the active image to send"></details><div><span data-role="view-attachment-scope"></span><button type="button" data-action="remove-view">Remove image</button></div><p>Check the preview for patient information. Only this view and its visible overlays will be sent with your question.</p></div>
               <textarea rows="3" aria-label="RadSysX AI message" placeholder="Ask about this case, or enter a literature question"></textarea>
@@ -171,6 +173,11 @@ export function registerPanel(controller: LiveController): void {
           const action = button.dataset.action;
           if (action?.startsWith('view-')) { this.showView(action.slice(5) as 'chat' | 'research' | 'review'); }
           else if (action === 'connect') void (controller.providers.length ? controller.connect(this.attestation) : controller.initialize());
+          else if (action === 'prepare-study') void controller.prepareStudy(this.attestation);
+          else if (action === 'study-stop') void controller.exploration.stop();
+          else if (action === 'study-takeover') void controller.exploration.takeover();
+          else if (action === 'study-continue') void controller.prepareStudy(this.attestation,true);
+          else if (action === 'study-approve' || action === 'study-deny') void controller.exploration.decide(button.dataset.operation!,action==='study-approve');
           else if (action === 'attach-view') void controller.attachCurrentView(this.attestation);
           else if (action === 'remove-view') controller.removeView();
           else if (action === 'voice') void controller.toggleMicrophone();
@@ -206,11 +213,13 @@ export function registerPanel(controller: LiveController): void {
             if (window.confirm('Clear this saved conversation and its tool history?')) void controller.clearHistory(button.dataset.id!);
           }
         });
+        this.node<HTMLSelectElement>('share-kind').addEventListener('change',event=>{controller.shareKind=(event.target as HTMLSelectElement).value as typeof controller.shareKind;void controller.exploration.stop();controller.removeView();});
+        this.node<HTMLInputElement>('share-tools').addEventListener('change',event=>{controller.allowViewerTools=(event.target as HTMLInputElement).checked;void controller.exploration.stop();});
         this.node<HTMLSelectElement>('research-provider').addEventListener('change', event => void controller.selectResearchProvider((event.target as HTMLSelectElement).value as ResearchProviderId));
         this.node<HTMLSelectElement>('research-model').addEventListener('change', event => { controller.researchModelId = (event.target as HTMLSelectElement).value; controller.emit(); });
         this.node<HTMLFormElement>('research-settings-form').addEventListener('submit', event => { event.preventDefault(); void controller.saveResearchSettings(); });
         this.node<HTMLSelectElement>('provider').addEventListener('change', event => void controller.selectProvider((event.target as HTMLSelectElement).value as ProviderId));
-        this.querySelector('#radsysx-live-attestation')!.addEventListener('change', event => { this.attestation = (event.target as HTMLSelectElement).value as Attestation || undefined; controller.removeView(); });
+        this.querySelector('#radsysx-live-attestation')!.addEventListener('change', event => { this.attestation = (event.target as HTMLSelectElement).value as Attestation || undefined; controller.removeView(); void controller.exploration.stop(); });
         this.querySelector('textarea')!.addEventListener('input', event => { controller.draft = (event.target as HTMLTextAreaElement).value; if (/(^|\s)@$/.test(controller.draft)) { this.mentionOpen = true; this.render(); } });
         this.querySelector('textarea')!.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); this.submit(); } });
         this.querySelector('.radsysx-ai-composer')!.addEventListener('submit', event => { event.preventDefault(); this.submit(); });
@@ -319,8 +328,13 @@ export function registerPanel(controller: LiveController): void {
       providerSelect.disabled = controller.credentialsBusy || controller.status === 'loading' || !controller.providers.length;
       providerSelect.title = controller.model;
       this.node('text-model').textContent = `Text & research · ${controller.session?.mode === 'text' && controller.status === 'text_ready' ? controller.session.modelId : controller.researchSettings?.modelId ?? 'Choose a model in Settings'}`;
-      this.node('disclosure').textContent = controller.viewAttachment ? 'Sends your question, neutral context and the previewed image to your Codex model. This is one view, not the entire series.' : controller.canAttachView ? 'Sends your question and neutral context. Attach a view to include image pixels.' : 'Sends your question and neutral case/series context. No image pixels.';
-      this.button('attach-view').hidden = !controller.canAttachView;
+      this.node('disclosure').textContent = controller.exploration.active ? 'Send shares the selected study scope with your Codex model. Image delivery and viewer actions remain visible above.' : controller.viewAttachment ? 'Sends your question, neutral context and the previewed image to your Codex model. This is one view, not the entire series.' : controller.canAttachView ? 'Sends your question and neutral context. Attach a view to include image pixels.' : 'Sends your question and neutral case/series context. No image pixels.';
+      this.node('study-share').hidden=!controller.canShareStudy;
+      const studyHost=this.node('study-progress'), studyHtml=explorationMarkup(controller.exploration.snapshot);
+      if(studyHost.dataset.rendered!==studyHtml){const open=studyHost.querySelector('details')?.open;studyHost.innerHTML=studyHtml;studyHost.dataset.rendered=studyHtml;if(open&&studyHost.querySelector('details'))studyHost.querySelector('details')!.open=true;}
+      this.button('prepare-study').disabled=controller.textBusy||controller.shareBusy||controller.credentialsBusy;
+      this.button('prepare-study').textContent=controller.shareBusy?'Preparing…':'Prepare sharing';
+      this.button('attach-view').hidden = !controller.canAttachView || controller.canShareStudy;
       this.button('attach-view').disabled = controller.textBusy || controller.viewCaptureBusy || controller.credentialsBusy;
       this.button('attach-view').textContent = controller.viewCaptureBusy ? 'Capturing view…' : controller.viewAttachment ? 'Replace with current view' : 'Attach current view';
       const attachment = this.node('view-attachment'), preview = attachment.querySelector('img')!;

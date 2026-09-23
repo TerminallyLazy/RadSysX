@@ -350,3 +350,7 @@ The standalone [evidence-review runbook](backend/evidence_review/README.md) docu
 
 - The desktop sidebar supports a separately managed ChatGPT/Codex subscription login for typed chat and public PubMed research. Read `roadmap/ai-backend/CODEX_SUBSCRIPTION.md` for its account, execution and validation boundaries. Realtime voice still uses its own API-key billing. Gemini/NVIDIA retain DeepAgents/LangGraph; subscription execution uses pinned Codex App Server. Never reuse subscription tokens as API keys or read/copy the user's existing Codex credentials.
 - Root npm pins `@openai/codex` 0.154.0. Desktop enables `RADSYSX_CODEX_ENABLED`; other backends default off. Private `.ai-codex/` directories and OS-keyring entries are per RadSysX actor and must never be committed. Clinical mode remains disabled.
+
+## Scoped study exploration
+
+- Codex text/research supports explicit current-image, reading-view and entire-series sharing, plus separately permitted native viewer tools. It does not require a Realtime connection. Backend grants, renderer claims, acknowledged frame coverage, reversible action receipts and Stop/Take over own this path. See `roadmap/ai-backend/CODEX_STUDY_EXPLORATION.md`. Do not equate image delivery with diagnosis or claim unverified specialized modality parity.

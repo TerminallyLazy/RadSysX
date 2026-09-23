@@ -67,6 +67,8 @@ class AILiveService:
         self.config = AISettings(settings.app_mode.value)
         self.credentials = AICredentialStore(clinical_repository, self.config.key_store_dir)
         self.repository = AILiveRepository(clinical_repository)
+        from .ai_actions import ActionBroker
+        self.actions = ActionBroker(self)
         # Optional zero-argument test/fixture factories. Production providers
         # receive an owner-resolved runtime snapshot instead of global secrets.
         self.provider_factory = None
@@ -82,6 +84,8 @@ class AILiveService:
         self.text = TextService(self)
         from .ai_codex import CodexService
         self.codex = CodexService(self)
+        from .ai_exploration import ExplorationService
+        self.exploration = ExplorationService(self)
 
     def _openai_provider(self, settings):
         from .ai_openai import OpenAIRealtimeProvider
@@ -294,6 +298,7 @@ class AILiveService:
             await self._stop(session_id, status=status)
 
     async def _stop(self, session_id, *, status="closed"):
+        await self.exploration.stop_session(session_id, status="interrupted" if status == "interrupted" else "cancelled")
         await self.text.stop(session_id, status="interrupted" if status == "interrupted" else "cancelled")
         runtime = self.runtimes.pop(session_id, None)
         if runtime:
@@ -308,6 +313,7 @@ class AILiveService:
                 await self.stop(row["sessionId"])
 
     async def shutdown(self):
+        await self.exploration.shutdown()
         await self.evidence_reviews.shutdown()
         await self.text.shutdown()
         for session_id in list(self.runtimes):
@@ -799,24 +805,15 @@ class LiveRuntime:
             await self.emit("error", code="invalid_tool_call", message="The provider supplied no usable tool call identifier. No action was executed.")
             return
         try:
-            args = validate_tool(call.name, call.args or {})
-        except Exception:
-            await self.tool_response(tool_id, call.name, {"error": "Unsupported tool or invalid arguments."})
+            tool, fresh = self.service.actions.prepare(self.id, tool_id, call.name, call.args or {}, self.actor,
+                context_version=self.context_version)
+        except (ValueError, HTTPException):
+            await self.tool_response(tool_id, call.name, {"error": "Unsupported tool, invalid arguments or reused identity."})
             return
-        tool, fresh = self.repo.add_tool(self.id, tool_id, call.name, args, self.context_version,
-                                         requires_approval(call.name, args))
         if not fresh:
-            if tool["contextVersion"] != self.context_version:
-                await self.tool_response(tool_id, call.name, {"error": "Tool call ID belongs to a previous viewer context."})
-                return
-            if tool["name"] != call.name or tool["args"] != args:
-                await self.tool_response(tool_id, call.name, {"error": "Tool call ID was reused with different arguments."})
-                return
-            # Exactly-once app execution even if the provider repeats a call.
             if tool["status"] in TERMINAL_TOOLS:
                 await self.tool_response(tool_id, call.name, {"status": tool["status"], "result": tool["result"]})
             return
-        self.service.audit(self.check(), self.actor, f"{self.id}:{tool_id}")
         if len(self.repo.active_tools(self.id)) > 16:
             tool = self.repo.set_tool(self.id, tool_id, "failed", {"message": "Too many concurrent tools."})
             await self.emit("tool", **tool)
@@ -828,16 +825,10 @@ class LiveRuntime:
 
     async def decide(self, tool_id, request):
         self.check()
-        tool = self.repo.tool(self.id, tool_id)
-        if request.context_version != self.context_version or tool["contextVersion"] != self.context_version:
-            raise HTTPException(409, "Approval belongs to another viewer context.")
-        if tool["status"] != "awaiting_approval" or parse_iso_z(tool["expiresAt"]) <= utc_now():
-            raise HTTPException(409, "Approval has expired or was already used.")
+        tool = self.service.actions.decide(self.id, tool_id, request, self.actor)
         if request.approved:
-            tool = self.repo.set_tool(self.id, tool_id, "pending")
             self.tasks[tool_id] = asyncio.create_task(self.execute(tool))
         else:
-            tool = self.repo.set_tool(self.id, tool_id, "denied")
             await self.tool_response(tool_id, tool["name"], {"status": "denied"})
         await self.emit("tool", **tool)
         return tool
@@ -876,15 +867,6 @@ class LiveRuntime:
                 result["imageAvailability"] = self.media_context()
                 self.study_aliases = {f"study-{i}": row.study_instance_uid for i, row in enumerate(self.service.clinical_repository.list_worklist())}
                 result["studies"] = [{"studyId": key, "label": f"Worklist study {i + 1}"} for i, key in enumerate(self.study_aliases)]
-            elif name == "report_save":
-                if "report.write" not in self.actor.scopes:
-                    raise HTTPException(403, "Report write permission required.")
-                uid = self.check()["viewerContext"].get("studyInstanceUID")
-                if not uid or not self.service.clinical_repository.get_worklist_row(uid):
-                    raise HTTPException(409, "Import or associate this local study through the worklist before saving a report.")
-                record = self.service.clinical.save_report(ReportDraftRequest(studyInstanceUID=uid,
-                    findingsSummary=args["findings"], impression=args["impression"]), actor=self.actor, source_ip="live-sidebar")
-                result = {"reportId": record.report_id, "status": "draft_saved"}
             elif name == "study_open":
                 if "study.read" not in self.actor.scopes or args["studyId"] not in self.study_aliases:
                     raise HTTPException(403, "Choose an available worklist study.")
@@ -893,9 +875,12 @@ class LiveRuntime:
                 # Opaque launch URL goes only to the renderer, never back to Google/history.
                 result = await self.renderer_action(tool_id, name, {"url": launch.viewer_url})
             else:
-                async with self.action_lock:
-                    self.check()
-                    result = await self.renderer_action(tool_id, name, args)
+                result = await self.service.actions.execute(self.id, tool_id, self.actor,
+                    check=self.check, dispatch=self.renderer_action)
+                tool = self.repo.tool(self.id, tool_id)
+                await self.emit("tool", **tool)
+                await self.tool_response(tool_id, name, {"status": tool["status"], "result": result})
+                return
             self.check()
             if self.repo.tool(self.id, tool_id)["status"] in TERMINAL_TOOLS:
                 return
@@ -906,6 +891,8 @@ class LiveRuntime:
         except asyncio.CancelledError:
             raise
         except (asyncio.TimeoutError, ConnectionError):
+            if self.repo.tool(self.id, tool_id)["status"] in TERMINAL_TOOLS:
+                return  # A lost notification cannot rewrite a committed receipt.
             status = "outcome_unknown" if name.startswith("viewer_") or name in {"report_draft", "study_open"} else "failed"
             tool = self.repo.set_tool(self.id, tool_id, status, {"message": "No completion receipt. The action was not retried."})
             await self.emit("tool", **tool)
@@ -914,6 +901,8 @@ class LiveRuntime:
             except Exception:
                 pass
         except Exception as error:
+            if self.repo.tool(self.id, tool_id)["status"] in TERMINAL_TOOLS:
+                return
             message = error.detail if isinstance(error, HTTPException) else "The tool could not complete. No automatic retry was performed."
             tool = self.repo.set_tool(self.id, tool_id, "failed", {"message": message})
             await self.emit("tool", **tool)

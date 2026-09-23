@@ -23,9 +23,11 @@ class TextTurnRequest(BaseModel):
     action: Literal["chat", "research"]
     text: str = Field(min_length=1, max_length=2000)
     image: ViewImage | None = None
+    exploration_id: str | None = Field(default=None,alias='explorationId',pattern=r'^task-[A-Za-z0-9_-]{1,120}$')
 
     @model_validator(mode="after")
     def bounded(self):
+        if self.image is not None and self.exploration_id is not None: raise ValueError('Choose one image scope')
         if not self.text.strip() or (self.action == "research" and len(self.text) > 1700):
             raise ValueError("Invalid text length")
         return self
@@ -67,7 +69,7 @@ def text_router(live, actor_for_request):
         row = live.repository.owned(session_id, claims, active=True)
         payload = await read_body(request, TextTurnRequest, max_bytes=720000)
         if row.get("mode") != "text":
-            if payload.image is not None:
+            if payload.image is not None or payload.exploration_id is not None:
                 raise HTTPException(409, "Attach current view in a separate text conversation. Voice has its own image-sharing control.")
             async with live.owner_lock(claims):
                 async with live.session_lock(session_id):

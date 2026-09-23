@@ -51,3 +51,7 @@ Last updated: 2026-09-22
 - `ai-backend/DESKTOP_AI_ACTIVATION.md` records the working-checkout/environment activation, startup hardening and real desktop-served sidebar acceptance. Distinguish configuration checks, synthetic-provider smokes and actual hosted-provider requests. MLX VoiceChat remains deferred.
 
 - `ai-backend/CODEX_SUBSCRIPTION.md` owns the local subscription workflow, pinned App Server boundary, per-user keyring custody, public PubMed execution and actual acceptance evidence. Preserve the distinction between synthetic/native protocol checks and authenticated subscription inference.
+
+- `ai-backend/CODEX_VIEWER_TOOL_MATRIX.md` records the actual pinned native toolbar inventory, semantic handlers, permission boundaries and per-control native acceptance. Pending in-scope handlers/fixtures block a parity claim; inventory is not activation evidence.
+
+- `ai-backend/CODEX_STUDY_EXPLORATION.md` records the shipped study-sharing workflow, receipt semantics and actual acceptance boundaries. `CODEX_VIEWER_TOOL_MATRIX.md` keeps specialized native controls explicitly unverified where fixtures have not been exercised.
