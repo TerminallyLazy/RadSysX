@@ -36,3 +36,9 @@ The pinned protocol maps dynamic `callId` directly to the lifecycle item ID: [Co
 - Real subscription inference on an entire series, model interpretation of the late-frame marker, and specialized volume/fusion/ultrasound/segmentation parity remain unverified. Synthetic transport acceptance does not establish those capabilities or clinical accuracy.
 
 At the user's explicit request, additional exhaustive fixture expansion and repeated broad local suites were deferred. The normal hosted checks remain enabled.
+
+## Desktop activation
+
+On 2026-09-23, the working checkout was fast-forwarded to the implementation and launched with `npm run desktop`. Bootstrap passed, the pinned OHIF distribution rebuilt, and the normal `backend.server:app` started from that checkout on port 8000. The desktop origin on port 3000 serves the current generated bundle with study sharing, viewer-tool permission and supported logo navigation. The production frontend uses port 3013. The unrelated local `.DS_Store` edit and owner credentials were preserved. Release is tracked in [PR #85](https://github.com/TerminallyLazy/RadSysX/pull/85).
+
+The CI browser fixture was updated to provide both `addEventListener` and `removeEventListener`; otherwise teardown threw before clearing the existing auth timer. Its focused controller regressions passed (38 tests). This was a test-double repair, with no change to production behavior.
