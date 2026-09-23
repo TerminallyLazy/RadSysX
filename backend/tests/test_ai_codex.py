@@ -31,7 +31,7 @@ class FakeCodex(CodexProcess):
         if method == 'account/read': return {'account': {'type':'chatgpt', 'email':'synthetic@example.invalid', 'planType':'pro'} if self.signed_in else None}
         if method == 'account/login/start': return {'loginId':'synthetic-login', 'authUrl':'https://auth.openai.com/authorize?state=synthetic'}
         if method == 'account/logout': self.signed_in = False; return {}
-        if method == 'model/list': return {'data':[{'model':'synthetic-codex-model'}], 'nextCursor': None}
+        if method == 'model/list': return {'data':[{'model':'synthetic-codex-model','inputModalities':['text','image']}], 'nextCursor': None}
         if method == 'thread/start': return {'model':params['model'], 'modelProvider':'openai', 'instructionSources':[], 'sandbox':{'type':'readOnly','networkAccess':False}, 'thread':{'id':'thread-synthetic'}}
         if method == 'turn/start':
             self.started.set()
@@ -53,6 +53,95 @@ def configured(live):
     live.service.config.codex_enabled = True
     live.service.codex.factory = FakeCodex
     return live.service.codex
+
+
+def view_image(row, **overrides):
+    import base64
+    from io import BytesIO
+    from PIL import Image
+    from backend.clinical.contracts import to_iso_z, utc_now
+    image = BytesIO(); Image.new('RGB', (16, 16), 'navy').save(image, format='JPEG')
+    return {'data':base64.b64encode(image.getvalue()).decode(), 'mimeType':'image/jpeg', 'width':16, 'height':16,
+            'targetId':row['viewerContext']['targetId'], 'contextVersion':row['contextVersion'],
+            'capturedAt':to_iso_z(utc_now()), **overrides}
+
+
+@pytest.mark.anyio
+async def test_vision_chat_and_research_send_pixels_once_and_keep_only_receipts(live):
+    service = configured(live)
+    client = await service.client(live.actor); client.signed_in = True
+    await service.status(live.actor)
+    await live.service.change_research_settings(live.actor, 'codex', 'synthetic-codex-model')
+    row = await live.service.text.create(session_request(), live.actor)
+    image = view_image(row)
+    for action in ('chat', 'research'):
+        request = turn(action, action=action, image=image)
+        await live.service.text.start(row['sessionId'], request, live.actor)
+        await asyncio.gather(*list(live.service.text.tasks.values()))
+        result = live.service.repository.tool(row['sessionId'], action)
+        assert result['status'] == 'completed'
+        assert result['result']['imageReceipt']['status'] == 'submitted'
+        assert result['args']['imageAttachment']['sha256'] == result['result']['imageReceipt']['sha256']
+        assert 'No image pixels' not in json.dumps(result['result'])
+        await live.service.text.start(row['sessionId'], request, live.actor)
+    starts = [p for m,p in client.calls if m == 'turn/start']
+    assert len(starts) == 2
+    assert all(p['input'][1] == {'type':'image', 'url':'data:image/jpeg;base64,'+image['data']} for p in starts)
+    assert all(json.loads(p['input'][0]['text'])['currentImage']['scope'] == 'active_viewport' for p in starts)
+    history = live.service.repository.history(row['sessionId'], live.actor)
+    assert image['data'] not in json.dumps(history) and 'data:image' not in json.dumps(history)
+    assert 'Historical view' in live.service.text.chat_history(row['sessionId'], live.actor)[0]['content']
+    with pytest.raises(Exception):
+        await live.service.text.start(row['sessionId'], turn('chat', image={**image, 'capturedAt':'2026-01-01T00:00:00Z'}), live.actor)
+    assert not live.service.runtimes
+    await service.shutdown()
+
+
+@pytest.mark.anyio
+async def test_vision_rejects_stale_context_and_unadvertised_modality_without_dispatch(live):
+    from fastapi import HTTPException
+    service = configured(live)
+    client = await service.client(live.actor); client.signed_in = True
+    await service.status(live.actor)
+    await live.service.change_research_settings(live.actor, 'codex', 'synthetic-codex-model')
+    row = await live.service.text.create(session_request(), live.actor)
+    for changes in ({'targetId':'different'}, {'contextVersion':2}, {'capturedAt':'2000-01-01T00:00:00Z'}):
+        with pytest.raises(HTTPException) as error:
+            await live.service.text.start(row['sessionId'], turn(image=view_image(row, **changes)), live.actor)
+        assert error.value.status_code == 409
+    call = client.call
+    async def text_only(method, params=None):
+        if method == 'model/list': return {'data':[{'model':'synthetic-codex-model','inputModalities':['text']}], 'nextCursor':None}
+        return await call(method, params)
+    client.call = text_only
+    with pytest.raises(HTTPException) as error:
+        await live.service.text.start(row['sessionId'], turn(image=view_image(row)), live.actor)
+    assert error.value.status_code == 409
+    assert not any(m == 'turn/start' for m,p in client.calls)
+    assert not live.service.text.tasks
+    await service.shutdown()
+
+
+def test_vision_http_rejects_bad_images_privately_and_other_providers(live):
+    from backend.clinical.ai_view_image import ViewImage
+    from pydantic import ValidationError
+    from backend.tests.test_ai_live import CONTEXT
+    image = view_image({'viewerContext':CONTEXT, 'contextVersion':1})
+    for changes in ({'data':'PRIVATE'}, {'width':17}, {'width':99999}, {'mimeType':'image/svg+xml'}, {'data':'a'*700001}, {'capturedAt':'invalid'}):
+        with pytest.raises((ValidationError, ValueError)):
+            ViewImage.model_validate({**image, **changes})
+    with TestClient(live.app) as client:
+        authorize(client, live)
+        response = client.post(PREFIX+'/text-sessions', json={'viewerContext':CONTEXT,'attestation':'synthetic'}, headers={'origin':ORIGIN})
+        assert response.status_code == 200
+        sid = response.json()['sessionId']
+        payload = {'contextVersion':1,'idempotencyKey':'image','action':'chat','text':'Synthetic question','image':image}
+        response = client.post(PREFIX+f'/sessions/{sid}/text-turns',json=payload,headers={'origin':ORIGIN})
+        assert response.status_code == 409 and 'Codex' in response.text
+        payload['image']['data'] = 'PRIVATE'
+        response = client.post(PREFIX+f'/sessions/{sid}/text-turns',json=payload,headers={'origin':ORIGIN})
+        assert response.status_code == 422 and 'PRIVATE' not in response.text
+        assert response.headers['cache-control'] == 'no-store'
 
 
 @pytest.mark.anyio

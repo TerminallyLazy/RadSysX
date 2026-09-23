@@ -66,7 +66,14 @@ export function renderToolResult(result?: Json): string {
     const source = object(item), url = safeUrl(source.url);
     return url ? [`<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(source.title ?? new URL(url).hostname)} ↗</a>`] : [];
   });
-  return `<div class="radsysx-live-research-result">${answerMarkup(result.summary)}${sources.length ? `<details><summary>Sources · ${sources.length}</summary>${sources.join('')}</details>` : ''}${limitations.length ? `<details><summary>Scope and limitations</summary><ul>${limitations.map(item => `<li>${escape(item)}</li>`).join('')}</ul></details>` : ''}</div>`;
+  const receipt = renderImageReceipt(result);
+  return `<div class="radsysx-live-research-result">${receipt}${answerMarkup(result.summary)}${sources.length ? `<details><summary>Sources · ${sources.length}</summary>${sources.join('')}</details>` : ''}${limitations.length ? `<details><summary>Scope and limitations</summary><ul>${limitations.map(item => `<li>${escape(item)}</li>`).join('')}</ul></details>` : ''}</div>`;
+}
+
+export function renderImageReceipt(result?: Json): string {
+  const image = object(result?.imageReceipt);
+  return image.status === 'submitted' ? `<p class="radsysx-image-receipt">One viewport image submitted · ${escape(image.modelId)}</p><details><summary>Image receipt</summary><p>Active viewport only · ${escape(image.width)} × ${escape(image.height)} · ${escape(image.capturedAt)}</p><p>Image bytes are not saved in history.</p><code>${escape(image.sha256)}</code></details>` : '';
+
 }
 
 export function registerPanel(controller: LiveController): void {
@@ -150,6 +157,8 @@ export function registerPanel(controller: LiveController): void {
               </label>
               <div class="radsysx-ai-attachment-row" data-role="selected"></div>
               <div class="radsysx-ai-mention-menu" data-role="attachments" data-open="false"></div>
+              <button type="button" class="radsysx-attach-view" data-action="attach-view" hidden>Attach current view</button>
+              <div class="radsysx-view-attachment" data-role="view-attachment" hidden><details><summary>Preview image</summary><img alt="Preview of the active image to send"></details><div><span data-role="view-attachment-scope"></span><button type="button" data-action="remove-view">Remove image</button></div><p>Check the preview for patient information. Only this view and its visible overlays will be sent with your question.</p></div>
               <textarea rows="3" aria-label="RadSysX AI message" placeholder="Ask about this case, or enter a literature question"></textarea>
               <div class="radsysx-ai-composer-footer"><button class="radsysx-ai-icon-button" type="button" data-action="toggle-mention" aria-label="Attach viewer context" title="Attach viewer context">@</button><span class="radsysx-live-hint">Enter to send</span><button type="button" data-action="research">Research</button><button class="radsysx-ai-send-button" type="submit" aria-label="Send message">Send</button></div>
               <p data-role="disclosure"></p><button type="button" data-action="end-text" hidden>End text conversation</button>
@@ -162,6 +171,8 @@ export function registerPanel(controller: LiveController): void {
           const action = button.dataset.action;
           if (action?.startsWith('view-')) { this.showView(action.slice(5) as 'chat' | 'research' | 'review'); }
           else if (action === 'connect') void (controller.providers.length ? controller.connect(this.attestation) : controller.initialize());
+          else if (action === 'attach-view') void controller.attachCurrentView(this.attestation);
+          else if (action === 'remove-view') controller.removeView();
           else if (action === 'voice') void controller.toggleMicrophone();
           else if (action === 'stop-speaking') controller.stopSpeaking();
           else if (action === 'share') void controller.toggleSharing();
@@ -199,7 +210,7 @@ export function registerPanel(controller: LiveController): void {
         this.node<HTMLSelectElement>('research-model').addEventListener('change', event => { controller.researchModelId = (event.target as HTMLSelectElement).value; controller.emit(); });
         this.node<HTMLFormElement>('research-settings-form').addEventListener('submit', event => { event.preventDefault(); void controller.saveResearchSettings(); });
         this.node<HTMLSelectElement>('provider').addEventListener('change', event => void controller.selectProvider((event.target as HTMLSelectElement).value as ProviderId));
-        this.querySelector('#radsysx-live-attestation')!.addEventListener('change', event => { this.attestation = (event.target as HTMLSelectElement).value as Attestation || undefined; });
+        this.querySelector('#radsysx-live-attestation')!.addEventListener('change', event => { this.attestation = (event.target as HTMLSelectElement).value as Attestation || undefined; controller.removeView(); });
         this.querySelector('textarea')!.addEventListener('input', event => { controller.draft = (event.target as HTMLTextAreaElement).value; if (/(^|\s)@$/.test(controller.draft)) { this.mentionOpen = true; this.render(); } });
         this.querySelector('textarea')!.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); this.submit(); } });
         this.querySelector('.radsysx-ai-composer')!.addEventListener('submit', event => { event.preventDefault(); this.submit(); });
@@ -308,10 +319,21 @@ export function registerPanel(controller: LiveController): void {
       providerSelect.disabled = controller.credentialsBusy || controller.status === 'loading' || !controller.providers.length;
       providerSelect.title = controller.model;
       this.node('text-model').textContent = `Text & research · ${controller.session?.mode === 'text' && controller.status === 'text_ready' ? controller.session.modelId : controller.researchSettings?.modelId ?? 'Choose a model in Settings'}`;
-      this.node('disclosure').textContent = 'Sends your question and neutral case/series context. No image pixels.';
+      this.node('disclosure').textContent = controller.viewAttachment ? 'Sends your question, neutral context and the previewed image to your Codex model. This is one view, not the entire series.' : controller.canAttachView ? 'Sends your question and neutral context. Attach a view to include image pixels.' : 'Sends your question and neutral case/series context. No image pixels.';
+      this.button('attach-view').hidden = !controller.canAttachView;
+      this.button('attach-view').disabled = controller.textBusy || controller.viewCaptureBusy || controller.credentialsBusy;
+      this.button('attach-view').textContent = controller.viewCaptureBusy ? 'Capturing view…' : controller.viewAttachment ? 'Replace with current view' : 'Attach current view';
+      const attachment = this.node('view-attachment'), preview = attachment.querySelector('img')!;
+      attachment.hidden = !controller.viewAttachment;
+      if (controller.viewAttachment) {
+        const src = `data:image/jpeg;base64,${controller.viewAttachment.image.data}`;
+        if (preview.getAttribute('src') !== src) preview.src = src;
+        this.node('view-attachment-scope').textContent = controller.viewAttachment.scope;
+      } else preview.removeAttribute('src');
+      this.button('remove-view').disabled = controller.textBusy;
       this.button('end-text').hidden = controller.session?.mode !== 'text' || controller.status !== 'text_ready';
-      this.button('research').disabled = controller.textBusy || controller.credentialsBusy || controller.status === 'loading';
-      this.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!.disabled = controller.textBusy || controller.credentialsBusy || controller.status === 'loading';
+      this.button('research').disabled = controller.textBusy || controller.viewCaptureBusy || controller.credentialsBusy || controller.status === 'loading';
+      this.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!.disabled = controller.textBusy || controller.viewCaptureBusy || controller.credentialsBusy || controller.status === 'loading';
       this.dataset.connection = controller.status;
       const active = ['connecting', 'ready', 'reconnecting'].includes(controller.status);
       this.node('voice-state').textContent = active ? controller.ready ? 'Connected' : 'Connecting' : 'Optional';
@@ -338,10 +360,11 @@ export function registerPanel(controller: LiveController): void {
       const textarea = this.querySelector('textarea')!;
       if (textarea.value !== controller.draft) textarea.value = controller.draft;
       const transcripts = controller.transcript.items;
-      const signature = JSON.stringify(transcripts);
+      const imageReceipts = [...controller.tools.values()].filter(tool => tool.name === 'text_chat' && tool.result?.imageReceipt);
+      const signature = JSON.stringify([transcripts, imageReceipts.map(tool => [tool.id, tool.result?.imageReceipt])]);
       if (signature !== this.threadSignature) {
         const thread = this.node('thread'); const scrollContainer = this.node('conversation'); const scroll = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 80;
-        thread.innerHTML = transcripts.length ? transcripts.map(item => `<article class="radsysx-ai-message" data-role="${item.role === 'user' ? 'user' : 'assistant'}"><div class="radsysx-ai-message-role">${item.role === 'user' ? 'You' : 'RadSysX AI'}</div><div class="radsysx-ai-message-body">${item.role === 'user' ? escape(item.text) : answerMarkup(item.text)}</div></article>`).join('') : '<div class="radsysx-live-empty">Discuss this case.<span>Ask a question or describe a finding. Voice is optional; images are not sent with text.</span></div>';
+        thread.innerHTML = transcripts.length ? transcripts.map(item => `<article class="radsysx-ai-message" data-role="${item.role === 'user' ? 'user' : 'assistant'}"><div class="radsysx-ai-message-role">${item.role === 'user' ? 'You' : 'RadSysX AI'}</div><div class="radsysx-ai-message-body">${item.role === 'user' ? escape(item.text) : answerMarkup(item.text)}${item.role === 'user' ? renderImageReceipt(imageReceipts.find(tool => item.id.endsWith(':' + tool.id))?.result) : ''}</div></article>`).join('') : '<div class="radsysx-live-empty">Discuss this case.<span>Ask a question or describe a finding. Voice is optional. Attach the current view when you want the model to see it.</span></div>';
         if (scroll) scrollContainer.scrollTop = scrollContainer.scrollHeight;
         this.threadSignature = signature;
       }

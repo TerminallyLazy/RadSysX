@@ -1054,3 +1054,12 @@ body.radsysx-local-viewer [data-radsysx-local-upload-modal="true"] button:focus-
 .radsysx-evidence [data-evidence-action="refresh"], .radsysx-evidence [data-evidence-action="close"] { background: transparent; border-color: transparent; padding-left: 0.25rem; padding-right: 0.25rem; }
 .radsysx-evidence-verdict { display: block; margin-bottom: 0.5rem; font-size: 0.86rem; font-weight: 550; color: #c9dbe5; }
 .radsysx-evidence-judgment > .radsysx-evidence-text { white-space: normal; }
+.radsysx-live-shell .radsysx-attach-view { align-self: flex-start; margin: 0.2rem 0 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid #405564; border-radius: 0.4rem; background: #1a2935; color: #b5c8d6; font-size: 0.72rem; }
+.radsysx-view-attachment { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.68rem; color: #a9beca; }
+.radsysx-view-attachment img { width: 100%; height: auto; max-height: 240px; object-fit: contain; background: #080e13; border-radius: 0.25rem; }
+.radsysx-view-attachment p { grid-column: 1 / -1; margin: 0; line-height: 1.5; }
+.radsysx-view-attachment button { display: block; margin-top: 0.3rem; border: 0; background: transparent; color: #a5bfd2; padding: 0.25rem 0; text-decoration: underline; }
+.radsysx-image-receipt { color: #a9beca; font-size: 0.7rem; }
+
+.radsysx-view-attachment details[open] { grid-column: 1 / -1; }
+.radsysx-view-attachment summary { cursor: pointer; padding: 0.25rem 0; }

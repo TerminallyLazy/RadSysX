@@ -1,9 +1,10 @@
 import { EvidenceController } from './evidence.js';
 import { SubscriptionController } from './subscription.js';
 import type { EvidenceReviewAvailability } from './protocol.js';
+import type { ViewImage } from './protocol.js';
 import { LiveAudio } from './audio.js';
 import { OHIFAdapter } from './ohif.js';
-import { EventGate, TranscriptStore, object, parseEvent, request, safeUrl, toolFromWire, type AIResearchSettings, type AIResearchModels, type ResearchProviderId, type AICredentialStatusResponse, type Attestation, type ProviderId, type ProviderProfile, type AudioChunk, type CaptureRequest, type Citation, type DesktopCapture, type Json, type ServerEvent, type Session, type SavedConversation, type Tool } from './protocol.js';
+import { ImageInputRejected, EventGate, TranscriptStore, object, parseEvent, request, safeUrl, toolFromWire, type AIResearchSettings, type AIResearchModels, type ResearchProviderId, type AICredentialStatusResponse, type Attestation, type ProviderId, type ProviderProfile, type AudioChunk, type CaptureRequest, type Citation, type DesktopCapture, type Json, type ServerEvent, type Session, type SavedConversation, type Tool } from './protocol.js';
 
 export class LiveController {
   sidebarView: 'chat' | 'research' | 'review' = 'chat';
@@ -76,8 +77,12 @@ export class LiveController {
   private stateSync: Promise<void> = Promise.resolve();
   private closed = false;
   textBusy = false;
+  viewCaptureBusy = false;
+  viewAttachment?: { image: ViewImage; signature: string; scope: string; revision: number };
+  private viewRevision = 0;
+  private viewEpoch = 0;
   private textPollTimer?: ReturnType<typeof setTimeout>;
-  private pendingText?: { sessionId: string; idempotencyKey: string; action: 'chat' | 'research'; text: string; contextVersion: number };
+  private pendingText?: { sessionId: string; idempotencyKey: string; action: 'chat' | 'research'; text: string; contextVersion: number; image?: ViewImage };
   private authTimer: ReturnType<typeof setInterval>;
 
   constructor(readonly adapter: OHIFAdapter, private browser: Window = window) {
@@ -97,6 +102,7 @@ export class LiveController {
       this.message = 'Playback stopped because the audio buffer reached its limit. Ask for a shorter reply.'; this.emit();
     };
     adapter.onChange = () => {
+      this.viewRevision++;
       clearTimeout(this.contextTimer);
       if (this.targetId && adapter.context().targetId !== this.targetId) { void this.refreshContext(); return; }
       this.contextTimer = setTimeout(() => void this.refreshContext(), 200);
@@ -353,46 +359,93 @@ export class LiveController {
     this.suppressOutput = false; this.send({ kind: 'text', text: draft + suffix }); this.draft = ''; this.selected.clear(); this.emit();
   }
   async research(attestation?: Attestation): Promise<void> { await this.sendTyped('research', attestation); }
+  get canAttachView(): boolean { return this.researchSettings?.providerId === 'codex' && !this.ready && !['connecting', 'reconnecting'].includes(this.status); }
+  private clearView(): void { this.viewEpoch++; this.viewAttachment = undefined; this.viewCaptureBusy = false; }
+  removeView(): void {
+    if (this.pendingText) { this.message = 'This send is unconfirmed. Retry it or end the conversation before changing its attachment.'; this.emit(); return; }
+    const hadImage = Boolean(this.viewAttachment);
+    this.clearView(); if (hadImage) this.message = 'Image removed. Your next request will send text and neutral context only.'; this.emit();
+  }
+  private async ensureTextSession(attestation: Attestation, generation: number): Promise<boolean> {
+    if (this.ready || (this.session && !this.closed && !this.historical)) return true;
+    const context = this.adapter.context();
+    const session = await request<Session>('/api/ai/sidebar/text-sessions', { viewerContext: context, attestation });
+    if (generation !== this.generation || context.targetId !== this.adapter.context().targetId) {
+      void request(this.base(session.sessionId) + '/close', {}); return false;
+    }
+    this.session = session; this.contextVersion = session.contextVersion; this.targetId = context.targetId;
+    this.attestation = attestation; this.closed = false; this.status = 'text_ready'; this.recoverySessionId = undefined;
+    this.syncedState = JSON.stringify(context.state); this.transcript = new TranscriptStore(); this.tools.clear(); this.citations = [];
+    this.historical = false; this.viewedHistoryId = undefined; this.historyOpen = false;
+    return true;
+  }
+  async attachCurrentView(confirmation?: Attestation): Promise<void> {
+    if (this.textBusy || this.viewCaptureBusy || this.credentialsBusy || this.pendingText) return;
+    const attestation = confirmation ?? this.attestation, bridge = this.captureBridge();
+    if (!this.canAttachView) { this.message = 'Choose a ChatGPT / Codex model in Settings to attach a view to text or research.'; this.emit(); return; }
+    if (!attestation) { this.message = 'Confirm synthetic or deidentified data before attaching a view.'; this.emit(); return; }
+    if (!bridge?.startViewerCapture) { this.message = 'Attach current view is available in the RadSysX desktop app.'; this.emit(); return; }
+    if (this.historical || (this.session?.mode !== 'text' && !this.closed)) await this.end();
+    this.clearView(); this.viewCaptureBusy = true; this.message = 'Capturing the active image for your preview…'; this.emit();
+    const generation = this.generation, epoch = this.viewEpoch;
+    let leaseId: string | undefined;
+    try {
+      if (!await this.ensureTextSession(attestation, generation)) return;
+      await this.syncState();
+      const signature = JSON.stringify(this.adapter.context().state), capture = this.captureRequest();
+      const scope = this.captureScope, revision = this.viewRevision;
+      const current = () => generation === this.generation && epoch === this.viewEpoch && revision === this.viewRevision && !this.closed && capture.targetId === this.adapter.context().targetId && signature === JSON.stringify(this.adapter.context().state);
+      if (!current()) throw new Error();
+      leaseId = (await bridge.startViewerCapture(capture)).leaseId;
+      if (!current()) throw new Error();
+      const frame = await bridge.captureViewerFrame({ ...capture, leaseId });
+      if (!current() || frame.contextVersion !== this.contextVersion || frame.targetId !== this.targetId) throw new Error();
+      if (frame.mimeType !== 'image/jpeg' || !/^[A-Za-z0-9+/]+=*$/.test(frame.data) || frame.data.length > 700000 || !Number.isInteger(frame.width) || !Number.isInteger(frame.height) || frame.width < 1 || frame.height < 1 || frame.width > 768 || frame.height > 768) throw new Error();
+      this.viewAttachment = { image: { ...frame, mimeType: 'image/jpeg', capturedAt: new Date().toISOString() }, signature, scope, revision };
+      this.message = 'View attached locally. Review the preview; Send or Research submits it with your question.';
+    } catch { if (epoch === this.viewEpoch) this.message = 'The active view could not be attached. Check the image and data confirmation, then retry.'; }
+    finally {
+      if (leaseId) try { await bridge.stopViewerCapture({ leaseId }); } catch {}
+      if (epoch === this.viewEpoch) { this.viewCaptureBusy = false; this.emit(); }
+    }
+  }
   private async sendTyped(action: 'chat' | 'research', confirmation?: Attestation): Promise<void> {
     const text = this.draft.trim();
-    if (!text || this.textBusy || this.credentialsBusy) return;
+    if (!text || this.textBusy || this.viewCaptureBusy || this.credentialsBusy) return;
     if (this.initializing) { this.message = 'Checking assistant settings; your draft is kept.'; this.emit(); return; }
     if (['connecting', 'reconnecting'].includes(this.status)) { this.message = 'End the connecting voice session to use text independently.'; this.emit(); return; }
     const attestation = confirmation ?? this.attestation;
     if (!attestation) { this.message = 'Confirm synthetic or deidentified data above, then send. Voice is optional; your draft is kept.'; this.emit(); return; }
     if (text.length > (action === 'research' ? 1700 : 2000)) { this.message = `Keep this ${action} question under ${action === 'research' ? 1700 : 2000} characters.`; this.emit(); return; }
-    if (this.selected.size) { this.message = 'Remove @ attachments before text-only requests. These use your question and neutral case/series metadata; no image pixels.'; this.emit(); return; }
+    if (this.selected.size) { this.message = 'Remove @ context chips before this request. To include visible measurements, use Attach current view.'; this.emit(); return; }
     if (this.pendingText && (this.pendingText.text !== text || this.pendingText.action !== action)) { this.message = 'A previous send is unconfirmed. Restore that question and retry, or end the conversation before sending a different request.'; this.emit(); return; }
     if (this.session && !this.closed && this.adapter.context().targetId !== this.targetId) { await this.refreshContext(); return; }
     if (this.historical || (this.session?.mode !== 'text' && !this.ready && !this.closed)) await this.end();
     this.textBusy = true; this.message = action === 'research' ? 'Starting literature research…' : 'Sending to the text model…'; this.emit();
     const generation = this.generation;
     try {
-      if (!this.ready && (!this.session || this.closed || this.historical)) {
-        const context = this.adapter.context();
-        const session = await request<Session>('/api/ai/sidebar/text-sessions', { viewerContext: context, attestation });
-        if (generation !== this.generation || context.targetId !== this.adapter.context().targetId) { void request(this.base(session.sessionId) + '/close', {}); if (generation === this.generation) this.textBusy = false; return; }
-        this.session = session; this.contextVersion = session.contextVersion; this.targetId = context.targetId;
-        this.attestation = attestation; this.closed = false; this.status = 'text_ready'; this.recoverySessionId = undefined;
-        this.syncedState = JSON.stringify(context.state); this.transcript = new TranscriptStore(); this.tools.clear(); this.citations = [];
-        this.historical = false; this.viewedHistoryId = undefined; this.historyOpen = false;
-      }
+      if (!await this.ensureTextSession(attestation, generation)) { if (generation === this.generation) this.textBusy = false; return; }
       await this.syncState();
       if (generation !== this.generation || !this.session || this.closed) return;
-      const pending = this.pendingText ?? { sessionId: this.session.sessionId, idempotencyKey: crypto.randomUUID(), action, text, contextVersion: this.contextVersion };
+      if (!this.pendingText && this.viewAttachment && (this.viewAttachment.revision !== this.viewRevision || this.viewAttachment.signature !== JSON.stringify(this.adapter.context().state) || this.viewAttachment.image.contextVersion !== this.contextVersion || Date.now() - Date.parse(this.viewAttachment.image.capturedAt) > 300000)) {
+        this.clearView(); this.textBusy = false; this.message = 'The view changed or the preview expired. Attach the current view again before sending.'; this.emit(); return;
+      }
+      const pending = this.pendingText ?? { sessionId: this.session.sessionId, idempotencyKey: crypto.randomUUID(), action, text, contextVersion: this.contextVersion, ...(this.viewAttachment ? { image: this.viewAttachment.image } : {}) };
       this.pendingText = pending;
       const { sessionId, ...payload } = pending;
       const tool = await request<Json>(this.base(sessionId) + '/text-turns', payload);
       if (generation !== this.generation) return;
       this.pendingText = undefined;
+      this.clearView();
       if (this.draft.trim() === text) this.draft = '';
       this.tools.set(String(tool.toolCallId), toolFromWire(tool));
-      this.message = action === 'research' ? 'Research started. Follow its progress below.' : 'Text request started · no image shared.';
+      this.message = pending.image ? 'Request started with one attached view. Follow its progress below.' : action === 'research' ? 'Research started. Follow its progress below.' : 'Text request started · no image shared.';
       if (this.session.mode === 'text') {
         void this.pollText(sessionId, String(tool.toolCallId), generation, Date.now());
       } else this.textBusy = false; // Live socket carries the explicitly requested research receipts.
     } catch (error) {
       if (generation === this.generation) {
+        if (error instanceof ImageInputRejected) this.pendingText = undefined;
         this.textBusy = false; this.failMessage(error);
         if (this.pendingText) this.message += ' Send was not confirmed. Retry the same question to check it safely, or end the conversation.';
       }
@@ -409,7 +462,7 @@ export class LiveController {
       const tool = this.tools.get(toolId);
       if (tool && !['pending', 'running'].includes(tool.status)) {
         this.textBusy = false;
-        this.message = tool.status === 'completed' ? 'Ready for your next question · text only · no image shared.' : `Request ${tool.status}. Review the task details below.`;
+        this.message = tool.status === 'completed' ? tool.result?.imageReceipt ? 'Answer ready · one attached view was submitted. Attach again to share another view.' : 'Ready for your next question · no image shared.' : `Request ${tool.status}. Review the task details below.`;
         this.emit(); return;
       }
     } catch { failures++; }
@@ -551,7 +604,7 @@ export class LiveController {
       this.suggestionsHtml = typeof sources.suggestionsHtml === 'string' ? sources.suggestionsHtml : '';
     }
   }
-  private requireAttestation(): void { this.attestation = undefined; this.attestationEpoch += 1; this.credentialInputEpoch += 1; }
+  private requireAttestation(): void { this.clearView(); this.attestation = undefined; this.attestationEpoch += 1; this.credentialInputEpoch += 1; }
   async loadResearchSettings(): Promise<void> {
     const epoch = ++this.researchEpoch;
     this.researchLoading = true; this.researchMessage = 'Loading research settings…'; this.emit();
@@ -667,6 +720,7 @@ export class LiveController {
     } catch (error) { this.failMessage(error); this.emit(); }
   }
   async end(): Promise<void> {
+    this.clearView();
     clearTimeout(this.textPollTimer); this.textBusy = false; this.pendingText = undefined;
     this.credentialInputEpoch += 1; this.emit();
     this.recoverySessionId = undefined;
@@ -692,6 +746,7 @@ export class LiveController {
   private failMessage(error: unknown): void { this.message = error instanceof Error ? error.message : 'The assistant is unavailable.'; }
   private fail(error: unknown): void { this.failMessage(error); this.status = 'unavailable'; this.audio.close(); this.emit(); }
   dispose(): void {
+    this.clearView();
     this.subscription.stop();
     clearTimeout(this.textPollTimer); this.textBusy = false; this.pendingText = undefined;
     this.evidence.dispose();

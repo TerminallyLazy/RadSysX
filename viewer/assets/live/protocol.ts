@@ -46,10 +46,11 @@ export type CaptureRequest = {
   sessionId: string; contextVersion: number; targetId: string; viewportId: string;
   rect: { x: number; y: number; width: number; height: number };
 };
+export type ViewImage = { data: string; mimeType: 'image/jpeg'; width: number; height: number; targetId: string; contextVersion: number; capturedAt: string };
 export type DesktopCapture = {
   startViewerCapture(request: CaptureRequest): Promise<{ leaseId: string; expiresAt: number }>;
   captureViewerFrame(request: CaptureRequest & { leaseId: string }): Promise<{
-    data: string; mimeType: string; contextVersion: number; targetId: string;
+    data: string; mimeType: string; contextVersion: number; targetId: string; width: number; height: number;
   }>;
   stopViewerCapture(request: { leaseId?: string }): Promise<unknown>;
 };
@@ -115,6 +116,8 @@ export class TranscriptStore {
   }
 }
 
+export class ImageInputRejected extends Error {}
+
 export async function request<T>(path: string, body?: unknown, method?: string): Promise<T> {
   const response = await fetch(path, {
     credentials: 'include', cache: 'no-store', method: method ?? (body === undefined ? 'GET' : 'POST'),
@@ -123,6 +126,14 @@ export async function request<T>(path: string, body?: unknown, method?: string):
   });
   if (!response.ok) {
     // Do not surface arbitrary backend error payloads or private request context.
+    if (response.status === 409 && path.endsWith('/text-turns')) {
+      const detail = object(await response.json().catch(() => ({}))).detail;
+      if (typeof detail === 'string' && [
+        'Viewer image attachments currently require a ChatGPT / Codex model.',
+        'The attached view is no longer current. Remove it and attach the current view again.',
+        'The selected subscription model does not advertise image input. Choose an image-capable model in Settings.',
+      ].includes(detail)) throw new ImageInputRejected(detail);
+    }
     if (response.status === 401) throw new Error('Sign in to start the assistant.');
     if (response.status === 403) throw new Error('This session or action is not permitted.');
     if (response.status === 409) throw new Error('The image context changed. Review it and reconnect.');

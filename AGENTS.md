@@ -343,7 +343,7 @@ The standalone [evidence-review runbook](backend/evidence_review/README.md) docu
 
 - Sidebar Jev reviews run through backend-owned `/api/ai/sidebar/*/evidence-reviews` contracts in research/pilot only, using backend-only `RADSYSX_TYPESAFE_AI_API_KEY`. They retain original answers, require independent text confirmation, and persist POSIX-private artifacts in `.ai-evidence/` beside the actual database (or absolute `RADSYSX_AI_EVIDENCE_DIR`). Ending voice preserves review; explicit cancel/account changes/logout stop it; source-history deletion cancels jobs and removes their artifacts. Clinical use and the qualified human evidence-quality study remain unapproved/pending.
 
-- Typed chat and explicit Research do not require a Realtime connection. They use the account-selected standard Gemini/NVIDIA text/research model, owned HTTP text sessions and the same attestation/context/lifecycle authority. Voice remains optional; text-only requests never capture images. See `backend/clinical/AGENTS.md` and `viewer/assets/live/AGENTS.md` for the bounded worker and UI contracts.
+- Typed chat and explicit Research do not require a Realtime connection. They use the account-selected standard Gemini/NVIDIA/Codex text/research model, owned HTTP text sessions and the same attestation/context/lifecycle authority. Voice remains optional. Codex Chat/Research can send one explicitly attached, previewed active-viewport JPEG; ordinary text requests never capture images automatically. Exact catalog image support, fresh context/attestation and transient pixels are required; saved receipts establish submission, not diagnostic validity. See `backend/clinical/AGENTS.md` and `viewer/assets/live/AGENTS.md` for the bounded worker and UI contracts.
 
 ## ChatGPT subscription access
 
