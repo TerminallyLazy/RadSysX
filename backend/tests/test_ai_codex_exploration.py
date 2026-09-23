@@ -13,6 +13,31 @@ from backend.clinical.ai_codex_tools import CodexToolBridge
 from backend.clinical.ai_codex import CodexProcess
 from backend.clinical.contracts import utc_now, to_iso_z
 
+@pytest.mark.anyio
+async def test_scoped_turn_contains_real_initial_images_and_authorized_instructions(live):
+    service,grant,binding=await make_task(live,frames=2)
+    client=await live.service.codex.client(live.actor)
+    original_call=client.call
+    captured=[]
+    async def record_call(method,params=None):
+        if method=='turn/start': captured.extend(json.loads(json.dumps(params['input'])))
+        return await original_call(method,params)
+    client.call=record_call
+    run=asyncio.create_task(live.service.codex.run(live.actor,'synthetic-codex-model','Inspect these images',research=False,
+        on_progress=AsyncMock(),exploration=grant.task_id))
+    observed=await capture(service,grant,binding,live.actor)
+    result=await run
+    thread=next(params for method,params in client.calls if method=='thread/start')
+    assert [item['type'] for item in captured]==['text','image','image']
+    assert captured[1]['url']=='data:image/jpeg;base64,'+observed.images[0].data
+    assert 'Discussion of supplied context only' not in thread['developerInstructions']
+    assert 'Do not call other tools' not in thread['baseInstructions']
+    assert {'viewer_observe','series_read_frames','search_pubmed','series_get_metadata','structure_radiology_report'} <= {tool['name'] for tool in thread['dynamicTools']}
+    assert result['explorationReceipt']['imagesDelivered']==2
+    assert result['explorationReceipt']['coverage'][0]['delivered']==[0,1]
+    assert observed.images[0].data not in json.dumps(service.repo.owned(grant.task_id,live.actor))
+    await service.shutdown(); await live.service.codex.shutdown()
+
 @pytest.fixture
 def anyio_backend(): return 'asyncio'
 

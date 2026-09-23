@@ -54,6 +54,13 @@ export class ExplorationController {
     if (!this.prepared) throw new Error('Wait for the shared series inventory.');
     this.check(); return this.snapshot!.grant.taskId;
   }
+  async waitUntilPrepared(): Promise<void> {
+    const generation = this.generation, deadline = Date.now() + 20000;
+    while (generation === this.generation && this.active && !this.prepared && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (generation !== this.generation || !this.prepared) throw new Error('Image inventory could not be loaded. Your question has not been sent.');
+  }
   private async poll(): Promise<void> {
     if (!this.active || this.polling) return;
     this.polling=true; const generation=this.generation;
