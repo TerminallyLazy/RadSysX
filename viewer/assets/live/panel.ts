@@ -1,5 +1,6 @@
 import { evidenceEligibility, mountEvidencePanel } from './evidence-panel.js';
 import { LiveController } from './controller.js';
+import { answerMarkup } from './presentation.js';
 import { escape, object, safeUrl, type Attestation, type Json, type ProviderId, type ResearchProviderId, type Tool } from './protocol.js';
 
 const MIC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>';
@@ -12,9 +13,9 @@ export function researchStatus(tool: Tool): string {
 
 export function renderResearchActivity(tool: Tool): string {
   const provider = tool.research?.providerId === 'codex' ? 'ChatGPT / Codex subscription' : tool.research?.providerId === 'nvidia_nim' ? 'NVIDIA NIM' : tool.research?.providerId === 'gemini' ? 'Gemini' : 'Provider not recorded';
-  return `<p class="radsysx-research-model">${escape(provider)}${tool.research?.modelId ? ` · ${escape(tool.research.modelId)}` : ''}</p>
+  return `<p class="radsysx-research-model">${escape(tool.research?.modelId ?? 'Model not recorded')}</p>
     <p role="status" aria-live="polite">${escape(researchStatus(tool))}</p>
-    <details><summary>Request and model</summary><p>${escape(tool.args.query)}</p><p>Requested model recorded: ${escape(tool.research?.recordedAt ?? 'Not recorded')}</p></details>`;
+    <details class="radsysx-execution"><summary>Execution details</summary><p>${escape(provider)}</p><p>${escape(tool.args.query)}</p><p>Requested model recorded: ${escape(tool.research?.recordedAt ?? 'Not recorded')}</p></details>`;
 }
 
 /** Inputs are created once; live transcript updates must never replace an edited password field. */
@@ -65,7 +66,7 @@ export function renderToolResult(result?: Json): string {
     const source = object(item), url = safeUrl(source.url);
     return url ? [`<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(source.title ?? new URL(url).hostname)} ↗</a>`] : [];
   });
-  return `<div class="radsysx-live-research-result"><p>${escape(result.summary)}</p>${limitations.length ? `<ul>${limitations.map(item => `<li>${escape(item)}</li>`).join('')}</ul>` : ''}${sources.join('')}</div>`;
+  return `<div class="radsysx-live-research-result">${answerMarkup(result.summary)}${sources.length ? `<details><summary>Sources · ${sources.length}</summary>${sources.join('')}</details>` : ''}${limitations.length ? `<details><summary>Scope and limitations</summary><ul>${limitations.map(item => `<li>${escape(item)}</li>`).join('')}</ul></details>` : ''}</div>`;
 }
 
 export function registerPanel(controller: LiveController): void {
@@ -76,7 +77,7 @@ export function registerPanel(controller: LiveController): void {
     private attestationEpoch = -1;
     private mentionOpen = false;
     private threadSignature = '';
-    private evidenceCards = new Map<string, { article: HTMLElement; body: HTMLElement; signature: string; review?: ReturnType<typeof mountEvidencePanel> }>();
+    private evidenceCards = new Map<string, { article: HTMLElement; body: HTMLElement; signature: string; reviewHost?: HTMLElement; review?: ReturnType<typeof mountEvidencePanel> }>();
     private providerSignature = '';
     private suggestionSignature = '';
     private credentialInputEpoch = -1;
@@ -89,18 +90,21 @@ export function registerPanel(controller: LiveController): void {
           <div class="radsysx-ai-shell radsysx-live-shell">
             <header class="radsysx-live-header">
               <div class="radsysx-live-brand"><span class="radsysx-live-dot"></span><span class="radsysx-panel-kicker">RADSYSX AI</span></div>
-              <select data-role="provider" aria-label="AI provider"></select>
               <div class="radsysx-live-header-actions"><button type="button" class="radsysx-live-settings-button" data-action="credentials" aria-haspopup="dialog">Settings</button><button type="button" class="radsysx-live-icon" data-action="history" title="Conversation history" aria-label="Conversation history">↺</button></div>
             </header>
-            <section class="radsysx-live-setup" data-role="setup">
-              <div class="radsysx-live-connect-row">
-              <select id="radsysx-live-attestation" aria-label="Displayed data confirmation">
-                <option value="">Confirm displayed data…</option><option value="synthetic">Synthetic / test data</option><option value="deidentified">Deidentified data</option>
-              </select>
+            <p class="radsysx-sidebar-model" data-role="text-model"></p>
+            <nav class="radsysx-sidebar-tabs" aria-label="Assistant workspace">
+              <button type="button" data-action="view-chat" aria-pressed="true">Chat</button>
+              <button type="button" data-action="view-research" aria-pressed="false">Research <span data-role="research-count"></span></button>
+              <button type="button" data-action="view-review" aria-pressed="false">Jev review</button>
+            </nav>
+            <details class="radsysx-live-setup radsysx-voice-options" data-role="voice-options">
+              <summary>Voice <span data-role="voice-state">Optional</span></summary>
+              <div class="radsysx-live-connect-row" data-role="setup">
+              <select data-role="provider" aria-label="AI provider"></select>
               <button type="button" class="radsysx-live-primary" data-action="connect">Connect voice</button>
               </div>
-              <p data-role="disclosure"></p><button type="button" data-action="end-text" hidden>End text conversation</button>
-            </section>
+              <p>Confirm the displayed data below before connecting. Microphone and image sharing are separate controls.</p>
             <section class="radsysx-live-session" data-role="session-controls" hidden>
               <div class="radsysx-live-controls" data-role="media-controls" data-listening="false">
                 <button type="button" data-action="voice" title="Enable microphone" aria-label="Enable microphone">${MIC}<span data-role="voice-label">Mic off</span></button>
@@ -111,28 +115,44 @@ export function registerPanel(controller: LiveController): void {
               <p class="radsysx-live-status" data-role="interaction"></p>
               <p class="radsysx-live-status" data-role="capture-scope" title="Shares the selected image viewport, not the whole app screen or other windows."></p>
             </section>
+            </details>
             <p class="radsysx-live-status" role="status" aria-live="polite" data-role="status"></p>
             <div class="radsysx-live-conversation" data-role="conversation">
             <section class="radsysx-live-history" data-role="history" hidden></section>
-            <section class="radsysx-evidence-entry" aria-label="Jev evidence review">
-              <strong>Jev evidence review</strong>
-              <p>Check claims for support, contradictions and gaps in their cited abstracts.</p>
-              <button type="button" data-action="review-latest">Review latest evidence with Jev</button>
+            <section data-role="review-view" aria-label="Jev evidence review" hidden>
+            <div class="radsysx-section-heading"><h3>Evidence review</h3><button type="button" data-action="view-research">Back to research</button></div>
+            <section class="radsysx-evidence-entry" data-role="evidence-entry">
+              <strong>Check an answer against its sources</strong>
+              <p>Jev checks whether cited abstracts support the answer. Your original answer stays unchanged.</p>
+              <button type="button" data-action="review-latest">Review latest research</button>
               <button type="button" data-action="history">Saved research</button>
               <p data-role="evidence-next" role="status" aria-live="polite"></p>
             </section>
+            <p class="radsysx-live-status" data-role="review-message" role="status"></p>
+            <div data-role="review-panels"></div>
+            </section>
+            <section data-role="research-view" aria-label="Literature research" hidden>
+            <div class="radsysx-section-heading"><h3>Literature research</h3><p>Answers, cited sources, and evidence checks.</p></div>
+            <div class="radsysx-live-empty" data-role="research-empty">Find evidence for your question.<span>Enter a public literature question below, then choose Research.</span></div>
             <section class="radsysx-live-tools" data-role="research-tools" aria-label="Research activity"></section>
+            <div data-role="suggestions"></div>
+            </section>
+            <section data-role="chat-view" aria-label="Chat">
             <div class="radsysx-ai-thread" role="log" aria-label="RadSysX AI conversation" data-role="thread"><div class="radsysx-live-empty">A second set of hands.<br><span>Discuss the image, change a view, or research a question.</span></div></div>
             <section class="radsysx-live-report" data-role="report" aria-label="Draft report" hidden></section>
             <section class="radsysx-live-tools" data-role="tools" aria-label="Assistant actions"></section>
             <section class="radsysx-live-sources" data-role="sources" aria-label="Research sources"></section>
-            <div data-role="suggestions"></div>
+            </section>
             </div>
-            <form class="radsysx-ai-composer">
+            <form class="radsysx-ai-composer" data-role="composer">
+              <label class="radsysx-data-confirmation" for="radsysx-live-attestation">Displayed data
+                <select id="radsysx-live-attestation" aria-label="Displayed data confirmation"><option value="">Choose before sending…</option><option value="synthetic">Synthetic / test data</option><option value="deidentified">Deidentified data</option></select>
+              </label>
               <div class="radsysx-ai-attachment-row" data-role="selected"></div>
               <div class="radsysx-ai-mention-menu" data-role="attachments" data-open="false"></div>
               <textarea rows="3" aria-label="RadSysX AI message" placeholder="Ask about this case, or enter a literature question"></textarea>
               <div class="radsysx-ai-composer-footer"><button class="radsysx-ai-icon-button" type="button" data-action="toggle-mention" aria-label="Attach viewer context" title="Attach viewer context">@</button><span class="radsysx-live-hint">Enter to send</span><button type="button" data-action="research">Research</button><button class="radsysx-ai-send-button" type="submit" aria-label="Send message">Send</button></div>
+              <p data-role="disclosure"></p><button type="button" data-action="end-text" hidden>End text conversation</button>
             </form>
             ${credentialSettingsMarkup()}
           </div>`;
@@ -140,12 +160,13 @@ export function registerPanel(controller: LiveController): void {
           const button = (event.target as Element).closest<HTMLButtonElement>('button');
           if (!button || button.disabled) return;
           const action = button.dataset.action;
-          if (action === 'connect') void (controller.providers.length ? controller.connect(this.attestation) : controller.initialize());
+          if (action?.startsWith('view-')) { this.showView(action.slice(5) as 'chat' | 'research' | 'review'); }
+          else if (action === 'connect') void (controller.providers.length ? controller.connect(this.attestation) : controller.initialize());
           else if (action === 'voice') void controller.toggleMicrophone();
           else if (action === 'stop-speaking') controller.stopSpeaking();
           else if (action === 'share') void controller.toggleSharing();
           else if (action === 'end' || action === 'end-text') void controller.end();
-          else if (action === 'research') void controller.research(this.attestation);
+          else if (action === 'research') { this.showView('research'); void controller.research(this.attestation); }
           else if (action === 'credentials') { void controller.showCredentials(); this.button('close-credentials').focus(); }
           else if (action === 'close-credentials') { this.clearKeyInputs(); controller.closeCredentials(); this.button('credentials').focus(); }
           else if (action === 'refresh-research-models') void controller.loadResearchModels(true);
@@ -159,15 +180,16 @@ export function registerPanel(controller: LiveController): void {
           else if (action === 'history') void controller.showHistory();
           else if (action === 'review-latest') {
             const tool = [...controller.tools.values()].slice(-12).reverse().find(tool => !evidenceEligibility(tool));
-            if (tool) void controller.evidence.openTool(tool.id).then(() => this.evidenceCards.get(tool.id)?.article.scrollIntoView({ block: 'nearest' }));
+            if (tool) this.openReview(tool.id);
           }
+          else if (action === 'open-review' && button.dataset.id) this.openReview(button.dataset.id);
           else if (action === 'toggle-mention') { this.mentionOpen = !this.mentionOpen; this.render(); }
           else if (action === 'attach' && button.dataset.id) { controller.selected.add(button.dataset.id); this.mentionOpen = false; this.render(); }
           else if (action === 'remove' && button.dataset.id) { controller.selected.delete(button.dataset.id); this.render(); }
           else if (action === 'approve') void controller.decide(button.dataset.id!, true);
           else if (action === 'decline') void controller.decide(button.dataset.id!, false);
           else if (action === 'cancel') void controller.cancel(button.dataset.id!);
-          else if (action === 'read-history') void controller.readHistory(button.dataset.id!);
+          else if (action === 'read-history') void controller.readHistory(button.dataset.id!).then(() => this.showView([...controller.tools.values()].some(tool => tool.name === 'research_run') ? 'research' : 'chat'));
           else if (action === 'clear-history') {
             // Clearing durable history is explicit and separate from ending a call.
             if (window.confirm('Clear this saved conversation and its tool history?')) void controller.clearHistory(button.dataset.id!);
@@ -179,8 +201,8 @@ export function registerPanel(controller: LiveController): void {
         this.node<HTMLSelectElement>('provider').addEventListener('change', event => void controller.selectProvider((event.target as HTMLSelectElement).value as ProviderId));
         this.querySelector('#radsysx-live-attestation')!.addEventListener('change', event => { this.attestation = (event.target as HTMLSelectElement).value as Attestation || undefined; });
         this.querySelector('textarea')!.addEventListener('input', event => { controller.draft = (event.target as HTMLTextAreaElement).value; if (/(^|\s)@$/.test(controller.draft)) { this.mentionOpen = true; this.render(); } });
-        this.querySelector('textarea')!.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void controller.sendText(this.attestation); } });
-        this.querySelector('.radsysx-ai-composer')!.addEventListener('submit', event => { event.preventDefault(); void controller.sendText(this.attestation); });
+        this.querySelector('textarea')!.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); this.submit(); } });
+        this.querySelector('.radsysx-ai-composer')!.addEventListener('submit', event => { event.preventDefault(); this.submit(); });
         this.querySelectorAll<HTMLFormElement>('form[data-credential-provider]').forEach(form => {
           form.addEventListener('submit', event => {
             event.preventDefault();
@@ -205,7 +227,15 @@ export function registerPanel(controller: LiveController): void {
       void controller.evidence.selectSession(controller.evidenceSessionId);
       this.unsubscribe = controller.subscribe(() => this.render());
     }
-    disconnectedCallback(): void { controller.subscription.stop(); controller.evidence.dispose(); this.evidenceCards.forEach(card => card.review?.dispose()); this.evidenceCards.clear(); this.node('tools').replaceChildren(); this.clearKeyInputs(); this.unsubscribe?.(); this.unsubscribe = undefined; }
+    disconnectedCallback(): void { controller.subscription.stop(); controller.evidence.dispose(); this.evidenceCards.forEach(card => { card.review?.dispose(); card.article.remove(); card.reviewHost?.remove(); }); this.evidenceCards.clear(); this.clearKeyInputs(); this.unsubscribe?.(); this.unsubscribe = undefined; }
+    private showView(view: 'chat' | 'research' | 'review'): void {
+      controller.sidebarView = view; this.render(); this.node('conversation').scrollTop = 0;
+    }
+    private openReview(id: string): void { this.showView('review'); void controller.evidence.openTool(id); }
+    private submit(): void {
+      if (controller.sidebarView === 'research') void controller.research(this.attestation);
+      else void controller.sendText(this.attestation);
+    }
     private clearKeyInputs(): void { this.querySelectorAll<HTMLInputElement>('input[data-key-provider]').forEach(input => { input.value = ''; }); }
     private renderCredentials(): void {
       if (this.credentialInputEpoch !== controller.credentialInputEpoch) { this.credentialInputEpoch = controller.credentialInputEpoch; this.clearKeyInputs(); }
@@ -277,17 +307,19 @@ export function registerPanel(controller: LiveController): void {
       providerSelect.value = controller.providerId;
       providerSelect.disabled = controller.credentialsBusy || controller.status === 'loading' || !controller.providers.length;
       providerSelect.title = controller.model;
-      this.node('disclosure').textContent = `Text · ${controller.session?.mode === 'text' && controller.status === 'text_ready' ? controller.session.modelId : controller.researchSettings?.modelId ?? 'model in Settings'}. Sends your question and neutral case/series metadata; no image pixels. Optional voice · ${controller.provider?.label ?? 'choose a provider'}.`;
+      this.node('text-model').textContent = `Text & research · ${controller.session?.mode === 'text' && controller.status === 'text_ready' ? controller.session.modelId : controller.researchSettings?.modelId ?? 'Choose a model in Settings'}`;
+      this.node('disclosure').textContent = 'Sends your question and neutral case/series context. No image pixels.';
       this.button('end-text').hidden = controller.session?.mode !== 'text' || controller.status !== 'text_ready';
       this.button('research').disabled = controller.textBusy || controller.credentialsBusy || controller.status === 'loading';
       this.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!.disabled = controller.textBusy || controller.credentialsBusy || controller.status === 'loading';
       this.dataset.connection = controller.status;
       const active = ['connecting', 'ready', 'reconnecting'].includes(controller.status);
+      this.node('voice-state').textContent = active ? controller.ready ? 'Connected' : 'Connecting' : 'Optional';
       this.node('setup').hidden = active;
       this.node('session-controls').hidden = !active;
       this.button('connect').disabled = controller.credentialsBusy || controller.status === 'loading';
       this.button('connect').textContent = controller.providers.length ? 'Connect voice' : 'Retry setup';
-      this.node('status').textContent = controller.message;
+      this.node('status').textContent = controller.message === 'Viewing saved conversation. Audio and image frames are not recorded.' ? 'Saved conversation' : controller.message;
       this.node('status').hidden = !controller.message || controller.message === 'Confirm the displayed data to begin.';
       this.node('voice-label').textContent = controller.audio.listening ? 'Mic on' : 'Mic off';
       this.node('interaction').textContent = controller.ready && controller.interaction === 'IN_PROGRESS' ? 'Thinking and working…' : controller.ready ? 'Connected · interrupt anytime' : active ? 'Connecting…' : '';
@@ -309,7 +341,7 @@ export function registerPanel(controller: LiveController): void {
       const signature = JSON.stringify(transcripts);
       if (signature !== this.threadSignature) {
         const thread = this.node('thread'); const scrollContainer = this.node('conversation'); const scroll = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 80;
-        thread.innerHTML = transcripts.length ? transcripts.map(item => `<article class="radsysx-ai-message" data-role="${item.role === 'user' ? 'user' : 'assistant'}"><div class="radsysx-ai-message-role">${item.role === 'user' ? 'You' : 'RadSysX AI'}</div><div class="radsysx-ai-message-body">${escape(item.text)}</div></article>`).join('') : '<div class="radsysx-live-empty">Start a conversation to see its transcript.</div>';
+        thread.innerHTML = transcripts.length ? transcripts.map(item => `<article class="radsysx-ai-message" data-role="${item.role === 'user' ? 'user' : 'assistant'}"><div class="radsysx-ai-message-role">${item.role === 'user' ? 'You' : 'RadSysX AI'}</div><div class="radsysx-ai-message-body">${item.role === 'user' ? escape(item.text) : answerMarkup(item.text)}</div></article>`).join('') : '<div class="radsysx-live-empty">Discuss this case.<span>Ask a question or describe a finding. Voice is optional; images are not sent with text.</span></div>';
         if (scroll) scrollContainer.scrollTop = scrollContainer.scrollHeight;
         this.threadSignature = signature;
       }
@@ -325,31 +357,53 @@ export function registerPanel(controller: LiveController): void {
       const eligible = [...visibleTools].reverse().find(tool => !evidenceEligibility(tool));
       const researching = visibleTools.some(tool => tool.name === 'research_run' && ['pending', 'running'].includes(tool.status));
       this.button('review-latest').disabled = !eligible || controller.evidence.busy || controller.credentialsBusy;
-      this.node('evidence-next').textContent = eligible ? 'Preview the selected claims and original abstracts before anything is sent to Jev.' : researching ? 'Research is in progress below. Jev review becomes available when cited abstracts arrive.' : 'Enter a public literature question and choose Research. Then review its cited abstracts here.';
+      this.node('evidence-next').textContent = eligible ? 'Preview the exact passages and their cited abstracts before sending to Jev.' : researching ? 'Research is in progress. Review becomes available when cited abstracts arrive.' : 'Start with a literature question in Research, or open saved research.';
       const visibleIds = new Set(visibleTools.map(tool => tool.id));
-      for (const [id, card] of this.evidenceCards) if (!visibleIds.has(id)) { card.review?.dispose(); card.article.remove(); this.evidenceCards.delete(id); }
+      for (const [id, card] of this.evidenceCards) if (!visibleIds.has(id)) { card.review?.dispose(); card.reviewHost?.remove(); card.article.remove(); this.evidenceCards.delete(id); }
       for (const tool of visibleTools) {
         let card = this.evidenceCards.get(tool.id);
         if (!card) {
           const article = document.createElement('article'); article.className = 'radsysx-live-tool';
-          const body = document.createElement('div'); body.className = 'radsysx-live-tool-body'; article.append(body); this.node(['research_run', 'text_chat'].includes(tool.name) ? 'research-tools' : 'tools').append(article);
+          const body = document.createElement('div'); body.className = 'radsysx-live-tool-body'; article.append(body); this.node(tool.name === 'research_run' ? 'research-tools' : 'tools').append(article);
           card = { article, body, signature: '' }; this.evidenceCards.set(tool.id, card);
         }
-        const signature = JSON.stringify([tool, controller.historical]);
+        const reviewSummary = controller.evidence.reviewForTool(tool.id);
+        const signature = JSON.stringify([tool, controller.historical, reviewSummary]);
         if (signature !== card.signature) {
           card.signature = signature;
           const pending = !controller.historical && !['completed', 'failed', 'cancelled', 'declined', 'rejected', 'denied', 'interrupted', 'outcome_unknown'].includes(tool.status);
-          card.body.innerHTML = `<div><strong>${tool.name === 'research_run' ? 'Literature research' : escape(tool.name.replace(/_/g, ' '))}</strong><span>${escape(tool.status)}</span></div>${['research_run', 'text_chat'].includes(tool.name) ? renderResearchActivity(tool) : `<details${tool.approval ? ' open' : ''}><summary>${tool.approval ? 'Review this action' : 'Details'}</summary><pre>${escape(JSON.stringify(tool.args, null, 2))}</pre></details>`}${tool.name === 'text_chat' && tool.status === 'completed' ? '' : renderToolResult(tool.result)}${tool.approval ? `<div class="radsysx-live-review"><button type="button" data-action="approve" data-id="${escape(tool.id)}">Approve</button><button type="button" data-action="decline" data-id="${escape(tool.id)}">Decline</button></div>` : pending ? `<button type="button" data-action="cancel" data-id="${escape(tool.id)}">Cancel task</button>` : ''}`;
+          card.body.innerHTML = `<h4>${tool.name === 'research_run' ? escape(tool.args.query || 'Literature research') : escape(tool.name.replace(/_/g, ' '))}</h4>${['research_run', 'text_chat'].includes(tool.name) ? renderResearchActivity(tool) : `<details${tool.approval ? ' open' : ''}><summary>${tool.approval ? 'Review this action' : 'Details'}</summary><pre>${escape(JSON.stringify(tool.args, null, 2))}</pre></details>`}${tool.name === 'text_chat' && tool.status === 'completed' ? '' : renderToolResult(tool.result)}${tool.approval ? `<div class="radsysx-live-review"><button type="button" data-action="approve" data-id="${escape(tool.id)}">Approve</button><button type="button" data-action="decline" data-id="${escape(tool.id)}">Decline</button></div>` : pending ? `<button type="button" data-action="cancel" data-id="${escape(tool.id)}">Cancel task</button>` : ''}${!evidenceEligibility(tool) ? `<button type="button" class="radsysx-review-link" data-action="open-review" data-id="${escape(tool.id)}">Review evidence with Jev →</button>` : ''}`;
           if (tool.name === 'research_run' && !card.review) {
             const reason = evidenceEligibility(tool);
             if (!reason) {
-              const host = document.createElement('section'); host.dataset.evidenceTool = tool.id; card.article.append(host);
-              card.review = mountEvidencePanel(host, controller.evidence);
+              const host = document.createElement('section'); host.dataset.evidenceTool = tool.id; this.node('review-panels').append(host); card.reviewHost = host;
+              card.review = mountEvidencePanel(host, controller.evidence, () => this.showView('research'));
             } else { const note = document.createElement('p'); note.textContent = reason; card.body.append(note); }
           }
+          const reviewLink = card.body.querySelector<HTMLButtonElement>('[data-action="open-review"]');
+          if (reviewLink && reviewSummary) reviewLink.textContent = reviewSummary.status === 'completed'
+            ? `View Jev result · ${reviewSummary.completedPairs} checked →`
+            : reviewSummary.status === 'reviewing' ? 'Jev is reviewing · View progress →' : 'Open Jev review →';
         }
         card.review?.update();
+        card.article.hidden = tool.name === 'text_chat' && tool.status === 'completed';
+        if (card.reviewHost) card.reviewHost.hidden = !controller.evidence.open || controller.evidence.detail?.toolCallId !== tool.id;
       }
+      const view = controller.sidebarView;
+      for (const name of ['chat', 'research', 'review'] as const) {
+        this.node(`${name}-view`).hidden = view !== name;
+        this.querySelector(`nav [data-action="view-${name}"]`)!.setAttribute('aria-pressed', String(view === name));
+      }
+      this.node('composer').hidden = view === 'review';
+      this.node('voice-options').hidden = view !== 'chat' && !active;
+      this.button('research').hidden = view !== 'research';
+      this.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!.hidden = view === 'research';
+      this.querySelector<HTMLElement>('.radsysx-live-hint')!.textContent = view === 'research' ? 'Enter to research' : 'Enter to send';
+      textarea.placeholder = view === 'research' ? 'Enter a public literature question…' : 'Ask about this case or describe a finding…';
+      this.node('research-empty').hidden = visibleTools.some(tool => tool.name === 'research_run');
+      this.node('research-count').textContent = allTools.filter(tool => tool.name === 'research_run').length ? String(allTools.filter(tool => tool.name === 'research_run').length) : '';
+      this.node('evidence-entry').hidden = Boolean(controller.evidence.open && controller.evidence.detail);
+      this.node('review-message').textContent = controller.evidence.open && !controller.evidence.detail ? controller.evidence.busy ? 'Preparing the review…' : controller.evidence.message : '';
       this.node('sources').innerHTML = controller.citations.length ? '<strong>Sources</strong>' + controller.citations.map(source => `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">${escape(source.title)} ↗</a>`).join('') : '';
       if (this.suggestionSignature !== controller.suggestionsHtml) {
         this.suggestionSignature = controller.suggestionsHtml; this.node('suggestions').replaceChildren();

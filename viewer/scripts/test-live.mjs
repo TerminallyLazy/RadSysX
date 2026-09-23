@@ -7,6 +7,13 @@ import { OHIFAdapter } from '../.cache/live-runtime/ohif.js';
 import { LiveAudio } from '../.cache/live-runtime/audio.js';
 import { LiveController } from '../.cache/live-runtime/controller.js';
 import { credentialSettingsMarkup, renderToolResult, renderResearchActivity, researchStatus } from '../.cache/live-runtime/panel.js';
+import { answerMarkup } from '../.cache/live-runtime/presentation.js';
+
+test('answer presentation formats prose without enabling HTML, images or generated links', () => {
+  const html = answerMarkup('**Finding:** A result [s1].\n\n- First\n- Second\n\n<img src=x onerror=alert(1)>\n[jump](javascript:alert(1))');
+  assert.match(html, /<strong>Finding:<\/strong>/); assert.match(html, /<ul><li>First/);
+  assert.match(html, /&lt;img/); assert.doesNotMatch(html, /<img|<a |onerror="/);
+});
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 

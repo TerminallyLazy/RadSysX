@@ -101,6 +101,37 @@ def test_owned_preview_and_minimal_payload_preserve_answer(review):
     asyncio.run(scenario())
 
 
+def test_terminal_citation_passage_runs_and_preserves_whole_answer(review):
+    async def scenario():
+        passage = '**Finding:** Synthetic finding. A second related statement. [s1]'
+        answer = 'Introduction without a citation.\n\n' + passage + '\n\nNot an image assessment.'
+        detail = await ready(review, summary=answer)
+        assert len(detail.claims) == 1 and detail.claims[0].text == passage
+        assert not review.http.submitted
+        result = await finish(review, detail)
+        assert result.status == 'completed' and result.completed_pairs == 1
+        assert result.original_answer == answer
+        assert passage in review.http.submitted[0].content.decode()
+        assert result.assessments[0].resolved_model == 'jev-1.13.0'
+    asyncio.run(scenario())
+
+
+def test_empty_preparation_and_legacy_zero_pair_preview_are_not_ready(review):
+    async def scenario():
+        from backend.clinical.ai_evidence_contracts import EvidencePrepareRequest
+        sid, tid = seed_research(review.live, summary='No inline citation exists.')
+        detail = await review.service.prepare(review.actor, sid, tid, EvidencePrepareRequest(idempotency_key='empty'))
+        await review.service.jobs[detail.review_id].task
+        detail = review.service.get(review.actor, detail.review_id)
+        assert detail.status == 'unavailable' and detail.reason == 'no_reviewable_claims'
+        assert not detail.claims and not review.http.submitted
+        row = review.service.repository.owned(review.actor, detail.review_id)
+        review.service.repository.update_if_current(row.id, row.generation, status='ready', reason=None)
+        assert review.service.get(review.actor, row.id).status == 'unavailable'
+        assert review.service.list(review.actor, sid).reviews[0].status == 'unavailable'
+    asyncio.run(scenario())
+
+
 def test_foreign_actor_and_tampered_source_are_rejected(review):
     async def scenario():
         detail=await ready(review)
@@ -468,5 +499,8 @@ def test_two_citation_aliases_for_one_pubmed_article_remain_reviewable(review):
         detail=review.service.get(review.actor,detail.review_id)
         assert detail.status=='ready',detail.reason
         assert len(detail.abstracts)==2 and len({a.evidence_id for a in detail.abstracts})==2
+        assert detail.total_pairs == 2 and len(detail.claims) == 1
         assert not review.http.submitted
+        result = await finish(review, detail)
+        assert result.completed_pairs == 2 and result.status == 'completed'
     asyncio.run(scenario())

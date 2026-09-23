@@ -25,6 +25,7 @@ None.
 ## Evaluation inputs and providers
 
 - `sentence-citations-v1` keeps exact Unicode spans, compound sentences and separate cited abstracts. Ambiguous paragraph citation attachment is excluded; curated annotations must validate against original spans and sources.
+- Sidebar preparation explicitly uses `cited-passages-v2`: retain a whole paragraph/list item when only its final sentence is cited, rather than guessing individual sentence attribution. Recognize exact single and comma-grouped `[s1, s2]` citation spans; each cited abstract still receives an independent judgment. The runner validates the declared supported builder and reconstructs the full immutable plan. Legacy CLI/default and saved v1 plans retain their original sentence rules; never silently reinterpret an existing preview.
 - `settings.py` reads only explicitly requested deployment settings. Clinical/unknown modes reject network evaluation; Jev does not require Gemini credentials. The normal application provider catalog is unchanged.
 - `typesafe.py` pins Jev 1.13.0 and validates all five-way probabilities, model identity and usage. Adapters issue one attempt; the runner owns retries/deadlines. Transport discards error bodies, rejects compression and bounds success bodies.
 

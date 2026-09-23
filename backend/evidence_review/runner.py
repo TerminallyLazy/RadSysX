@@ -46,7 +46,11 @@ async def evaluate_snapshot(snapshot: Snapshot, plan: ReviewPlan, *, adapter: Ev
     snapshot = load_snapshot(canonical_json(snapshot.model_dump(mode="json")), limits=limits)
     annotations = tuple(SpanAnnotation(start=u.start,end=u.end,citation_spans=u.citation_spans)
                         for u in plan.units if u.origin == "curated")
-    expected = build_review_plan(snapshot,limits=limits,annotations=annotations)
+    versions = {u.builder_version for u in plan.units}
+    if len(versions) > 1:
+        raise ValueError("evaluation_input_mismatch")
+    expected = build_review_plan(snapshot,limits=limits,annotations=annotations,
+        **({'builder_version':next(iter(versions))} if versions else {}))
     expected = select_review_plan(expected, selected_unit_ids=selected_unit_ids)
     selection = ([u.unit_id for u in expected.units if u.unit_id in selected_unit_ids]
                  if selected_unit_ids is not None else None)

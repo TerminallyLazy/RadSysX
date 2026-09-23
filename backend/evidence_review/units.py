@@ -8,7 +8,9 @@ from .contracts import (CitationSpan, CoverageItem, ExcludedPair, Limits, Review
 from .serialization import canonical_json, sha256_bytes
 
 BUILDER_VERSION = "sentence-citations-v1"
+PASSAGE_BUILDER_VERSION = "cited-passages-v2"
 _CITE = re.compile(r"\[(s[1-9][0-9]?)\]")
+_CITE_GROUP = re.compile(r"\[(s[1-9][0-9]?(?:\s*,\s*s[1-9][0-9]?){0,19})\]")
 _ABBREVIATION = re.compile(r"\b(?:et al\.|e\.g\.|i\.e\.|Fig\.|Dr\.|vs\.)", re.I)
 
 
@@ -16,7 +18,7 @@ def _identity(*parts):
     return sha256_bytes(canonical_json(parts))
 
 
-def _sentences(text, offset):
+def _sentences(text, offset, citation_pattern=_CITE):
     protected = {i for match in _ABBREVIATION.finditer(text) for i in range(match.start(),match.end())}
     numbered = re.match(r"\s*\d+\.\s", text)
     if numbered:
@@ -36,7 +38,7 @@ def _sentences(text, offset):
         while cursor < len(text):
             while cursor < len(text) and text[cursor].isspace():
                 cursor += 1
-            citation = _CITE.match(text,cursor)
+            citation = citation_pattern.match(text,cursor)
             if not citation:
                 break
             cursor = citation.end()
@@ -59,28 +61,42 @@ def _sentences(text, offset):
     return spans
 
 
-def _candidates(answer):
+def _candidates(answer, *, group_passages=False):
     candidates = []
+    citation_pattern = _CITE_GROUP if group_passages else _CITE
     for paragraph in re.finditer(r"\S(?:[\s\S]*?\S)?(?=\n\s*\n|\s*\Z)", answer):
         text, offset = paragraph.group(), paragraph.start()
         chunks = [(offset,text)]
         if re.search(r"(?m)^\s*(?:[-*]\s+|\d+\.\s+)", text):
             chunks = [(offset+m.start(),m.group()) for m in re.finditer(r"[^\n]+", text)]
         for position, chunk in chunks:
-            if chunk.lstrip().startswith("#") or (chunk.rstrip().endswith(":") and not _CITE.search(chunk)):
+            if chunk.lstrip().startswith("#") or (chunk.rstrip().endswith(":") and not citation_pattern.search(chunk)):
                 candidates.append((position,position+len(chunk),"formatting"))
                 continue
-            spans = _sentences(chunk,position)
-            with_cites = [index for index,(start,end) in enumerate(spans) if _CITE.search(answer[start:end])]
+            spans = _sentences(chunk,position,citation_pattern)
+            with_cites = [index for index,(start,end) in enumerate(spans) if citation_pattern.search(answer[start:end])]
             ambiguous = len(spans) > 1 and with_cites == [len(spans)-1]
+            if ambiguous and group_passages:
+                # Review the whole cited passage. Never guess which individual
+                # sentence the terminal citation supports or rewrite its text.
+                candidates.append((spans[0][0],spans[-1][1],None))
+                continue
             for index,(start,end) in enumerate(spans):
                 candidates.append((start,end,"ambiguous_citation" if ambiguous and index == len(spans)-1 else None))
     return candidates
 
 
-def build_review_plan(snapshot: Snapshot, *, limits: Limits, annotations: tuple[SpanAnnotation,...] = ()) -> ReviewPlan:
+def build_review_plan(snapshot: Snapshot, *, limits: Limits, annotations: tuple[SpanAnnotation,...] = (),
+                      builder_version: str = BUILDER_VERSION) -> ReviewPlan:
+    if builder_version not in {BUILDER_VERSION, PASSAGE_BUILDER_VERSION}:
+        raise ValueError("unsupported_unit_builder")
     snapshot = load_snapshot(canonical_json(snapshot.model_dump(mode="json")),limits=limits)
     answer = snapshot.result.summary
+    citation_pattern = _CITE_GROUP if builder_version == PASSAGE_BUILDER_VERSION else _CITE
+    def citations(start,end):
+        return tuple(CitationSpan(start=m.start(),end=m.end(),source_id=source_id)
+            for m in citation_pattern.finditer(answer,start,end)
+            for source_id in re.findall(r's[1-9][0-9]?',m.group(1)))
     sources = {s.id:s for s in snapshot.result.sources}
     evidence = {e.citation_id:e for e in snapshot.evidence}
     annotated = sorted(annotations,key=lambda a:a.start)
@@ -89,11 +105,11 @@ def build_review_plan(snapshot: Snapshot, *, limits: Limits, annotations: tuple[
         if not 0 <= item.start < item.end <= len(answer) or item.start < previous:
             raise ValueError("invalid_annotation_span")
         previous = item.end
-        actual = {(m.start(),m.end(),m.group(1)) for m in _CITE.finditer(answer,item.start,item.end)}
+        actual = {(c.start,c.end,c.source_id) for c in citations(item.start,item.end)}
         provided = {(c.start,c.end,c.source_id) for c in item.citation_spans}
         if not actual or provided != actual or any(c.source_id not in sources for c in item.citation_spans):
             raise ValueError("invalid_annotation_citation")
-    candidates = _candidates(answer)
+    candidates = _candidates(answer,group_passages=builder_version == PASSAGE_BUILDER_VERSION)
     # Explicit annotations override intersected automatic spans; remaining text
     # remains accounted for, conservatively unreviewed if a boundary was cut.
     for item in annotated:
@@ -112,7 +128,7 @@ def build_review_plan(snapshot: Snapshot, *, limits: Limits, annotations: tuple[
     eligible_count = 0
     for start,end,reason in candidates:
         text = answer[start:end]
-        spans = tuple(CitationSpan(start=m.start(),end=m.end(),source_id=m.group(1)) for m in _CITE.finditer(answer,start,end))
+        spans = citations(start,end)
         if reason == "formatting":
             coverage.append(CoverageItem(start=start,end=end,reason=reason))
             continue
@@ -127,7 +143,7 @@ def build_review_plan(snapshot: Snapshot, *, limits: Limits, annotations: tuple[
         ids = list(dict.fromkeys(c.source_id for c in spans))
         unit = ReviewUnit(unit_id=_identity(snapshot.snapshot_sha256,start,end),snapshot_id=snapshot.snapshot_id,
             text=text,start=start,end=end,citation_spans=spans,evidence_ids=tuple(evidence[i].evidence_id for i in ids if i in evidence),
-            builder_version=BUILDER_VERSION,origin="curated" if any(a.start==start and a.end==end for a in annotated) else "automatic")
+            builder_version=builder_version,origin="curated" if any(a.start==start and a.end==end for a in annotated) else "automatic")
         units.append(unit)
         pair_ids, reasons = [], []
         for source_id in ids:

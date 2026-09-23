@@ -121,7 +121,7 @@
 
 - The evidence-review smoke preserves strict pre-submission consent/focus checks. If OHIF remounts the dock after submission, reacquire the current panel and open the same saved review via its visible GET-only action; never infer failure or success from a detached element, relax request-count assertions, or silently resubmit.
 
-- The evidence-review smoke also checks the visible Jev entry, the latest-result action, research activity cards, persisted progress and recorded dispatch models. Keep these fixture-only assertions separate from actual hosted-provider availability.
+- The evidence-review smoke checks the separate Chat/Research/Jev workspaces, composer hidden during review, visible research-card Jev action, latest-result action, persisted progress and recorded dispatch models. Open reviews through the visible research action; internal review hosts live in the dedicated review workspace. Keep these fixture-only assertions separate from actual hosted-provider availability.
 
 - The evidence-review smoke first drives typed Send and explicit Research through the real sidebar before voice connects, verifies zero fixture Realtime providers, saved progress/model receipts and Jev eligibility, then ends text and exercises the existing voice/review flow. This uses isolated synthetic workers and does not prove hosted availability.
 
