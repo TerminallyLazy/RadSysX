@@ -285,6 +285,7 @@ Last updated: 2026-09-22
 - Favor rigorous, beautiful, professional solutions with high signal-to-noise.
 - Prefer Linux-native commands and paths.
 - Record durable behavior changes in this file or the nearest relevant child `AGENTS.md`.
+- `.impeccable/config.json` records reasoned, file-scoped design-detector exceptions. The muted 2 px Jev judgment separator is intentional grouping, not a decorative card accent; its `side-tab` exception is limited to `viewer/assets/radsysx-viewer.css`.
 
 ## Child DOX Index
 
