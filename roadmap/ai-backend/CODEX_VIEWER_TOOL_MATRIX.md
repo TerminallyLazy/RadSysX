@@ -1,6 +1,6 @@
 # Codex viewer tool coverage
 
-Status: implementation in progress, 2026-09-23. This inventory is a release gate, not a claim of complete parity or clinical validation.
+Status: native handlers implemented, 2026-09-23; specialized fixture acceptance remains pending. This inventory does not claim complete parity or clinical validation. The user explicitly deferred exhaustive additional fixture expansion.
 
 The isolated native Electron inventory used `node desktop/scripts/ui-import-smoke.mjs --local-start --vision --study-inventory`, pinned OHIF `e1cf19a210b745c81d281b77cb94666654ee70b1`, longitudinal/basic mode, a generated single-frame CT, and the guarded synthetic provider. It confirmed runtime toolbar IDs, tool-group membership, and the existing single-image sidebar path. No cloud call or user study was used. Geometry-dependent controls need the Task 11 volume/multiframe fixtures before native acceptance can pass.
 
@@ -36,6 +36,8 @@ All tool names are semantic allowlists. The renderer never accepts arbitrary com
 | Report saves, deletion, DICOM writeback | Existing backend review boundary only | Reviewed | Authoritative backend receipt | No browser-direct persistence |
 
 `study-tools.patch` exports the pinned existing viewport adapter and a neutral open-panel marker. It does not replace native rendering or measurement logic. `capabilities.ts` names the local native handlers; only validated name/availability summaries cross the backend tool-state boundary. Tests with doubles establish argument, scope, cancellation and no-op behavior; they do not replace actual rendering/calibration acceptance.
+
+Final scoped Codex fixture: all 34 synthetic CT frames were acknowledged through the production sidebar; navigation to frame index 31, window/level to 800/80 and native reading-grid/pane capture completed. This supplements the base controls above without changing specialized modality acceptance.
 
 
 Task 7 native regression: the isolated actual-sidebar OpenAI fixture passed window/level, zoom/pan/rotation/flip/inversion/reset, slice selection, tool activation, layout restore, Length and RectangleROI create/edit/jump/delete, measurement undo/redo and report-draft/annotation combined history. It used the synthetic provider. No segmentation, volume, ultrasound or real subscription acceptance is claimed by this run. Image-point fixtures now derive their canvas coordinates from native image indices, so letterboxing is not accepted as measurement geometry.

@@ -133,6 +133,8 @@
 
 ## Scoped study capture
 
+- The scoped study smoke keeps its synthetic window hidden to avoid confusing it with the user's app. `RADSYSX_DESKTOP_SMOKE_HIDDEN=1` is honored only with the existing explicit test-shutdown guard; normal desktop launch always shows the window.
+
 - `study-capture.mjs` adds versioned, strict `startStudyCapture`, `captureStudyObservation`, `stopStudyCapture` IPC without changing the existing viewport/voice leases. Main authenticates the owned active task and session through its cookie jar; input cannot supply rectangles, selectors, paths or URLs. An observation must already be claimed. Bind the 15-second lease to renderer epoch/revision and revoke it on Stop, navigation, shutdown or process loss.
 - Whole-view scope is the pinned native viewport grid and its in-pane controls/overlays, excluding conversations, report panels and global account controls. The adapter registers opaque pane/study membership; main probes fixed DOM regions and rejects mixed studies, missing/hidden panes, excluded panel overlap and visible credential/modal/password surfaces before and after capture. Layout/revision changes invalidate a group. Capture overview plus panes separately, at most eight images per call; larger layouts need explicit additional groups at the same revision. JPEGs are transient, capped at 2048 px/1 MiB encoded each, with actual crop, dimensions, presentation, timestamp and hash receipts. Never enumerate OS windows or capture the entire app as a fallback.
 - `study-capture.test.mjs` covers sender/origin/claim boundaries, sensitive panels, changing views, lease/concurrency limits, scaled crops, byte limits and pane grouping. Native capture acceptance remains a separate isolated Electron fixture.
@@ -140,3 +142,6 @@
 - `node desktop/scripts/ui-import-smoke.mjs --local-start --vision --study-inventory` records enabled toolbar controls, native tool-group membership and adapter capability availability against the generated CT. It uses only the guarded synthetic provider and a test-only bundle of the production adapter. The inventory alone does not prove all native tools or hosted subscription inference.
 
 - Native adapter measurement fixtures derive normalized canvas points from known synthetic image indices via Cornerstone. Never place a measurement in viewport letterboxing or relax image bounds to satisfy a smoke. Scope/navigation diagnostics identify only fixed synthetic test phases and CDP methods.
+
+- `node desktop/scripts/ui-import-smoke.mjs --local-start --vision --study-exploration` exercises the production sidebar and owned command channel with a generated 34-frame study and a synthetic Codex transport, with no Realtime or cloud calls. `study-exploration-fixtures.py --output <private-directory>` generates that study. Real subscription inference and specialized modality/tool parity remain separate acceptance.
+- Native pane captures supply a fresh opaque frame ID; receipt acknowledgment plus the current renderer revision is required before model geometry edits. Renderer process termination revokes capture and logs only its fixed reason, never image data.

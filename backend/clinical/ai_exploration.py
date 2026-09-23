@@ -173,12 +173,14 @@ class ExplorationService:
     async def dispatch(self, task_id, operation_id, name, args, actor, *, kind='action'):
         task=self.check(task_id,actor)
         if kind=='action':
-            if task.snapshot.grant.status!='active' or 'mutate' not in task.snapshot.grant.permissions:
+            if task.snapshot.grant.status!='active' or (name not in {'viewer_get_state','viewer_get_capabilities'} and 'mutate' not in task.snapshot.grant.permissions):
                 raise HTTPException(403,'Viewer tools were not granted.')
             args=validate_tool(name,args)
         elif kind=='observe':
             if task.snapshot.grant.status!='active': raise HTTPException(409,'Send the shared scope first.')
             request=ObservationRequest.model_validate(args)
+            if request.kind=='workspace' and task.snapshot.grant.scope.kind!='entire_view':
+                raise HTTPException(403,'Only panes in the shared series are available. The whole reading view was not shared.')
             if request.kind=='series_frames':
                 ledger=task.ledgers.get(request.manifest_id)
                 if not ledger or not set(request.frame_ids)<=set(ledger.frames): raise HTTPException(403,'Frames are outside the shared inventory.')
@@ -262,6 +264,10 @@ class ExplorationService:
         op.result_digest=identity(result)
         op.result_receipt=receipt; op.future.set_result(receipt)
         task.snapshot.grant.binding=task.snapshot.grant.binding.model_copy(update={'revision':result.revision})
+        if result.status=='outcome_unknown':
+            task.snapshot.grant.permissions=['observe']
+            task.snapshot.activity='Native action outcome unknown. Take over before making further changes.'
+            self.live.actions.release_viewer(actor,task.snapshot.grant.grant_id)
         row=self.live.repository.owned(task.snapshot.grant.session_id,actor,active=True)
         context=row['viewerContext']
         self.live.repository.change(row['sessionId'],context_json={**context,'state':{**context.get('state',{}),**state}})
@@ -283,7 +289,12 @@ class ExplorationService:
                 raise HTTPException(409,'Incomplete or duplicate frame receipt.')
             ledger=task.ledgers[request.manifest_id]
             if any(i.index!=ledger.indices[i.frame_id] for i in result.images): raise HTTPException(409,'Mismatched frame index.')
-        elif any(image.kind not in {'overview','pane'} for image in result.images): raise HTTPException(409,'Unexpected image kind.')
+        else:
+            panes=[i for i in result.images if i.kind=='pane']
+            if any(i.kind not in ({'overview','pane'} if request.kind=='workspace' else {'pane'}) for i in result.images): raise HTTPException(409,'Unexpected image kind.')
+            if len([i for i in result.images if i.kind=='overview'])>1 or any(not i.viewport_id or not i.frame_id for i in panes): raise HTTPException(409,'Missing pane identity.')
+            if len({i.viewport_id for i in panes})!=len(panes): raise HTTPException(409,'Duplicate pane.')
+            if request.viewport_ids and {i.viewport_id for i in panes}!={*request.viewport_ids}: raise HTTPException(409,'Unexpected pane scope.')
         for image in result.images:
             if not -5 <= (utc_now()-parse_iso_z(image.captured_at)).total_seconds() <= 30: raise HTTPException(409,'Capture expired.')
         op.result_digest=identity(result)

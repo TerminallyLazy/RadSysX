@@ -32,9 +32,14 @@ export class OHIFAdapter {
   private subscriptions: Array<{ unsubscribe(): void }> = [];
   onChange?: () => void;
   draftReport?: { findings: string; impression: string; targetId: string };
+  explorationSeries?: string[];
   private undoActions: Array<() => void> = [];
   private redoActions: Array<() => void> = [];
   constructor(private browser: Window = window) {}
+  private activeDataSource(): Host | undefined {
+    const active = this.managers?.extensionManager.getActiveDataSource?.();
+    return Array.isArray(active) ? active[0] : active;
+  }
   bind(managers: Managers): void {
     this.subscriptions.forEach(sub => sub.unsubscribe()); this.subscriptions = [];
     this.managers = managers;
@@ -95,7 +100,7 @@ export class OHIFAdapter {
       const { id, viewport, grid } = this.viewport();
       const displays = list(this.services.displaySetService?.activeDisplaySets);
       const display = displays.find(item => grid.displaySetInstanceUIDs.includes(item.displaySetInstanceUID));
-      const activeSource = this.managers.extensionManager.getActiveDataSource?.()?.getConfig?.()?.name ?? this.browser.location.pathname;
+      const activeSource = this.activeDataSource()?.getConfig?.()?.name ?? this.browser.location.pathname;
       const targetKey = `${activeSource}:${id}:${display?.StudyInstanceUID ?? ''}:${display?.SeriesInstanceUID ?? ''}:${display?.displaySetInstanceUID ?? ''}`;
       const properties = viewport.getProperties?.() ?? {};
       const camera = viewport.getCamera?.() ?? {};
@@ -112,7 +117,7 @@ export class OHIFAdapter {
         layout: { rows: layout.numRows, columns: layout.numCols },
         canvasWidth: viewport.element?.clientWidth ?? 0, canvasHeight: viewport.element?.clientHeight ?? 0,
         series: displays.map((item, index) => ({ id: this.alias('series', item.displaySetInstanceUID), studyId: this.alias('study', item.StudyInstanceUID), label: `Series ${index + 1}`, modality: item.Modality, imageCount: item.numImageFrames ?? item.images?.length ?? 0 })),
-        viewports: [...this.services.viewportGridService.getState().viewports.keys()].map((key: string) => ({ id: this.alias('viewport', key), active: key === id })),
+        viewports: [...this.services.viewportGridService.getState().viewports.entries()].map(([key,pane]: [string,Host]) => ({ id: this.alias('viewport', key), active: key === id, seriesIds: (pane.displaySetInstanceUIDs??[]).map((uid:string)=>this.alias('series',uid)) })),
         measurements: this.measurementValues(),
         segmentations: this.attachments().filter(item => item.kind === 'segmentation').map(item => item.summary),
       };
@@ -141,7 +146,7 @@ export class OHIFAdapter {
     const uid = this.resolve(seriesId, 'series');
     const display = list(this.services.displaySetService?.activeDisplaySets).find(item => item.displaySetInstanceUID === uid);
     if (!display || !this.studyBinding().seriesIds.includes(seriesId)) throw new Error('Series is outside the current study.');
-    const dataSource = this.managers!.extensionManager.getActiveDataSource?.();
+    const dataSource = this.activeDataSource();
     const imageIds: unknown = dataSource?.getImageIdsForDisplaySet?.(display);
     if (!Array.isArray(imageIds) || imageIds.some(id => typeof id !== 'string') || !imageIds.length) throw new Error('A complete image inventory is unavailable.');
     const expected = display.numImageFrames ?? list(display.images).reduce((count, image) => count + (image.NumberOfFrames ?? 1), 0);
@@ -172,7 +177,7 @@ export class OHIFAdapter {
       const id = element.getAttribute('data-viewportid')!;
       const native = this.services.viewportGridService.getState().viewports.get(id);
       const included = displays.filter(item => native?.displaySetInstanceUIDs.includes(item.displaySetInstanceUID));
-      if (!included.length || included.some(item => this.alias('study', item.StudyInstanceUID) !== study.studyId)) throw new Error('Visible panes must belong to the shared study.');
+      if (!included.length || included.some(item => this.alias('study', item.StudyInstanceUID) !== study.studyId || !binding.seriesIds.includes(this.alias('series',item.displaySetInstanceUID)))) throw new Error('Visible panes must belong to the shared study.');
       element.dataset.radsysxViewport = this.alias('viewport', id); element.dataset.radsysxStudy = study.studyId;
       element.dataset.radsysxSeries = JSON.stringify(included.map(item => this.alias('series', item.displaySetInstanceUID)));
       const properties = this.services.cornerstoneViewportService.getCornerstoneViewport(id)?.getProperties?.() ?? {};
@@ -204,7 +209,7 @@ export class OHIFAdapter {
     return result;
   }
   private measurementValues(): Json[] {
-    try { return readMeasurements(this,this.studyBinding().seriesIds.map(id => this.resolve(id,'series'))).slice(0,20).map(value => ({...value,points:value.points.slice(0,8),pointCount:value.pointCount,geometryComplete:value.geometryComplete && value.points.length<=8,values:value.values.slice(0,8)})) as unknown as Json[]; }
+    try { return readMeasurements(this,(this.explorationSeries??this.studyBinding().seriesIds).map(id => this.resolve(id,'series'))).slice(0,20).map(value => ({...value,points:value.points.slice(0,8),pointCount:value.pointCount,geometryComplete:value.geometryComplete && value.points.length<=8,values:value.values.slice(0,8)})) as unknown as Json[]; }
     catch { return this.attachments().filter(item => item.kind !== 'segmentation').map(item => item.summary); }
   }
   capture(): Pick<CaptureRequest, 'viewportId' | 'rect'> {
@@ -491,6 +496,7 @@ export class OHIFAdapter {
     return { ...details, applied: true, state: this.context().state, canUndo: presentationChanged && Boolean(this.history()) };
   }
   async execute(name: string, args: Json, signal = new AbortController().signal): Promise<Json> {
+    if(name==='viewer_set_crosshair')this.assertMeasurementFrame(args);
     if (name === 'viewer_get_capabilities') return { capabilities: capabilities(this) };
     if (ANNOTATION_TOOLS[name as keyof typeof ANNOTATION_TOOLS]) {
       validateArguments(args,ANNOTATION_TOOLS[name as keyof typeof ANNOTATION_TOOLS].schema);
@@ -610,8 +616,8 @@ export class OHIFAdapter {
     this.assertPaneStudy(id,this.studyBinding().studyId);
     const { cornerstone, cornerstoneTools } = this.libraries();
     return { viewport, viewportId: id, services: this.services, core: cornerstone, tools: cornerstoneTools,
-      group: this.services.toolGroupService?.getToolGroupForViewport(id), seriesIds: this.studyBinding().seriesIds.map(alias => this.resolve(alias,'series')),
-      imageIds: list(this.services.displaySetService.activeDisplaySets).filter(ds => this.studyBinding().seriesIds.includes(this.alias('series',ds.displaySetInstanceUID))).flatMap(ds => this.managers!.extensionManager.getActiveDataSource?.()?.getImageIdsForDisplaySet?.(ds) ?? ds.imageIds ?? []) };
+      group: this.services.toolGroupService?.getToolGroupForViewport(id), seriesIds: (this.explorationSeries??this.studyBinding().seriesIds).map(alias => this.resolve(alias,'series')),
+      imageIds: list(this.services.displaySetService.activeDisplaySets).filter(ds => (this.explorationSeries??this.studyBinding().seriesIds).includes(this.alias('series',ds.displaySetInstanceUID))).flatMap(ds => this.activeDataSource()?.getImageIdsForDisplaySet?.(ds) ?? ds.imageIds ?? []) };
   }
   measurementAlias(kind: string, id: string): string { return this.alias(kind,id); }
   resolveMeasurement(id: unknown): string { return this.resolve(id,'measurement'); }

@@ -119,7 +119,14 @@ function writeAppConfig() {
         return React.createElement(
           "a",
           {
-            href: window.__RADSYSX_VIEWER_BASE_PATH__ ?? "/",
+            href: window.__RADSYSX_LOCAL_VIEWER__
+              ? (window.__RADSYSX_VIEWER_BASE_PATH__ || "/viewer").replace(/\\/$/, "") + "/local"
+              : "/worklist",
+            "aria-label": "RadSysX home",
+            onClick: function(event) {
+              // OHIF's parent logo handler otherwise navigates to its disabled study list.
+              event.stopPropagation();
+            },
             target: "_self",
             rel: "noopener noreferrer",
             style: {

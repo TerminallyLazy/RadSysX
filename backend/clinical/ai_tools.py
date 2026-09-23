@@ -213,6 +213,8 @@ class MPR(ReadingViewport):
     layout: Literal["mpr", "mprAnd3DVolume", "default"]
 
 class Crosshair(ReadingViewport):
+    frameId: str | None = Field(default=None, pattern=r"^frame-[A-Za-z0-9_-]{1,110}$")
+    revision: int | None = Field(default=None, ge=0)
     worldPoint: list[float] = Field(min_length=3, max_length=3)
 
 class Fusion(ReadingViewport):
@@ -331,7 +333,7 @@ SAFE_STATE_KEYS = {
     "layout", "windowWidth", "windowCenter", "preset", "zoom", "panX", "panY", "rotation",
     "invert", "flipHorizontal", "flipVertical", "visible", "selected", "points", "label",
     "length", "area", "unit", "value", "values", "calculationStatus", "coordinateSpace", "frameId", "pointCount", "geometryComplete", "segmentIndex", "locked", "color", "canUndo", "canRedo", "available", "status",
-    "playing", "fps", "opacity", "sampleDistance", "ambient", "diffuse", "specular", "shade", "blend", "slabThickness", "referenceLines", "imageOverlay", "enabled", "worldPoint", "panel", "seriesIds",
+    "playing", "fps", "opacity", "sampleDistance", "ambient", "diffuse", "specular", "shade", "blend", "slabThickness", "referenceLines", "imageOverlay", "enabled", "worldPoint", "panel", "seriesIds", "revision",
     "canvasWidth", "canvasHeight", "orientation", "position", "width", "height", "active", "state", "applied", "message",
 }
 

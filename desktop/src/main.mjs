@@ -1070,6 +1070,8 @@ function writeText(response, status, text) {
 }
 
 function createMainWindow() {
+  const hiddenSmoke = process.env.RADSYSX_DESKTOP_ALLOW_TEST_SHUTDOWN === "1"
+    && process.env.RADSYSX_DESKTOP_SMOKE_HIDDEN === "1";
   const window = new BrowserWindow({
     title: "RadSysX",
     width: 1440,
@@ -1085,6 +1087,7 @@ function createMainWindow() {
       nodeIntegration: false,
       preload: preloadPath,
       sandbox: false,
+      ...(hiddenSmoke ? { backgroundThrottling: false } : {}),
     },
   });
 
@@ -1093,7 +1096,7 @@ function createMainWindow() {
     event.preventDefault();
     window.setTitle("RadSysX");
   });
-  window.once("ready-to-show", () => window.show());
+  window.once("ready-to-show", () => { if (!hiddenSmoke) window.show(); });
   const contents = window.webContents;
   contents.session.setPermissionCheckHandler((sender, permission, origin, details) =>
     mayUseViewerPermission(sender, mainWindow?.webContents, publicBaseUrl, permission, details, origin));
@@ -1102,7 +1105,7 @@ function createMainWindow() {
   contents.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
     if (isMainFrame) { viewerCapture.revoke(contents); studyCapture.revoke(contents); }
   });
-  contents.on("render-process-gone", () => { viewerCapture.revoke(contents); studyCapture.revoke(contents); });
+  contents.on("render-process-gone", (_event,details) => { console.error("[desktop] Renderer stopped:",details.reason); viewerCapture.revoke(contents); studyCapture.revoke(contents); });
   contents.on("destroyed", () => { viewerCapture.revoke(contents); studyCapture.revoke(contents); });
   contents.on("will-navigate", (event, url) => {
     if (!publicBaseUrl) return;

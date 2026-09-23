@@ -29,7 +29,7 @@ export const READING_TOOLS: Record<string,{nativeHandler:string;schema:Schema}> 
   viewer_open_panel:entry('panelService.activatePanel',{panel:choice('series','measurements','segmentation','report')},['panel']),
   viewer_set_cine:entry('cineService.setCine',{playing:b,fps:n(1,60)},['playing']),
   viewer_set_mpr:entry('setHangingProtocol',{layout:choice('mpr','mprAnd3DVolume','default')},['layout']),
-  viewer_set_crosshair:entry('volume viewport jumpToWorld / camera intersection',{worldPoint:{type:'array',minItems:3,maxItems:3,items:{type:'number'}}},['worldPoint']),
+  viewer_set_crosshair:entry('volume viewport jumpToWorld / camera intersection',{frameId:{type:'string',pattern:'^frame-[A-Za-z0-9_-]+$'},revision:n(0,1000000),worldPoint:{type:'array',minItems:3,maxItems:3,items:{type:'number'}}},['worldPoint']),
   viewer_set_fusion:entry('setViewportColormap',{displaySetId:series,opacity:n(0,1),preset:choice('Grayscale','Hot Iron','PET','PET 20 Step','Cool to Warm')},['displaySetId','opacity']),
   viewer_set_rendering:entry('native layer presentation',{displaySetId:series,threshold:n(-1000000,1000000),opacity:n(0,1),colorbar:b,preset:choice('Grayscale','Hot Iron','PET','PET 20 Step','Cool to Warm')},['displaySetId']),
   viewer_set_volume:entry('native volume presentation',{opacityShift:n(-1000000,1000000),quality:n(0,1),ambient:n(0,1),diffuse:n(0,1),specular:n(0,1),shade:b,blend:choice('composite','maximum','minimum','average'),slabThickness:n(0.01,1000),preset:choice('CT-Bone','CT-Soft-Tissue','CT-Lung','CT-Coronary-Arteries','MR-Default')}),

@@ -63,3 +63,5 @@ The evidence-review CLI tests exercise real private artifacts and mocked capture
 - `test_ai_exploration_tools.py` checks the native reading allowlist, finite arguments, pane/layer handles, constrained panels and advanced rendering bounds. Actual geometry/rendering remains a separate native desktop acceptance gate.
 
 - Geometry regressions cover per-tool point counts, duplicate/nonfinite/out-of-range coordinates, captured-frame pairs, bounded regions and reviewed calibration. The existing context-change deletion fixture uses an actual opaque measurement-handle format so it still reaches the approval/cancellation path.
+
+- `test_ai_codex_exploration.py` covers dynamic tool identity, image acknowledgment/release, duplicate mutation receipts, geometry authority, grant expiry and bounded private stdio failure using synthetic data. Native desktop and real subscription acceptance are recorded separately in `roadmap/ai-backend/CODEX_STUDY_EXPLORATION.md`.

@@ -103,7 +103,7 @@ export class StudyCapture {
         for(const quality of [90,80,70]) {jpeg=picture.toJPEG(quality);data=jpeg.toString('base64');if(data.length<=1024*1024)break;}
         bytes+=data.length;if(data.length>1024*1024 || bytes>8*1024*1024)throw new Error('The reading view exceeds the image budget.');
         const size=picture.getSize();
-        images.push({imageId:'image-'+randomUUID(),kind:region.kind,...(region.id?{viewportId:region.id}:{}),data,
+        images.push({imageId:'image-'+randomUUID(),kind:region.kind,...(region.id?{viewportId:region.id,frameId:'frame-'+randomUUID()}:{}),data,
           width:size.width,height:size.height,originalWidth:original.width,originalHeight:original.height,crop:[crop.x,crop.y,crop.width,crop.height],
           presentation:region.presentation??{},capturedAt:new Date(this.now()).toISOString(),sha256:createHash('sha256').update(jpeg).digest('hex')});
       }

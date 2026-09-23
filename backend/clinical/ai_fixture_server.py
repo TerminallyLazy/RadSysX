@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import json
 from contextlib import asynccontextmanager
 
 if os.environ.get("RADSYSX_DESKTOP_ALLOW_TEST_SHUTDOWN") != "1":
@@ -240,16 +241,47 @@ if os.environ.get('RADSYSX_DESKTOP_VISION_FIXTURE') == '1':
     from .ai_codex import CodexProcess
     from .ai_view_image import jpeg_dimensions
     import base64
-    _vision = {'images': 0, 'turns': 0}
+    _vision = {'images': 0, 'turns': 0, 'studyImages':0, 'studyActions':0}
 
     class FixtureCodex(CodexProcess):
         async def start(self): pass
-        async def send(self, message): pass
+        async def send(self, message):
+            self.reply=message
+            result=message.get('result',{})
+            items=result.get('contentItems',[])
+            _vision['studyImages']+=sum(i.get('type')=='inputImage' for i in items)
+            if self.job and self.job.get('bridge') and result.get('success'):
+                params=self.last_params
+                self.notification('item/completed',{'threadId':params['threadId'],'turnId':params['turnId'],
+                    'item':{'type':'dynamicToolCall','id':params['callId'],'tool':params['tool'],'namespace':None,'arguments':params['arguments'],'status':'completed','success':True}})
+        async def study_call(self,name,args):
+            count=getattr(self,'study_count',0)+1;self.study_count=count
+            params={'threadId':'synthetic-thread','turnId':'synthetic-turn','callId':f'call-{count}','namespace':None,'tool':name,'arguments':args}
+            self.last_params=params
+            await self.dispatch({'id':count,'method':'item/tool/call','params':params})
+            if 'error' in self.reply or not self.reply['result']['success']: raise RuntimeError('Synthetic study operation failed: '+name)
+            # Bridge acknowledgment discards image items. Read its safe receipt instead.
+            record=self.job['bridge'].records.get(params['callId'])
+            return record['receipt'] if record else json.loads(self.reply['result']['contentItems'][0]['text'])
+        async def study_run(self):
+            bridge=self.job['bridge'];grant=bridge.check().snapshot.grant
+            await self.study_call('viewer_get_capabilities',{})
+            for series_id in grant.scope.series_ids:
+                page=await self.study_call('series_get_manifest',{'seriesId':series_id})
+                for offset in range(0,len(page['frames']),8):
+                    await self.study_call('series_read_frames',{'manifestId':page['manifestId'],'frameIds':[f['id'] for f in page['frames'][offset:offset+8]]})
+            if 'mutate' in grant.permissions:
+                await self.study_call('viewer_jump_to_slice',{'index':31})
+                await self.study_call('viewer_set_window_level',{'windowWidth':800,'windowCenter':80})
+                _vision['studyActions']+=2
+            await self.study_call('viewer_observe',{'kind':'workspace'})
         async def call(self, method, params=None):
             if method == 'account/read': return {'account': {'type': 'chatgpt', 'email': 'synthetic@example.invalid', 'planType': 'pro'}}
             if method == 'model/list': return {'data': [{'model': 'synthetic-vision', 'inputModalities': ['text', 'image']}], 'nextCursor': None}
             if method == 'thread/start': return {'model': params['model'], 'modelProvider': 'openai', 'instructionSources': [], 'sandbox': {'type': 'readOnly', 'networkAccess': False}, 'thread': {'id': 'synthetic-thread'}}
             if method == 'turn/start':
+                self.bind_turn('synthetic-turn')
+                if self.job.get('bridge'): await self.study_run()
                 _vision['turns'] += 1
                 for item in params['input']:
                     if item['type'] == 'image':

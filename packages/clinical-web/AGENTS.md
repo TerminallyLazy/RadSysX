@@ -46,3 +46,5 @@
 - `src/exploration.ts` exports strict-shape study exploration records mirrored by `ai_exploration_contracts.py`: explicit sharing scope, renderer binding, observations, grants, task/action results and coverage. `ImageObservation.data` is transient request content; persisted/rendered history uses `ImageReceipt` only. These records do not themselves grant authority or imply runtime activation.
 
 - `DesktopStudyCapture` and `StudyCaptureBinding` declare the versioned desktop observation IPC. Only opaque owned task/binding/operation/pane handles cross its request boundary; capture rectangles and selectors are never caller arguments. Backend task authority remains mandatory.
+
+- `AITextTurnRequest.explorationId` binds an explicitly prepared scope to an owned text task. It is mutually exclusive with a single-image attachment. `exploration.ts` carries renderer grants, command claims, observations and receipt-only coverage; no generic provider/native RPC is exposed.

@@ -72,6 +72,8 @@ class TextService:
                 name = "research_run" if request.action == "research" else "text_chat"
                 args = {"query": request.text}
                 image = request.image
+                exploration=request.exploration_id
+                if exploration: args['explorationId']=exploration
                 if image is not None:
                     args['imageAttachment'] = image.receipt()
                 # A duplicate is a lookup, never a second provider call.
@@ -101,25 +103,33 @@ class TextService:
                     if not await self.live.codex.supports_images(actor, model):
                         raise HTTPException(409, "The selected subscription model does not advertise image input. Choose an image-capable model in Settings.")
                     self.require(session_id, actor, request.context_version)
+                if exploration:
+                    task=self.live.exploration.check(exploration,actor)
+                    if provider!='codex' or task.snapshot.grant.session_id!=session_id:
+                        raise HTTPException(409,'Share this conversation’s current study first.')
                 tool, _ = self.repo.add_tool(session_id, request.idempotency_key, name, args, request.context_version, False)
+                if exploration:
+                    try: await self.live.exploration.activate(exploration,tool['toolCallId'],actor)
+                    except BaseException:
+                        self.repo.set_tool(session_id,tool['toolCallId'],'failed'); raise
                 self.live.audit(row, actor, f"{session_id}:{tool['toolCallId']}")
                 self.repo.event(session_id, "transcript", {"role": "user", "text": request.text, "turnId": request.idempotency_key, "finished": True})
                 job = (session_id, tool["toolCallId"])
                 self.owners[job] = actor.sub
-                self.tasks[job] = asyncio.create_task(self.execute(row, tool, actor, provider, key, model, image))
+                self.tasks[job] = asyncio.create_task(self.execute(row, tool, actor, provider, key, model, image, exploration))
                 return tool
 
     def chat_history(self, session_id, actor):
         history = []
         for tool in reversed(self.repo.history(session_id, actor)["tools"]):
             if tool["name"] != "text_chat" or tool["status"] != "completed": continue
-            note = '[Historical view was attached to this earlier turn; its pixels are not supplied now.] ' if tool['args'].get('imageAttachment') else ''
+            note = '[Historical images were shared for this earlier turn; their pixels are not supplied now.] ' if tool['args'].get('explorationId') else '[Historical view was attached to this earlier turn; its pixels are not supplied now.] ' if tool['args'].get('imageAttachment') else ''
             pair = [{"role": "user", "content": note + tool["args"]["query"]}, {"role": "assistant", "content": tool["result"]["summary"]}]
             if len(history) + 2 > 6 or len(json.dumps(pair + history).encode()) > 5000: break
             history = pair + history
         return history
 
-    async def execute(self, row, tool, actor, provider, key, model, image=None):
+    async def execute(self, row, tool, actor, provider, key, model, image=None, exploration=None):
         sid, tid, version = row["sessionId"], tool["toolCallId"], row["contextVersion"]
         def check():
             self.require(sid, actor, version)
@@ -142,14 +152,14 @@ class TextService:
                 worker = ResearchSupervisor(key, model, provider=provider)
                 # Research receives only a public question plus neutral modality/counts.
                 # Images, clinical identifiers and prior chat prose never enter PubMed.
-                query = "Public literature question: " + query + ("\nOne current viewport snapshot is attached; not the full series." if image else "\nNo image pixels were shared.") + " Neutral viewer metadata: " + json.dumps({k: v for k, v in metadata.items() if k in {"modality", "imageCount", "index"}})
+                query = "Public literature question: " + query + ("\nUse the explicitly shared study tools for observations; use generic concepts for literature queries." if exploration else "\nOne current viewport snapshot is attached; not the full series." if image else "\nNo image pixels were shared.") + " Neutral viewer metadata: " + json.dumps({k: v for k, v in metadata.items() if k in {"modality", "imageCount", "index"}})
             remaining = (parse_iso_z(actor.expires_at) - utc_now()).total_seconds()
-            async with asyncio.timeout(max(0.01, min(120, remaining))):
+            async with asyncio.timeout(max(0.01, min(600 if exploration else 120, remaining))):
                 if provider == "codex":
                     result = await self.live.codex.run(actor, model, query, research=tool["name"] == "research_run",
                         context=metadata if tool["name"] == "text_chat" else None,
                         history=self.chat_history(sid, actor) if tool["name"] == "text_chat" else None, on_progress=progress,
-                        **({'image': image} if image else {}))
+                        **({'image': image} if image else {}), **({'exploration':exploration} if exploration else {}))
                 else:
                     result = await worker.run(query, on_progress=progress)
             check()
@@ -174,6 +184,13 @@ class TextService:
             except Exception:
                 pass
         finally:
+            if exploration:
+                current=self.live.exploration.tasks.get(exploration)
+                if current:
+                    try:
+                        outcome=self.repo.tool(sid,tid)['status']
+                        await self.live.exploration._expire(exploration,current,status='completed' if outcome=='completed' else 'failed' if outcome=='failed' else 'cancelled')
+                    except Exception: pass
             self.tasks.pop((sid, tid), None)
             self.owners.pop((sid, tid), None)
 

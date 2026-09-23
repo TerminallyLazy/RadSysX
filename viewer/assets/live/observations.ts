@@ -52,6 +52,7 @@ export class ObservationService {
           await this.renderer.waitForRendered(imageId, signal); this.check(binding, signal);
           const jpeg = await this.renderer.encodeJpeg({ maxEdge: 2048, maxEncodedBytes: Math.min(1024 * 1024, remaining) }); this.check(binding, signal);
           const image = await makeFrameObservation(frame, manifest.manifestId, jpeg, this.renderer.geometry()); this.check(binding, signal);
+          if(this.registry.resolve(frame.id)!==imageId)throw new Error('The series changed during capture.');
           remaining -= image.data.length; if (remaining < 0) throw new Error('Image budget exceeded.');
           result.images.push(image);
         } catch {

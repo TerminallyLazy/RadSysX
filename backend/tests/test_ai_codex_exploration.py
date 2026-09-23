@@ -1,0 +1,123 @@
+"""Synthetic Codex tool lifecycle: pixels must be acknowledged, never replayed."""
+import asyncio
+import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+import pytest
+from fastapi import HTTPException
+from backend.tests.test_ai_live import live
+from backend.tests.exploration_helpers import make_task
+from backend.tests.test_ai_exploration_contracts import observation
+from backend.clinical.ai_exploration_contracts import ObservationResult, ActionResult
+from backend.clinical.ai_codex_tools import CodexToolBridge
+from backend.clinical.ai_codex import CodexProcess
+from backend.clinical.contracts import utc_now, to_iso_z
+
+@pytest.fixture
+def anyio_backend(): return 'asyncio'
+
+async def capture(service, grant, binding, actor, *, count=2):
+    command=(await service.poll(grant.task_id,binding,actor,wait_seconds=1))[0]
+    claim=await service.claim(grant.task_id,command.operation_id,binding,actor)
+    images=[{**observation(),'imageId':f'image-{i}','frameId':f'frame-{i}','index':i,'capturedAt':to_iso_z(utc_now())} for i in range(count)]
+    result=ObservationResult(operationId=command.operation_id,claimId=claim.claim_id,revision=binding.revision,images=images)
+    await service.complete_observation(grant.task_id,binding,result,actor)
+    return result
+
+@pytest.mark.anyio
+async def test_images_acknowledged_by_exact_call_and_navigation_runs_once(live):
+    service,grant,binding=await make_task(live)
+    bridge=CodexToolBridge(service,grant.task_id,live.actor)
+    args={'manifestId':'manifest-1','frameIds':['frame-0','frame-1']}
+    work=asyncio.create_task(bridge.call('image-call','series_read_frames',args))
+    observed=await capture(service,grant,binding,live.actor)
+    result=await work
+    assert [i['type'] for i in result.content_items]==['inputText','inputImage','inputImage']
+    assert result.content_items[1]==observed.images[0].input_item()
+    assert (await service.snapshot(grant.task_id,live.actor)).coverage[0].delivered==[]
+    bridge.submitted('image-call')
+    assert (await service.snapshot(grant.task_id,live.actor)).coverage[0].unconfirmed==[0,1]
+    bridge.acknowledge('foreign')
+    assert (await service.snapshot(grant.task_id,live.actor)).coverage[0].delivered==[]
+    bridge.acknowledge('image-call')
+    assert result.content_items==[]
+    assert (await service.snapshot(grant.task_id,live.actor)).coverage[0].delivered==[0,1]
+    duplicate=await bridge.call('image-call','series_read_frames',args)
+    assert duplicate.receipt['pixelsUnavailable'] and len(duplicate.content_items)==1
+    with pytest.raises((ValueError,HTTPException)):
+        await bridge.call('image-call','series_read_frames',{**args,'frameIds':['frame-2']})
+    work=asyncio.create_task(bridge.call('navigate','viewer_jump_to_slice',{'index':3}))
+    command=(await service.poll(grant.task_id,binding,live.actor,wait_seconds=1))[0]
+    claim=await service.claim(grant.task_id,command.operation_id,binding,live.actor)
+    await service.complete(grant.task_id,binding,ActionResult(operationId=command.operation_id,claimId=claim.claim_id,status='completed',beforeRevision=0,revision=1,state={'index':3}),live.actor)
+    action=await work
+    assert action.success and (await bridge.call('navigate','viewer_jump_to_slice',{'index':3})).receipt==action.receipt
+    assert len(service.tasks[grant.task_id].operations)==3 # inventory, images, mutation
+    assert observed.images[0].data not in json.dumps(service.repo.owned(grant.task_id,live.actor))
+    bridge.close(); await service.shutdown()
+
+@pytest.mark.anyio
+async def test_read_only_grant_and_expiry_during_capture_fail_closed(live):
+    service,grant,binding=await make_task(live,allow_tools=False)
+    bridge=CodexToolBridge(service,grant.task_id,live.actor)
+    names={d['name'] for d in bridge.declarations()}
+    assert 'viewer_get_state' in names and 'series_read_frames' in names and 'viewer_jump_to_slice' not in names
+    with pytest.raises((ValueError,HTTPException)): await bridge.call('bad','viewer_jump_to_slice',{'index':1})
+    work=asyncio.create_task(bridge.call('capture','series_read_frames',{'manifestId':'manifest-1','frameIds':['frame-0']}))
+    await capture(service,grant,binding,live.actor,count=1)
+    service.tasks[grant.task_id].last_seen-=16
+    with pytest.raises(HTTPException): await work
+    bridge.close(); await service.shutdown()
+
+@pytest.mark.anyio
+async def test_geometry_requires_acknowledged_current_pane_and_revision(live):
+    service,grant,binding=await make_task(live)
+    bridge=CodexToolBridge(service,grant.task_id,live.actor)
+    args={'operation':'create','tool':'Length','points':[[0.3,0.3],[0.6,0.6]],'viewportId':'viewport-1'}
+    for change in ({},{'frameId':'frame-0','revision':0}):
+        with pytest.raises((ValueError,HTTPException)): await bridge.call('geometry-'+str(len(change)),'viewer_measurement',{**args,**change})
+    bridge.close(); await service.shutdown()
+
+@pytest.mark.anyio
+async def test_unconfirmed_pixels_released_on_close_and_late_ack_ignored(live):
+    service,grant,binding=await make_task(live)
+    bridge=CodexToolBridge(service,grant.task_id,live.actor)
+    work=asyncio.create_task(bridge.call('images','series_read_frames',{'manifestId':'manifest-1','frameIds':['frame-0']}))
+    await capture(service,grant,binding,live.actor,count=1)
+    result=await work; bridge.submitted('images'); bridge.close(); bridge.acknowledge('images')
+    assert result.content_items==[]
+    assert (await service.snapshot(grant.task_id,live.actor)).coverage[0].unconfirmed==[0]
+    await service.shutdown()
+
+@pytest.mark.anyio
+async def test_protocol_identity_and_duplicate_search_are_bound(tmp_path):
+    client=CodexProcess(tmp_path); client.send=AsyncMock()
+    client.account={'type':'chatgpt'}
+    tools=SimpleNamespace(search_pubmed=AsyncMock(return_value={'sources':[]}))
+    client.job={'thread':'thread-1','turn':'turn-1','check':lambda:None,'research':True,'calls':0,'all_calls':0,'records':{},'tools':tools,'progress':AsyncMock(),'bridge':None}
+    params={'threadId':'thread-1','turnId':'turn-1','callId':'call-1','namespace':None,'tool':'search_pubmed','arguments':{'query':'public'}}
+    for change in ({'threadId':'foreign'},{'turnId':'foreign'},{'callId':''},{'namespace':'shell'}):
+        await client.dispatch({'id':1,'method':'item/tool/call','params':{**params,**change}})
+        assert 'error' in client.send.call_args.args[0]
+    assert not tools.search_pubmed.await_count
+    await client.dispatch({'id':2,'method':'item/tool/call','params':params})
+    await client.dispatch({'id':3,'method':'item/tool/call','params':params})
+    assert tools.search_pubmed.await_count==1
+    await client.dispatch({'id':4,'method':'item/tool/call','params':{**params,'arguments':{'query':'different'}}})
+    assert 'error' in client.send.call_args.args[0]
+
+@pytest.mark.anyio
+async def test_writer_is_bounded_and_private(tmp_path,monkeypatch):
+    from backend.clinical import ai_codex
+    monkeypatch.setattr(ai_codex,'WRITE_TIMEOUT',0.02)
+    writer=SimpleNamespace(write=lambda _:None,drain=AsyncMock(side_effect=lambda:asyncio.sleep(5)))
+    # AsyncMock does not await a returned coroutine; use a real stalled drain.
+    async def stall(): await asyncio.sleep(5)
+    writer.drain=stall
+    process=SimpleNamespace(stdin=writer,returncode=None,terminate=lambda:None,kill=lambda:None,wait=AsyncMock(return_value=0))
+    client=CodexProcess(tmp_path); client.process=process
+    with pytest.raises(RuntimeError,match='Codex transport unavailable'):
+        await asyncio.wait_for(client.send({'private':'secret'}),1)
+    client.process=process
+    with pytest.raises(RuntimeError,match='Codex message exceeds limit'):
+        await client.send({'private':'a'*ai_codex.MAX_LINE_BYTES})

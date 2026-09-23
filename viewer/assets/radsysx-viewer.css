@@ -1063,3 +1063,17 @@ body.radsysx-local-viewer [data-radsysx-local-upload-modal="true"] button:focus-
 
 .radsysx-view-attachment details[open] { grid-column: 1 / -1; }
 .radsysx-view-attachment summary { cursor: pointer; padding: 0.25rem 0; }
+
+/* Compact study scope and explicit native activity, within the reading-room theme. */
+.radsysx-study-share { font-size: 12px; color: #bbc9d2; margin: 6px 0; }
+.radsysx-study-share summary { cursor: pointer; padding: 6px 0; }
+.radsysx-study-share label { display: grid; gap: 5px; margin: 8px 0; }
+.radsysx-study-share .radsysx-study-permission { display: flex; align-items: center; gap: 8px; }
+.radsysx-study-share p,.radsysx-study-status p { color: #94a9b7; font-size: 12px; line-height: 1.5; }
+.radsysx-study-status { padding: 12px; margin: 8px 0; border: 1px solid #30414c; border-radius: 8px; background: #121e27; }
+.radsysx-study-status strong,.radsysx-study-status>span { display: block; margin-bottom: 5px; }
+.radsysx-study-status>span { font-size: 12px; color: #b8cbd8; font-variant-numeric: tabular-nums; }
+.radsysx-study-actions { display: flex; gap: 8px; }
+.radsysx-study-status details { margin-top: 10px; font-size: 12px; }
+.radsysx-study-proposal { padding-top: 10px; }
+.radsysx-study-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font-size: 11px; }

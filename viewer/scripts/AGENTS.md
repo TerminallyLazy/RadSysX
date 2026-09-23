@@ -10,6 +10,8 @@
 
 ## Local Contracts
 
+- The branded logo returns standalone local reading to `/viewer/local` and governed/FHIR reading to `/worklist`. Stop propagation to OHIF's parent return handler: its disabled study-list root is not a supported RadSysX destination.
+
 - Build script rebuilds the pinned OHIF source distribution, bundles the pinned FHIR/SMART data-source slice, copies RadSysX assets, logo, React UMD asset, and patches runtime configuration.
 - Build script must cache-bust injected RadSysX runtime assets in `index.html` so Electron/Chromium does not keep stale extension, mode, bootstrap, or CSS behavior.
 - `build-live.mjs` compiles strict TypeScript and checks structural compatibility with `@radsysx/clinical-web`, bundles the persistent Live controller as `radsysx-live.js`, and emits `radsysx-audio-worklet.js`. Both outputs participate in injected asset cache busting. Intermediate output stays under ignored `.cache/live-runtime/`.

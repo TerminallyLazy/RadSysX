@@ -422,3 +422,9 @@ Also run `.venv/bin/python -m pytest backend/tests/test_ai_evidence_review.py ba
 Spec mapping: sharing and compact UI → Tasks 4/5/10; backend/tool/renderer contracts → Tasks 1/2/3/8/9; full-series budgets and continuation → Tasks 1/4/8/9; native parity → Tasks 6/7/11; lifecycle/failures → Tasks 2/3/8/10; privacy and literature boundaries → Tasks 1/5/8/9; native, real-provider and desktop acceptance → Tasks 11/12. The five Review Focus conditions each have named owning tests above.
 
 The plan preserves native execution already selected by the user. The user approved this written plan on 2026-09-23; native implementation proceeds without a per-task permission cycle. Scope confirmations and durable-action reviews described here are product behavior, not additional development approvals.
+
+## Execution update — 2026-09-23
+
+Focused native acceptance passed: 34/34 frames delivered, two native actions, reading-grid capture, no Realtime connection, no persisted pixels, and logo navigation back to the local loader. Exhaustive unchecked validation items below the completed implementation tasks remain deferred, not implicitly passed.
+
+Tasks 1–10 are implemented. The user explicitly requested stopping excessive testing and finishing delivery, so remaining work uses one focused synthetic desktop path, the existing focused protocol regressions and required builds instead of the planned exhaustive fixture/suite expansion. A fresh whole-branch review found two recovery defects; both were fixed. Specialized native modality coverage and real subscription acceptance remain distinct and are not inferred from synthetic success. Final evidence and activation are recorded in `roadmap/ai-backend/CODEX_STUDY_EXPLORATION.md`.

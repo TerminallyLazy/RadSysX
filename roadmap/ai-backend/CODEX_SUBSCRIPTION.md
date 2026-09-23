@@ -64,3 +64,7 @@ Verification on 2026-09-23:
 - Private synthetic acceptance receipts live under ignored `tmp/codex-acceptance/vision-receipts.json`; no user case image was sent for testing. The current user's open viewer was preserved during isolated acceptance.
 
 - Vision change local checks passed: 233 backend regressions, 52 viewer tests, 20 desktop protocol tests, root TypeScript checks and viewer build. Hosted PR checks and activation of the user's running window are separate.
+
+## Scoped study exploration
+
+The subscription lane also supports explicit whole-view and entire-series observations with native viewer tools. Its owned grants and acknowledged frame receipts are documented in [the study exploration runbook](CODEX_STUDY_EXPLORATION.md). The earlier single-viewport limitation applies only to the legacy Attach current view option. Voice stays optional.

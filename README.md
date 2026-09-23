@@ -561,4 +561,10 @@ NVIDIA NIM is available for explicit evidence evaluation and opt-in PubMed resea
 
 ### Attach an image to Codex Chat or Research
 
-With a ChatGPT/Codex model selected, confirm synthetic/deidentified data and choose **Attach current view**. Expand **Preview image** to inspect the exact snapshot and visible measurement overlays, then type your question and choose **Send** or **Research**. The selected model must advertise image input; `gpt-6-astra` was verified on 2026-09-23. This works without Realtime. Each request receives only that captured viewport, not the whole series or continuous screen access. Attach again for another view. Saved image receipts record what was submitted; pixels are not saved in RadSysX history. See the [subscription runbook](roadmap/ai-backend/CODEX_SUBSCRIPTION.md).
+With a ChatGPT/Codex model selected, confirm synthetic/deidentified data and choose **Current image** under **Share images with AI** (or **Attach current view** in a client without study sharing). Expand **Preview image** to inspect the exact snapshot and visible measurement overlays, then type your question and choose **Send** or **Research**. The selected model must advertise image input; single-image input on `gpt-6-astra` was verified on 2026-09-23. This works without Realtime. This option shares only that captured viewport. Saved image receipts record what was submitted; pixels are not saved in RadSysX history. See the [subscription runbook](roadmap/ai-backend/CODEX_SUBSCRIPTION.md).
+
+### Share a study with your Codex model
+
+In the AI sidebar, select your ChatGPT/Codex model in Settings, confirm synthetic/deidentified data, then open **Share images with AI**. Choose the active image, the reading view, or the entire active series. **Allow viewer tools** separately permits native navigation and reversible edits. Prepare the scope and send your question with Send or Research; a voice connection is optional.
+
+The study card shows acknowledged frame delivery, actions, Stop and Take over. Partial series coverage remains visible and requires explicit Continue review. Saving a report still requires review. See the [implementation and acceptance record](roadmap/ai-backend/CODEX_STUDY_EXPLORATION.md).

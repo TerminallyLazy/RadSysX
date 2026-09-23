@@ -22,6 +22,7 @@ const smokeMode = resolveSmokeMode();
 const aiViewerSmoke = smokeMode === "local-start" && process.argv.includes("--ai-live");
 const audioPlaybackSmoke = process.argv.includes("--audio-playback");
 const studyInventorySmoke = process.argv.includes("--study-inventory");
+const studyExplorationSmoke = process.argv.includes("--study-exploration");
 const visionSmoke = process.argv.includes("--vision");
 const evidenceReviewSmoke = process.argv.includes("--evidence-review");
 const credentialsSmoke = process.argv.includes("--credentials");
@@ -82,6 +83,7 @@ async function main() {
       largePayload: smokeMode === "picker-large-folder",
       manyDicomCount: smokeMode === "picker-many-folder" ? manyDicomCount : 0,
     });
+    if(studyExplorationSmoke){const built=spawnSync(pythonCommand(),[path.join(desktopRoot,'scripts/study-exploration-fixtures.py'),'--output',path.join(fixtureRoot,'study')],{encoding:'utf8'});if(built.status!==0)throw Error('Synthetic study generation failed');}
     const runtime = await startDesktopRuntime();
     if (aiViewerSmoke || studyInventorySmoke) await compileAdapterProbe();
     if (audioPlaybackSmoke) await compileAudioProbe();
@@ -384,6 +386,7 @@ async function startDesktopRuntime() {
     RADSYSX_AI_KEY_STORE_DIR: path.join(fs.realpathSync(tmpRoot), ".ai-secrets"),
     RADSYSX_SESSION_COOKIE_SECURE: "false",
     RADSYSX_DESKTOP_ALLOW_TEST_SHUTDOWN: "1",
+    RADSYSX_DESKTOP_SMOKE_HIDDEN: studyExplorationSmoke ? "1" : "0",
     RADSYSX_DESKTOP_REBUILD_FRONTEND: process.env.RADSYSX_DESKTOP_REBUILD_FRONTEND ?? "1",
     ...(aiViewerSmoke || audioPlaybackSmoke || visionSmoke ? {
       RADSYSX_APP_MODE: "pilot", RADSYSX_AI_ENABLED: "true", RADSYSX_GEMINI_API_KEY: "synthetic-unused-key",
@@ -494,6 +497,8 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
       });
       await cdp.send("Network.enable");
     }
+    await cdp.send('Page.enable');
+    cdp.on('Runtime.consoleAPICalled', params=>{const text=params.args?.[0]?.value;if(typeof text==='string'&&text.startsWith('study-phase:'))console.log(text);});
     cdp.on("Inspector.detached", params => console.log('[smoke] inspector detached:', params.reason));
     cdp.on("Page.frameNavigated", params => { if (!params.frame.parentId) console.log('[smoke] main frame:', new URL(params.frame.url).pathname); });
     cdp.on("Runtime.exceptionThrown", (params) => {
@@ -525,7 +530,8 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         fs.writeFileSync(credentialScreenshotPath, Buffer.from(screenshot.data, "base64"));
         await evaluateInRenderer(cdp, `document.querySelector('radsysx-ai-chat-panel [data-action="close-credentials"]').click()`);
       }
-      const visionState = visionSmoke ? await evaluateInRenderer(cdp, `(${exerciseVisionWithoutVoice.toString()})()`, 45000) : undefined;
+      const studyExploration = studyExplorationSmoke ? await evaluateInRenderer(cdp, `(${exerciseStudyExploration.toString()})()`, 150000) : undefined;
+      const visionState = visionSmoke && !studyExplorationSmoke ? await evaluateInRenderer(cdp, `(${exerciseVisionWithoutVoice.toString()})()`, 45000) : undefined;
       const textState = evidenceReviewSmoke ? await evaluateInRenderer(cdp, `(${exerciseTextWithoutVoice.toString()})()`, 45000) : undefined;
       if (aiViewerSmoke) console.log('[smoke] actual sidebar live path');
       const aiLiveState = aiViewerSmoke ? await evaluateInRenderer(cdp, `(${exerciseLiveViewer.toString()})(${JSON.stringify(aiProviderId)}, ${evidenceReviewSmoke})`, 45000) : undefined;
@@ -576,6 +582,11 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         const screenshot = await cdp.send("Page.captureScreenshot", { format: "png" });
         fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
       }
+      if (studyExplorationSmoke) {
+        await evaluateInRenderer(cdp, `setTimeout(() => document.querySelector('a[aria-label="RadSysX home"]').click(), 50); true`);
+        await waitForRendererCondition(cdp, `location.pathname === '/viewer/local' && !!document.querySelector('input[type="file"]')`, "logo returns to local loader");
+        studyExploration.logoReturnsHome = true;
+      }
       return {
         ok: true,
         smokeMode,
@@ -590,6 +601,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         ...(credentialsState ? { credentialsState } : {}),
         ...(adapterState ? { adapterState } : {}),
         ...(studyInventory ? { studyInventory } : {}),
+        ...(studyExploration ? {studyExploration}:{}),
         ...(audioPlaybackState ? { audioPlaybackState } : {}),
       };
     }
@@ -678,12 +690,14 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
 
 async function runLocalStartSmoke(cdp, publicBaseUrl) {
   const localViewerState = await waitForStandaloneLocalViewer(cdp, publicBaseUrl);
+  console.log("[smoke] importing synthetic local study");
   const importState = await evaluateInRenderer(
     cdp,
     `(${loadOhifLocalDicomInputInRenderer.toString()})(${JSON.stringify(readDicomFixturePayloads())})`,
     30000,
-  );
+  ).catch(error=>{if(String(error.message).includes("navigated or closed"))return {navigationDuringImport:true};throw error;});
 
+  console.log("[smoke] waiting for rendered synthetic study");
   const viewerState = await verifyStandaloneLocalDicomViewer(cdp);
   return {
     importPath: "ohif-local-input",
@@ -1964,6 +1978,7 @@ function readFixturePayloads() {
 }
 
 function readDicomFixturePayloads() {
+  if(studyExplorationSmoke)return fs.readdirSync(path.join(fixtureRoot,'study')).filter(n=>n.endsWith('.dcm')).map(name=>({name,type:'application/dicom',relativePath:name,base64:fs.readFileSync(path.join(fixtureRoot,'study',name)).toString('base64')}));
   return readFixturePayloads().filter((payload) => payload.name === "SCAN1DCM");
 }
 
@@ -2040,7 +2055,7 @@ async function evaluateInRenderer(cdp, expression, timeoutMs = 30000, userGestur
       userGesture,
     },
     timeoutMs,
-  );
+  ).catch(error=>{throw new Error("Native renderer evaluation failed: "+error.message);});
 
   if (evaluation.exceptionDetails) {
     throw new Error(formatCdpException(evaluation.exceptionDetails));
@@ -2673,7 +2688,9 @@ async function exerciseVisionWithoutVoice() {
   const wait=async(fn)=>{const end=Date.now()+12000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw Error('Synthetic vision condition timed out: '+panel.innerText);};
   if(panel.querySelector('[data-role="attachments"]').dataset.open==='true')button('toggle-mention').click();
   await api('sidebar/codex/account');
+  console.log('study-phase: model');
   await api('sidebar/research-settings',{providerId:'codex',modelId:'synthetic-vision'});
+  console.log('study-phase: settings');
   button('credentials').click();await wait(()=>!button('reload-credentials').disabled);button('reload-credentials').click();
   await wait(()=>!button('attach-view').hidden);button('close-credentials').click();
   const confirmation=panel.querySelector('#radsysx-live-attestation');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));
@@ -2703,4 +2720,37 @@ async function exerciseVisionWithoutVoice() {
   panel.querySelector('[data-role="view-attachment"] details').open=true;
   assert((await api('_fixture/vision')).images===2,'Inspection sent image');
   return {chat:true,research:true,localPreview:true,imagesSubmitted:2,voiceConnections:0,historyContainsPixels:false,cloudCalls:false};
+}
+
+async function exerciseStudyExploration() {
+  const panel=()=>document.querySelector('radsysx-ai-chat-panel');
+  const button=a=>panel().querySelector(`[data-action="${a}"]`);
+  const api=async(path,body)=>{const r=await fetch('/api/ai/'+path,{credentials:'include',cache:'no-store',method:body?'PUT':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error('Study API '+r.status);return r.json();};
+  const wait=async(fn,label)=>{const end=Date.now()+120000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,200));}throw Error('Study timeout: '+label+' '+panel().querySelector('[data-role="status"]').textContent+' '+panel().querySelector('[data-role="study-progress"]').textContent);};
+  console.log('study-phase: model');
+  await api('sidebar/research-settings',{providerId:'codex',modelId:'synthetic-vision'});
+  console.log('study-phase: settings');
+  button('credentials').click();await wait(()=>!panel().querySelector('[data-role="research-model"]').disabled,'models');button('close-credentials').click();
+  const confirmation=panel().querySelector('#radsysx-live-attestation');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));
+  panel().querySelector('[data-role="study-share"]').open=true;
+  const scope=panel().querySelector('[data-role="share-kind"]');scope.value='entire_view';scope.dispatchEvent(new Event('change',{bubbles:true}));
+  const tools=panel().querySelector('[data-role="share-tools"]');tools.checked=true;tools.dispatchEvent(new Event('change',{bubbles:true}));
+  console.log('study-phase: prepare');
+  button('prepare-study').click();
+  await wait(()=>panel().querySelector('[data-role="study-progress"]').textContent.includes('Ready to share'),'inventory');
+  console.log('study-phase: send');
+  const sid=panel().state.backendSessionId;
+  const input=panel().querySelector('textarea');input.value='Review every frame in this synthetic series, navigate to its late frame, adjust the window and observe the reading workspace.';input.dispatchEvent(new Event('input',{bubbles:true}));
+  panel().querySelector('[data-role="composer"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+  let history;
+  await wait(async()=>{history=await api('sidebar/sessions/'+sid);return history.tools.some(t=>t.name==='text_chat'&&['completed','failed'].includes(t.status));},'result');
+  const result=history.tools.find(t=>t.name==='text_chat');
+  if(result.status!=='completed')throw Error('Study request failed '+JSON.stringify(result.result));
+  const coverage=result.result.explorationReceipt.coverage[0];
+  if(coverage.frameCount!==34 || coverage.delivered.length!==34 || coverage.status!=='complete')throw Error('Incomplete study delivery');
+  if(JSON.stringify(history).includes('data:image'))throw Error('Persisted pixels');
+  const counters=await api('_fixture/vision');if(counters.studyImages<35||counters.studyActions!==2)throw Error('Missing native observation/action');
+  if((await api('_fixture/media')).activeProviders!==0)throw Error('Study review allocated voice');
+  await wait(()=>panel().querySelector('[data-role="study-progress"]').textContent.includes('34/34'),'coverage UI');
+  return {framesDelivered:34,nativeActions:2,workspaceObserved:true,voiceConnections:0,cloudCalls:false};
 }
