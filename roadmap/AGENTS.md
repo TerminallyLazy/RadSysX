@@ -1,6 +1,6 @@
 # Roadmap DOX
 
-Last updated: 2026-06-13
+Last updated: 2026-09-22
 
 ## Purpose
 
@@ -13,6 +13,9 @@ Last updated: 2026-06-13
 - Owns roadmap files under `roadmap/`, including AI backend plans, model evaluation notes, future architecture sketches, and implementation runbooks.
 - The AI backend plan for the OHIF sidebar lives at `roadmap/ai-backend/PLAN.md`; the realtime voice/chat research synthesis lives at `roadmap/ai-backend/REALTIME_VOICE_RESEARCH.md`; first GPU bring-up evidence lives at `roadmap/ai-backend/GPU_EVAL_LOG.md`; the opt-in BioMedParse integration demo runbook lives at `roadmap/ai-backend/BIOMEDPARSE_DEMO.md`.
 - Runtime code remains owned by the nearest applicable subtree such as `backend/`, `viewer/`, `frontend/`, `desktop/`, or `packages/`.
+
+- `ai-backend/LIVE_IMPLEMENTATION.md` owns the Gemini/OpenAI implementation contract, canonical map/ticket links, dated verification evidence, and the NVIDIA VoiceChat deployment assessment. The user deferred VoiceChat; it is not implemented or enabled. Distinguish downloadable model access from a running provider endpoint. Its current decisions supersede the June prototype assumptions.
+- `ai-backend/JEV_RESEARCH.md` owns the dated TypeSafe/Jev opportunity survey, source limitations and repository findings. It links to the user-approved specification under `docs/superpowers/specs/` and the approved native implementation plan under `docs/superpowers/plans/`. `ai-backend/JEV_EVALUATION.md` records actual software/provider evidence and pending human/visual acceptance; research/design documents alone do not establish acceptance. `docs/AGENTS.md` owns the specification and plan.
 
 ## Local Contracts
 
@@ -39,3 +42,9 @@ Last updated: 2026-06-13
 ## Child DOX Index
 
 - None yet.
+
+- `ai-backend/NIM_IMPLEMENTATION.md` owns the approved NIM evaluation/research extension, explicit provider configuration and dated live acceptance. It distinguishes direct evaluation from native DeepAgents/LangGraph research and keeps NIM separate from live voice.
+
+- `ai-backend/JEV_VISION_ROUTING.md` owns the dated assessment of Jev text judgments paired with vision models, contextual tool suggestions, model input compatibility and research validation. These are proposed follow-ons, not installed detectors or clinical capabilities.
+
+- `ai-backend/JEV_SIDEBAR_IMPLEMENTATION.md` records the explicit sidebar review workflow, source/consent and private-storage contracts, dated app/live receipt evidence and remaining human-quality limitations. Keep it distinct from the standalone evaluator runbook and the proposed vision-routing assessment.

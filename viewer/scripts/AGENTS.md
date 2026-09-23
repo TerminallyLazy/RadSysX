@@ -6,12 +6,13 @@
 
 ## Ownership
 
-- Owns `build-ohif-dist.mjs`.
+- Owns OHIF/FHIR build scripts plus `build-live.mjs`, `live-contracts.ts`, and `test-live.mjs`.
 
 ## Local Contracts
 
 - Build script rebuilds the pinned OHIF source distribution, bundles the pinned FHIR/SMART data-source slice, copies RadSysX assets, logo, React UMD asset, and patches runtime configuration.
 - Build script must cache-bust injected RadSysX runtime assets in `index.html` so Electron/Chromium does not keep stale extension, mode, bootstrap, or CSS behavior.
+- `build-live.mjs` compiles strict TypeScript and checks structural compatibility with `@radsysx/clinical-web`, bundles the persistent Live controller as `radsysx-live.js`, and emits `radsysx-audio-worklet.js`. Both outputs participate in injected asset cache busting. Intermediate output stays under ignored `.cache/live-runtime/`.
 - Generated files belong in `viewer/dist/`.
 - Do not make the build depend on machine-local paths outside the npm workspace.
 
@@ -25,6 +26,7 @@
 
 - `npm run build --workspace viewer`
 - `npm run test:fhir-bridge --workspace viewer`
+- `npm run test:live --workspace viewer` (fake runtime, media codec/queue, lifecycle and semantic adapter checks; does not establish real provider or hardware audio acceptance). Audio regressions cover a 45-second burst at the original rate, draining/reuse, audible interruption receipts and duration/source-count limits checked before allocation.
 
 ## Child DOX Index
 
@@ -36,3 +38,7 @@
 - Audit with `npm run audit:ohif --workspace viewer`; keep all advisory severities enabled.
 
 - `test-security-dependencies.mjs` checks actual resolved query-string behavior, the validation ReDoS fix, absence of the retired OIDC asset, and generated build provenance.
+
+- Live tests cover research-selection save/attestation boundaries, stale catalog response suppression, preserved selection on catalog failure, and credential changes updating research availability without replacing a pending dropdown selection. Shared compile checks include research settings and catalog response shapes.
+- Shared compile assertions also cover bidirectional evidence-review detail/start/retry/availability shapes. Their independent HTTP contract never modifies the live conversation protocol.
+- `test:live` compiles once and runs both `test-live.mjs` and `test-evidence.mjs`. Review tests use synthetic wire fixtures and mock timers to prove confirmation/selection, stable uncertain idempotency, old-response rejection, bounded polling, no inference on reopen/refresh and escaped abstract-scoped presentation. The guarded Electron smoke owns actual DOM/focus/layout acceptance.

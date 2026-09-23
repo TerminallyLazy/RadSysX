@@ -8,6 +8,98 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 
+class AICredentialModel(Base):
+    __tablename__ = "ai_credentials"
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    ciphertext: Mapped[str] = mapped_column(Text)
+
+
+class AIResearchPreferenceModel(Base):
+    __tablename__ = "ai_research_preferences"
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[str] = mapped_column(String(241))
+
+
+class AIResearchGenerationModel(Base):
+    __tablename__ = "ai_research_generations"
+    id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[str] = mapped_column(String(241))
+    recorded_at: Mapped[str] = mapped_column(String(64))
+
+
+class AIJevReviewModel(Base):
+    __tablename__ = "ai_jev_reviews"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    tool_id: Mapped[str] = mapped_column(String(128))
+    context_version: Mapped[int] = mapped_column()
+    source_hash: Mapped[str] = mapped_column(String(64))
+    run_id: Mapped[str] = mapped_column(String(80))
+    preview_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    preview_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32))
+    selection: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    confirmation: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    generation: Mapped[int] = mapped_column(default=1)
+    deleting: Mapped[bool] = mapped_column(Boolean, default=False)
+    progress_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[str] = mapped_column(String(64))
+    updated_at: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class AIJevOperationModel(Base):
+    __tablename__ = "ai_jev_operations"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    operation: Mapped[str] = mapped_column(String(16))
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    review_id: Mapped[str] = mapped_column(String(128), index=True)
+
+
+class AILiveSessionModel(Base):
+    __tablename__ = "ai_live_sessions"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    created_at: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[str] = mapped_column(String(128))
+    context_version: Mapped[int] = mapped_column(default=1)
+    context_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    attestation: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sequence: Mapped[int] = mapped_column(default=0)
+
+
+class AILiveEventModel(Base):
+    __tablename__ = "ai_live_events"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    sequence: Mapped[int] = mapped_column(index=True)
+    event_json: Mapped[dict] = mapped_column(JSON)
+
+
+class AILiveToolModel(Base):
+    __tablename__ = "ai_live_tools"
+    id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), index=True)
+    provider_id: Mapped[str] = mapped_column(String(128))
+    name: Mapped[str] = mapped_column(String(128))
+    arguments: Mapped[dict] = mapped_column(JSON)
+    context_version: Mapped[int] = mapped_column()
+    status: Mapped[str] = mapped_column(String(32))
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[str] = mapped_column(String(64))
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
 class StudyModel(Base):
     __tablename__ = "clinical_studies"
 

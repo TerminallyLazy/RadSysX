@@ -1,19 +1,22 @@
 # RadSysX AI Backend And Agentic Imaging Roadmap
 
-Last updated: 2026-06-13
-Status: planning artifact; no runtime implementation is completed by this file.
+> September 22, 2026 update: The Gemini Live implementation, additional OpenAI `gpt-realtime-2.1-mini` choice and current verification are tracked in [LIVE_IMPLEMENTATION.md](LIVE_IMPLEMENTATION.md), Wayfinder #75/#76. The June model/transport/stub descriptions below are historical research and deferred alternatives, not the current runtime contract. Both providers use backend WSS and owned history/actions; research delegates remain Gemini Flash. GPU workers, NVIDIA VoiceChat and real-patient clinical use remain deferred.
+
+
+Last updated: 2026-09-22 (June plan preserved as historical context)
+Status: historical planning artifact; active implementation/evidence is in LIVE_IMPLEMENTATION.md and Wayfinder map #75.
 Primary experiment environment: Ubuntu 24.04 NVIDIA L40S VM, documented in `roadmap/ai-backend/GPU_EVAL_LOG.md`.
 
 ## Read This First
 
-This file is the durable brain-extension plan for turning the current backend-bound stub RadSysX AI sidebar into a real multimodal imaging assistant.
+This file preserves the June plan for turning the former backend-bound stub RadSysX AI sidebar into a multimodal imaging assistant. The September Gemini/OpenAI implementation decisions supersede its runtime choices.
 
 Related research:
 
-- `roadmap/ai-backend/REALTIME_VOICE_RESEARCH.md` distills an external GPT 5.5 Pro research pass on the realtime voice/chat architecture. Treat it as the source of record for the current transport split: HTTP POST for durable writes, SSE for ordinary chat/job/tool events, WebSocket for local ASR audio, provider-native WebRTC for OpenAI Realtime, and provider/stateful WSS for Gemini Live.
+- `roadmap/ai-backend/REALTIME_VOICE_RESEARCH.md` preserves an external GPT 5.5 Pro research pass on the earlier transport alternatives. The active Gemini implementation uses HTTP controls and one same-origin WebSocket for media and events.
 - `roadmap/ai-backend/GPU_EVAL_LOG.md` records the GPU VM bring-up, CUDA/PyTorch validation, RadSysX desktop build checks, Hugging Face access probes, Nemotron ASR smokes, MedGemma 1.5 4B BF16 smokes, Sybil-1.5/Pillar0-ChestCT example inference, and BiomedParse v2 CT segmentation inference on an NVIDIA L40S.
 
-Current baseline:
+June 13 baseline (historical):
 
 - The Electron fast path opens directly into OHIF local DICOM mode at `/viewer/local`.
 - The visible app name is `RadSysX`.
@@ -632,7 +635,7 @@ Goal:
 
 - Replace local-only chat state with a backend-mediated session while preserving current UI feel.
 
-Current tranche:
+June 13 tranche (historical):
 
 - A first backend-bound sidebar spine exists: `GET /api/ai/sidebar/capabilities`, `POST /api/ai/sidebar/sessions`, and `POST /api/ai/sidebar/sessions/{sessionId}/messages`.
 - The OHIF sidebar connects to that spine when authenticated, audits study-bound turns, keeps local fallback behavior, and returns deterministic stub replies. SSE, persistence, real model inference, and tool proposals remain future work.

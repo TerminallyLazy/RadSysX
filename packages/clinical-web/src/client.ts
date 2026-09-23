@@ -1,7 +1,14 @@
 import { getBackendBaseUrl } from "./env";
 import type {
+  EvidencePrepareRequest, EvidenceStartRequest, EvidenceRetryRequest, EvidenceReviewDetail, EvidenceReviewList,
   AIJobRecord,
   AIJobRequest,
+  AICredentialSaveRequest,
+  AIResearchSettings,
+  AIResearchModels,
+  ResearchProviderId,
+  AICredentialStatusResponse,
+  AIProviderCredentialStatus,
   AISidebarCapabilities,
   AISidebarMessageRequest,
   AISidebarSessionCreateRequest,
@@ -63,6 +70,14 @@ async function requestJson<T>(
   return response.json() as Promise<T>;
 }
 
+async function requestEvidence<T>(path: string, init: RequestInit, options?: ClinicalApiOptions): Promise<T> {
+  const response = await fetch(resolveClinicalApiUrl(`/api/ai/sidebar${path}`, options), {
+    ...init, credentials: "include", cache: "no-store", headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) throw new Error("Evidence review request failed. Refresh the review or sign in again.");
+  return response.json() as Promise<T>;
+}
+
 async function requestMultipart<T>(
   path: string,
   form: FormData,
@@ -80,6 +95,21 @@ async function requestMultipart<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+async function requestAICredentials(
+  path: string, init: RequestInit, options?: ClinicalApiOptions,
+): Promise<AICredentialStatusResponse> {
+  const response = await fetch(resolveClinicalApiUrl(path, options), {
+    ...init, credentials: "include", cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+  });
+  // Credential endpoints must not surface a proxy/server response that could echo
+  // submitted input. The backend's detailed logs and history never receive keys.
+  if (!response.ok) throw new Error(response.status === 401 ? "Sign in to manage API keys."
+    : response.status === 422 ? "Enter a valid API key without spaces."
+    : "API key settings could not be updated. Check the connection and try again.");
+  return response.json() as Promise<AICredentialStatusResponse>;
 }
 
 export function createClinicalApi(options?: ClinicalApiOptions) {
@@ -172,8 +202,53 @@ export function createClinicalApi(options?: ClinicalApiOptions) {
       }, options);
     },
 
+    prepareAIEvidenceReview(sessionId: string, toolCallId: string, request: EvidencePrepareRequest): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(toolCallId)}/evidence-reviews`, { method: 'POST', body: JSON.stringify(request) }, options);
+    },
+    listAIEvidenceReviews(sessionId: string): Promise<EvidenceReviewList> {
+      return requestEvidence(`/sessions/${encodeURIComponent(sessionId)}/evidence-reviews`, { method: 'GET' }, options);
+    },
+    getAIEvidenceReview(reviewId: string, signal?: AbortSignal): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/evidence-reviews/${encodeURIComponent(reviewId)}`, { method: 'GET', signal }, options);
+    },
+    startAIEvidenceReview(reviewId: string, request: EvidenceStartRequest): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/evidence-reviews/${encodeURIComponent(reviewId)}/start`, { method: 'POST', body: JSON.stringify(request) }, options);
+    },
+    retryAIEvidenceReview(reviewId: string, request: EvidenceRetryRequest): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/evidence-reviews/${encodeURIComponent(reviewId)}/retry`, { method: 'POST', body: JSON.stringify(request) }, options);
+    },
+    cancelAIEvidenceReview(reviewId: string): Promise<EvidenceReviewDetail> {
+      return requestEvidence(`/evidence-reviews/${encodeURIComponent(reviewId)}/cancel`, { method: 'POST' }, options);
+    },
+
     getAISidebarCapabilities(): Promise<AISidebarCapabilities> {
       return requestJson("/api/ai/sidebar/capabilities", undefined, options);
+    },
+
+    getAIResearchSettings(): Promise<AIResearchSettings> {
+      return requestJson("/api/ai/sidebar/research-settings", { cache: "no-store" }, options);
+    },
+
+    getAIResearchModels(providerId: ResearchProviderId, refresh = false): Promise<AIResearchModels> {
+      return requestJson(`/api/ai/sidebar/research-settings/models/${encodeURIComponent(providerId)}${refresh ? '?refresh=true' : ''}`, { cache: "no-store" }, options);
+    },
+
+    saveAIResearchSettings(payload: Pick<AIResearchSettings, "providerId" | "modelId">): Promise<AIResearchSettings> {
+      return requestJson("/api/ai/sidebar/research-settings", { method: "PUT", body: JSON.stringify(payload), cache: "no-store" }, options);
+    },
+
+    getAICredentials(): Promise<AICredentialStatusResponse> {
+      return requestAICredentials("/api/ai/sidebar/credentials", { method: "GET" }, options);
+    },
+
+    saveAICredential(providerId: AIProviderCredentialStatus["id"], payload: AICredentialSaveRequest): Promise<AICredentialStatusResponse> {
+      return requestAICredentials(`/api/ai/sidebar/credentials/${encodeURIComponent(providerId)}`, {
+        method: "PUT", body: JSON.stringify(payload),
+      }, options);
+    },
+
+    deleteAICredential(providerId: AIProviderCredentialStatus["id"]): Promise<AICredentialStatusResponse> {
+      return requestAICredentials(`/api/ai/sidebar/credentials/${encodeURIComponent(providerId)}`, { method: "DELETE" }, options);
     },
 
     createAISidebarSession(payload: AISidebarSessionCreateRequest = {}): Promise<AISidebarSessionResponse> {
@@ -191,6 +266,32 @@ export function createClinicalApi(options?: ClinicalApiOptions) {
         method: "POST",
         body: JSON.stringify(payload),
       }, options);
+    },
+
+    listAILiveSessions(): Promise<{ sessions: AISidebarSessionResponse[] }> {
+      return requestJson("/api/ai/sidebar/sessions", undefined, options);
+    },
+    getAILiveHistory(sessionId: string): Promise<import("./ai-live").AILiveHistory> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}`, undefined, options);
+    },
+    updateAILiveContext(sessionId: string, payload: import("./ai-live").AILiveContextUpdate): Promise<AISidebarSessionResponse> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/context`, {
+        method: "POST", body: JSON.stringify(payload),
+      }, options);
+    },
+    closeAILiveSession(sessionId: string): Promise<AISidebarSessionResponse> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/close`, { method: "POST" }, options);
+    },
+    deleteAILiveHistory(sessionId: string): Promise<{ deleted: boolean }> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" }, options);
+    },
+    decideAILiveTool(sessionId: string, toolId: string, contextVersion: number, approved: boolean): Promise<import("./ai-live").AILiveTool> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(toolId)}/decision`, {
+        method: "POST", body: JSON.stringify({ contextVersion, approved }),
+      }, options);
+    },
+    cancelAILiveTool(sessionId: string, toolId: string): Promise<import("./ai-live").AILiveTool> {
+      return requestJson(`/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(toolId)}/cancel`, { method: "POST" }, options);
     },
 
     storeDerivedResults(payload: DerivedResultRequest): Promise<DerivedResultResponse> {

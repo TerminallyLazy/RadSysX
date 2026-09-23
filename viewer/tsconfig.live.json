@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ES2022", "moduleResolution": "Bundler",
+    "strict": true, "lib": ["DOM", "ES2022"], "skipLibCheck": true,
+    "outDir": ".cache/live-runtime", "rootDir": "assets/live",
+    "declaration": false, "noEmitOnError": true
+  },
+  "include": ["assets/live/**/*.ts"]
+}

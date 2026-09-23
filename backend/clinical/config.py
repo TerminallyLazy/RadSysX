@@ -12,9 +12,17 @@ INSECURE_DEVELOPMENT_SECRET = "development-only-secret-change-me"
 COOKIE_SAMESITE_VALUES = {"lax", "strict", "none"}
 
 
+def read_app_mode() -> AppMode:
+    raw = os.getenv("RADSYSX_APP_MODE", AppMode.RESEARCH.value).strip().lower()
+    try:
+        return AppMode(raw)
+    except ValueError:
+        raise ValueError("RADSYSX_APP_MODE must be research, pilot, or clinical.") from None
+
+
 class ClinicalPlatformSettings:
     def __init__(self) -> None:
-        self.app_mode = self._read_mode("RADSYSX_APP_MODE", AppMode.RESEARCH)
+        self.app_mode = read_app_mode()
         self.allowed_origins = self._read_csv(
             "RADSYSX_ALLOWED_ORIGINS",
             ["http://localhost:3000", "http://localhost:8000"],
@@ -147,14 +155,6 @@ class ClinicalPlatformSettings:
         if raw not in COOKIE_SAMESITE_VALUES:
             return default
         return raw
-
-    @staticmethod
-    def _read_mode(name: str, default: AppMode) -> AppMode:
-        raw = os.getenv(name, default.value).strip().lower()
-        try:
-            return AppMode(raw)
-        except ValueError:
-            return default
 
     @staticmethod
     def _read_workflow_mode(name: str, default: WorkflowMode) -> WorkflowMode:
