@@ -147,7 +147,7 @@ def declarations():
 
 # Do not forward arbitrary renderer dictionaries or route/query/clinical identifiers.
 SAFE_STATE_KEYS = {
-    "activeViewportId", "viewportId", "viewports", "displaySets", "series", "measurements", "segmentations",
+    "studyId", "seriesId", "activeViewportId", "viewportId", "viewports", "displaySets", "series", "measurements", "segmentations",
     "id", "displaySetId", "segmentationId", "measurementId", "tool", "type", "modality",
     "index", "imageIndex", "sliceIndex", "imageCount", "numImageFrames", "rows", "columns",
     "layout", "windowWidth", "windowCenter", "preset", "zoom", "panX", "panY", "rotation",

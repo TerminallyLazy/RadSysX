@@ -84,6 +84,8 @@ class AILiveService:
         self.text = TextService(self)
         from .ai_codex import CodexService
         self.codex = CodexService(self)
+        from .ai_exploration import ExplorationService
+        self.exploration = ExplorationService(self)
 
     def _openai_provider(self, settings):
         from .ai_openai import OpenAIRealtimeProvider
@@ -296,6 +298,7 @@ class AILiveService:
             await self._stop(session_id, status=status)
 
     async def _stop(self, session_id, *, status="closed"):
+        await self.exploration.stop_session(session_id, status="interrupted" if status == "interrupted" else "cancelled")
         await self.text.stop(session_id, status="interrupted" if status == "interrupted" else "cancelled")
         runtime = self.runtimes.pop(session_id, None)
         if runtime:
@@ -310,6 +313,7 @@ class AILiveService:
                 await self.stop(row["sessionId"])
 
     async def shutdown(self):
+        await self.exploration.shutdown()
         await self.evidence_reviews.shutdown()
         await self.text.shutdown()
         for session_id in list(self.runtimes):
