@@ -51,3 +51,5 @@
 - `test-subscription.mjs` covers official OAuth-link validation, signed-in receipt handling, sign-out and stale polling responses. `test:live` includes it; shared compile checks include AICodexAccount. Synthetic account fixtures are not proof of subscription inference.
 
 - Live regressions cover explicit Codex view preview without provider dispatch, lease cleanup, no voice allocation, context/revision/age invalidation, receipt presentation and idempotent image retries. Unknown provider responses stay private; only fixed image-input rejection messages are surfaced.
+
+- `test-exploration.mjs` covers complete multiframe order, private ID omission, bounded manifest paging, changed/mixed study invalidation, sequential offscreen observations, failed late frames, aborts and encoding limits. Rendering doubles prove lifecycle only; native pixel/calibration acceptance remains a separate desktop fixture gate.

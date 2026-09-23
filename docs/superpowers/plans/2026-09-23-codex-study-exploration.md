@@ -183,7 +183,7 @@ assert 'claimId' not in json.dumps(snapshot.model_dump(by_alias=True))
 
 **Interfaces:** `SeriesRegistry(adapter)` implements `manifest(seriesId, cursor?) -> SeriesManifest`, `resolve(frameId) -> renderer-private image ID`, `invalidate()`; IDs never cross to the model. `ObservationService(adapter, desktop)` implements `observe(request, binding, signal) -> Promise<ObservationResult>` and `dispose()`. `OHIFAdapter.studyBinding()` returns stable opaque study/series membership, separate from active-viewport `targetId`.
 
-- [ ] Write pure manifest tests with a 34-frame shuffled single/multi-frame fixture, two studies and a changing frame list. Assert stable full ordering, all multi-frame indices and digest invalidation. Test a renderer-private image ID containing a path/UID never appears in the public manifest:
+- [x] Write pure manifest tests with a 34-frame shuffled single/multi-frame fixture, two studies and a changing frame list. Assert stable full ordering, all multi-frame indices and digest invalidation. Test a renderer-private image ID containing a path/UID never appears in the public manifest:
 
 ```javascript
 test('manifest includes late multi-frame images without exposing image IDs', () => {
@@ -200,9 +200,9 @@ test('manifest includes late multi-frame images without exposing image IDs', () 
 
 `buildManifest(studyId, seriesId, frames)` is a pure export from `series.ts`; its renderer-private input type includes `imageId`, index and Task 1 numeric geometry. Sort using the same OHIF display set image ordering, not filename or unverified instance-number sorting; preserve explicit temporal ordering where present.
 
-- [ ] Run `node viewer/scripts/build-live.mjs --compile` and `node --test viewer/scripts/test-exploration.mjs`; expect missing-module failure before implementation.
-- [ ] Resolve the complete current display set through OHIF's pinned data source and Cornerstone metadata, including enhanced/multi-frame IDs. Page inventories at 256 frames. A partial/unloaded inventory is labeled incomplete and cannot grant a full-series claim. Keep at most 32 manifests/10,000 descriptors per prepared task; exceeding the descriptor budget reports an explicit capacity limit before capture.
-- [ ] Render requested frames sequentially through one task-owned offscreen Cornerstone viewport using the same loader, rescale, VOI and geometry as the visible viewport. Await native image-render completion for the requested image; do not return the last canvas after a failed load. Never scroll or change the user's visible panes. Destroy the rendering engine/canvas and release only resources owned by this task on stop; do not purge shared user caches.
+- [x] Run `node viewer/scripts/build-live.mjs --compile` and `node --test viewer/scripts/test-exploration.mjs`; expect missing-module failure before implementation.
+- [x] Resolve the complete current display set through OHIF's pinned data source and Cornerstone metadata, including enhanced/multi-frame IDs. Page inventories at 256 frames. A partial/unloaded inventory is labeled incomplete and cannot grant a full-series claim. Keep at most 32 manifests/10,000 descriptors per prepared task; exceeding the descriptor budget reports an explicit capacity limit before capture.
+- [x] Render requested frames sequentially through one task-owned offscreen Cornerstone viewport using the same loader, rescale, VOI and geometry as the visible viewport. Await native image-render completion for the requested image; do not return the last canvas after a failed load. Never scroll or change the user's visible panes. Destroy the rendering engine/canvas and release only resources owned by this task on stop; do not purge shared user caches.
 
 ```typescript
 // ObservationService implementation order; each boundary checks binding/signal.
@@ -214,8 +214,8 @@ return makeFrameObservation(frameId, jpeg, renderer.geometry(), binding);
 ```
 
 Define private `SeriesRenderer.setFrame`, `waitForRendered`, `encodeJpeg`, `geometry`, `dispose` in `series.ts`; `makeFrameObservation` in `observations.ts` creates the Task 1 DTO with digest/dimensions. Use a 1 MiB encoded per-image ceiling within the 8 MiB batch; if bounded encoding cannot preserve a usable image at the requested settings, report the frame failure rather than silently drop it.
-- [ ] Test abort during decode, wrong render-completion image, one failed late frame, unsupported viewport type, invalid geometry, mixed-study request, stale binding and oversized data. Use injected renderer doubles for cancellation/order; reserve actual calibrated pixel fidelity for Task 11 native fixtures. Thumbnails explicitly use `kind: thumbnail` and never update coverage.
-- [ ] Run viewer checks, document supported/unsupported rendering cases and commit: `feat: render scoped series observations without moving the reader`.
+- [x] Test abort during decode, wrong render-completion image, one failed late frame, unsupported viewport type, invalid geometry, mixed-study request, stale binding and oversized data. Use injected renderer doubles for cancellation/order; reserve actual calibrated pixel fidelity for Task 11 native fixtures. Thumbnails explicitly use `kind: thumbnail` and never update coverage.
+- [x] Run viewer checks, document supported/unsupported rendering cases and commit: `feat: render scoped series observations without moving the reader`.
 
 ## Task 5: Entire-view capture through Electron with explicit scope
 

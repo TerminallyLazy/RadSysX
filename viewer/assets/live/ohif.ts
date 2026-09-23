@@ -1,3 +1,5 @@
+import { CornerstoneSeriesRenderer, type SeriesSource, type PrivateFrame } from './series.js';
+import type { Presentation } from './protocol.js';
 import { object, type CaptureRequest, type Json, type ViewerContext } from './protocol.js';
 
 // OHIF's runtime-loaded extension API is dynamic; contain its untyped boundary here.
@@ -94,6 +96,7 @@ export class OHIFAdapter {
       const pan = viewport.getPan?.() ?? [0, 0];
       const layout = this.services.viewportGridService.getState().layout ?? {};
       const state: Json = {
+        studyId: this.alias('study', display?.StudyInstanceUID), seriesId: this.alias('series', display?.displaySetInstanceUID),
         viewportId: this.alias('viewport', id), index: viewport.getCurrentImageIdIndex?.() ?? viewport.getSliceIndex?.() ?? 0,
         imageCount: viewport.getImageIds?.()?.length ?? display?.numImageFrames ?? 0,
         modality: display?.Modality ?? null,
@@ -102,7 +105,7 @@ export class OHIFAdapter {
         invert: Boolean(properties.invert), flipHorizontal: Boolean(camera.flipHorizontal), flipVertical: Boolean(camera.flipVertical),
         layout: { rows: layout.numRows, columns: layout.numCols },
         canvasWidth: viewport.element?.clientWidth ?? 0, canvasHeight: viewport.element?.clientHeight ?? 0,
-        series: displays.map((item, index) => ({ id: this.alias('series', item.displaySetInstanceUID), label: `Series ${index + 1}`, modality: item.Modality, imageCount: item.numImageFrames ?? item.images?.length ?? 0 })),
+        series: displays.map((item, index) => ({ id: this.alias('series', item.displaySetInstanceUID), studyId: this.alias('study', item.StudyInstanceUID), label: `Series ${index + 1}`, modality: item.Modality, imageCount: item.numImageFrames ?? item.images?.length ?? 0 })),
         viewports: [...this.services.viewportGridService.getState().viewports.keys()].map((key: string) => ({ id: this.alias('viewport', key), active: key === id })),
         measurements: this.attachments().filter(item => item.kind !== 'segmentation').map(item => item.summary),
         segmentations: this.attachments().filter(item => item.kind === 'segmentation').map(item => item.summary),
@@ -113,6 +116,46 @@ export class OHIFAdapter {
         ...(launch?.studyInstanceUID ? { studyInstanceUID: launch.studyInstanceUID, seriesInstanceUID: launch.seriesInstanceUIDs?.[0] } : {}),
       };
     } catch { return fallback; }
+  }
+  studyBinding(): { studyId: string; seriesIds: string[] } {
+    const { grid } = this.viewport();
+    const displays = list(this.services.displaySetService?.activeDisplaySets);
+    const selected = displays.filter(item => grid.displaySetInstanceUIDs.includes(item.displaySetInstanceUID));
+    if (!selected.length || !selected[0].StudyInstanceUID || selected.some(item => item.StudyInstanceUID !== selected[0].StudyInstanceUID)) throw new Error('Choose one study to share.');
+    return { studyId: this.alias('study', selected[0].StudyInstanceUID), seriesIds: displays.filter(item => item.StudyInstanceUID === selected[0].StudyInstanceUID).map(item => this.alias('series', item.displaySetInstanceUID)) };
+  }
+  presentation(): Presentation {
+    const properties = this.viewport().viewport.getProperties?.() ?? {};
+    return { invert: Boolean(properties.invert), ...(properties.voiRange ? {
+      windowWidth: Math.abs(properties.voiRange.upper - properties.voiRange.lower) + 1,
+      windowCenter: (properties.voiRange.upper + properties.voiRange.lower + 1) / 2,
+    } : {}) };
+  }
+  seriesFrames(seriesId: string): SeriesSource {
+    const uid = this.resolve(seriesId, 'series');
+    const display = list(this.services.displaySetService?.activeDisplaySets).find(item => item.displaySetInstanceUID === uid);
+    if (!display || !this.studyBinding().seriesIds.includes(seriesId)) throw new Error('Series is outside the current study.');
+    const dataSource = this.managers!.extensionManager.getActiveDataSource?.();
+    const imageIds: unknown = dataSource?.getImageIdsForDisplaySet?.(display);
+    if (!Array.isArray(imageIds) || imageIds.some(id => typeof id !== 'string') || !imageIds.length) throw new Error('A complete image inventory is unavailable.');
+    const expected = display.numImageFrames ?? list(display.images).reduce((count, image) => count + (image.NumberOfFrames ?? 1), 0);
+    const { cornerstone } = this.libraries();
+    const frames: PrivateFrame[] = imageIds.map((imageId: string, index: number) => {
+      const plane = cornerstone.metaData.get('imagePlaneModule', imageId) ?? {};
+      const pixels = cornerstone.metaData.get('imagePixelModule', imageId) ?? {};
+      const general = cornerstone.metaData.get('generalImageModule', imageId) ?? {};
+      return { imageId, index, rows: plane.rows ?? pixels.rows, columns: plane.columns ?? pixels.columns,
+        ...(plane.imagePositionPatient ? { position: Array.from(plane.imagePositionPatient) as number[] } : {}),
+        ...(plane.rowCosines && plane.columnCosines ? { orientation: [...plane.rowCosines, ...plane.columnCosines] } : {}),
+        ...(plane.rowPixelSpacing && plane.columnPixelSpacing ? { spacing: [plane.rowPixelSpacing, plane.columnPixelSpacing] } : {}),
+        ...(Number.isInteger(general.temporalPositionIndex) ? { timeIndex: general.temporalPositionIndex } : {}),
+      };
+    });
+    const modality = ['CT','MR','US','PT','CR','DX','XA','RF','MG','NM','OT','SEG'].includes(display.Modality) ? display.Modality : 'OT';
+    return { studyId: this.alias('study', display.StudyInstanceUID), seriesId, modality, frames, complete: expected === imageIds.length };
+  }
+  createSeriesRenderer(): CornerstoneSeriesRenderer {
+    return new CornerstoneSeriesRenderer(this.libraries().cornerstone, this.browser.document);
   }
   attachments(): Attachment[] {
     if (!this.managers) return [];
