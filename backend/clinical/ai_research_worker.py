@@ -320,13 +320,23 @@ class ResearchTools:
                         # Capture loss is reported by the separate evaluator;
                         # it must not change the research tool result.
                         pass
-                abstract = "\n".join((node.get('Label', '') + ': ' if node.get('Label') else '') + "".join(node.itertext()) for node in article.findall(".//AbstractText"))[:10000]
+                # Keep the exact text/budget seen by the original evidence capture.
+                # Labels are offsets into that text, never extra prefixes that
+                # silently remove the last characters at the truncation boundary.
+                nodes = article.findall('.//AbstractText')
+                parts = [''.join(node.itertext()) for node in nodes]
+                abstract = '\n'.join(parts)[:10000]
+                sections, offset = [], 0
+                for node, part in zip(nodes, parts):
+                    if offset >= len(abstract): break
+                    sections.append({'label': node.get('Label', '')[:200], 'start': offset, 'end': min(offset+len(part), len(abstract))})
+                    offset += len(part)+1
                 articles.append({"sourceId": source["id"], "title": title[:500], "pmid": pmid,
                     "year": article.findtext(".//PubDate/Year", ""), 'publicationDate': article.findtext('.//PubDate/MedlineDate') or '-'.join(filter(None, [article.findtext('.//PubDate/'+k) for k in ('Year','Month','Day')])),
                     'journal': article.findtext('.//Journal/Title', '')[:300],
                     'publicationTypes': [''.join(n.itertext())[:200] for n in article.findall('.//PublicationType')[:12]],
                     'meshTerms': [''.join(n.itertext())[:200] for n in article.findall('.//MeshHeading/DescriptorName')[:30]],
-                    "abstract": abstract})
+                    "abstract": abstract, 'abstractSections': sections, 'offsetUnit': 'unicode_code_points'})
                 sources.append(source)
             receipt['returnedPmids'] = [article['pmid'] for article in articles]
             self.pubmed_searches.append(receipt)

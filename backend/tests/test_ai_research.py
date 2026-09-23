@@ -360,7 +360,8 @@ def test_pubmed_uses_fixed_endpoints_and_registers_actual_pmids(monkeypatch):
     assert all(request.url.host == "eutils.ncbi.nlm.nih.gov" for request in requests)
     assert requests[0].url.params["retmax"] == "10"
     article=result['articles'][0]
-    assert article['abstract']=='RESULTS: Public synthetic abstract.'
+    assert article['abstract']=='Public synthetic abstract.'
+    assert article['abstractSections']==[{'label':'RESULTS','start':0,'end':len(article['abstract'])}]
     assert article['publicationTypes']==['Review'] and article['meshTerms']==['Diagnostic Imaging']
     assert article['journal']=='Synthetic journal'
     assert result['search']['totalMatches']==42 and result['search']['returnedPmids']==['123']
