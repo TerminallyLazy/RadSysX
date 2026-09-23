@@ -71,3 +71,11 @@ Verification was limited to the affected paths:
 - Real signed-in scoped Electron request delivered 34/34 generated frames (43 total observations), correctly returned the random pixel-only marker count of three, navigated to slice index 31, set window width 800/center 80, observed the pane and returned a cited public PubMed source in that same turn. The screenshot confirmed the actual slice/window state and the compact 280 px layout. The check required saved PubMed receipts and sources, not just the model's assertion. No patient images were used.
 
 These checks establish transport, scope, continuation and the exercised viewer commands. They do not validate diagnostic accuracy or every native tool/modality. Original saved failures remain historical failures; the app does not replay them automatically.
+
+## 2026-09-23 named-preset and target-pane repair
+
+Subsequent saved task receipts identified `viewer_set_window_level` with `preset: brain` as the repeated unknown action, with earlier unknown slice jumps. The pinned OHIF customization supplies presets as an array of IDs/descriptions; the adapter incorrectly indexed it by a semantic name. Slice commands also omitted their explicit pane and depended on active-pane timing.
+
+Preset lookup now resolves the selected pane's modality and configured native values before any effect, then sends numeric window/level to that pane. Slice commands carry the native grid viewport explicitly, and reading commands wait for active-pane selection. Known preflight rejections return failed tool results without revoking the task; uncertain effects still stop execution. Their saved pause reason now states that an action could not be confirmed instead of attributing it to the user.
+
+Verification: viewer build, 64 focused viewer/controller tests and 14 backend lifecycle tests passed. The isolated synthetic Electron check completed series continuation and scope checks, then used a real two-pane OHIF layout to navigate the second pane to index 15 and apply the configured brain preset (80/40), leaving the first pane unchanged. No patient images or new hosted-model calls were used in this repair. The previous single-pane/numeric-window acceptance did not cover these defects.

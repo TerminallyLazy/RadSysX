@@ -575,6 +575,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
             nativeTools:Object.keys(group?.getToolInstances?.()??{})};
         })()`, 30000);
         studyInventory.capabilities = await evaluateInRenderer(cdp, `(async()=>{const a=new window.__RadSysXSmokeAdapter.OHIFAdapter();a.bind(window.__RADSYSX_OHIF_MANAGERS__);return (await a.execute('viewer_get_capabilities',{})).capabilities;})()`, 30000);
+        if(studyExplorationSmoke) studyInventory.targetedActions = await evaluateInRenderer(cdp, `(${exerciseTargetedReading.toString()})()`, 30000);
       }
       let adapterState;
       if (aiViewerSmoke) {
@@ -2791,4 +2792,26 @@ async function exerciseStudyExploration(real = false) {
     if(result.status!=='completed'||!result.result.imageReceipt||result.result.explorationReceipt)throw Error('Current image did not use single image path');
   }
   return {framesDelivered:34,continuedResearch:!real,scopeCounts:real?undefined:{currentImage:1,readingView:2,seriesFrames:34},imagesDelivered:seriesImages,cloudCalls:real,...(real?{answer:result.result.summary}:{nativeActions:2,paneObserved:true,voiceConnections:0})};
+}
+
+
+async function exerciseTargetedReading() {
+  const managers=window.__RADSYSX_OHIF_MANAGERS__,services=managers.servicesManager.services;
+  const adapter=new window.__RadSysXSmokeAdapter.OHIFAdapter();adapter.bind(managers);
+  const wait=async(fn)=>{const end=Date.now()+8000;while(!fn()){if(Date.now()>end)throw Error('Two-pane fixture not ready');await new Promise(r=>setTimeout(r,40));}};
+  const displaySetInstanceUID=services.displaySetService.activeDisplaySets[0].displaySetInstanceUID;
+  await adapter.execute('viewer_set_layout',{rows:1,columns:2});
+  const ids=[...services.viewportGridService.getState().viewports.keys()];
+  await managers.commandsManager.runCommand('setDisplaySetsForViewports',{viewportsToUpdate:ids.map(viewportId=>({viewportId,displaySetInstanceUIDs:[displaySetInstanceUID]}))},'CORNERSTONE');
+  await wait(()=>ids.every(id=>services.cornerstoneViewportService.getCornerstoneViewport(id)?.getImageIds?.().length===34));
+  const panes=adapter.context().state.viewports;
+  await adapter.execute('viewer_select_viewport',{viewportId:panes[0].id});
+  const first=services.cornerstoneViewportService.getCornerstoneViewport(ids[0]);
+  const before=first.getCurrentImageIdIndex();
+  await adapter.execute('viewer_jump_to_slice',{viewportId:panes[1].id,index:15});
+  await adapter.execute('viewer_set_window_level',{viewportId:panes[1].id,preset:'brain'});
+  const state=adapter.context().state;
+  if(state.viewportId!==panes[1].id||state.index!==15||state.windowWidth!==80||state.windowCenter!==40||first.getCurrentImageIdIndex()!==before)throw Error('Named pane or native brain preset failed');
+  await adapter.execute('viewer_set_layout',{rows:1,columns:1});
+  return {targetedSecondPane:true,firstPaneUnchanged:true,index:15,brainWindow:80,brainCenter:40};
 }

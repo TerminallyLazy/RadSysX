@@ -1,6 +1,6 @@
 import { applyMeasurement, applyCalibration, applySegmentation, applyRegion, readMeasurements, measurementSpecs } from './measurements.js';
 import { capabilities, READING_TOOLS, ANNOTATION_TOOLS, validateArguments } from './capabilities.js';
-import { executeReadingTool } from './reading-tools.js';
+import { executeReadingTool, ReadingToolUnavailable } from './reading-tools.js';
 import { alive, abortable, CornerstoneSeriesRenderer, type SeriesSource, type PrivateFrame } from './series.js';
 import type { Presentation, RendererBinding } from './protocol.js';
 import { object, type CaptureRequest, type Json, type ViewerContext } from './protocol.js';
@@ -259,6 +259,24 @@ export class OHIFAdapter {
       return { available, ...(available ? {} : { reason: 'Unavailable for the current pane, data or native tool group.' }) };
     } catch { return { available: false, reason: 'Open a supported image in the current study.' }; }
   }
+  private windowLevel(args: Json): { windowWidth: number; windowCenter: number } {
+    let width = args.windowWidth, center = args.windowCenter;
+    if (args.preset) {
+      const { grid } = this.viewport(args.viewportId);
+      const display = list(this.services.displaySetService?.activeDisplaySets).find(ds => grid.displaySetInstanceUIDs.includes(ds.displaySetInstanceUID));
+      const modality = String(display?.Modality ?? '');
+      const presets = this.services.customizationService?.getCustomization?.('cornerstone.windowLevelPresets')?.[modality];
+      const key = String(args.preset).replaceAll('_', '-');
+      const entries = Array.isArray(presets) ? presets : Object.values(presets ?? {});
+      const preset = presets?.[String(args.preset)] ?? entries.find((item: Host) =>
+        String(item.id).toLowerCase() === `${modality.toLowerCase()}-${key}` ||
+        String(item.description).toLowerCase().replaceAll(' ', '-') === key);
+      if (!preset) throw new ReadingToolUnavailable('This window preset is unavailable for the selected pane. Use explicit window width and center.');
+      width = Number(preset.window); center = Number(preset.level);
+    }
+    try { return { windowWidth: number(width, 0.01, 100000, 'window width'), windowCenter: number(center, -100000, 100000, 'window center') }; }
+    catch { throw new ReadingToolUnavailable('Choose a valid window preset or explicit window width and center.'); }
+  }
   private assertPaneStudy(id: string, studyId: string): void {
     const grid = this.services.viewportGridService.getState().viewports.get(id);
     const displays = list(this.services.displaySetService?.activeDisplaySets).filter(ds => grid?.displaySetInstanceUIDs.includes(ds.displaySetInstanceUID));
@@ -317,6 +335,7 @@ export class OHIFAdapter {
   async performReadingTool(name: string, args: Json, signal: AbortSignal): Promise<Json> {
     alive(signal);
     const study = this.studyBinding();
+    if (name === 'viewer_set_window_level') args = { ...args, ...this.windowLevel(args), preset: undefined };
     const { id, viewport, grid } = this.viewport(args.viewportId);
     this.assertPaneStudy(id, study.studyId);
     const native = this.viewportAdapter(viewport);
@@ -329,6 +348,7 @@ export class OHIFAdapter {
     let result: Json = {};
     let presentationChanged = false;
     this.services.viewportGridService.setActiveViewportId(id);
+    await this.settleReading(signal, () => this.services.viewportGridService.getActiveViewportId() === id, guard);
     switch (name) {
       case 'viewer_select_viewport': predicate = () => this.services.viewportGridService.getActiveViewportId() === id; break;
       case 'viewer_set_orientation':
@@ -473,10 +493,8 @@ export class OHIFAdapter {
           return ['zoom','panX','panY','rotation','invert','flipHorizontal','flipVertical'].filter(key => args[key] !== undefined).every(key => typeof args[key] === 'number' ? Math.abs(Number(state[key]) - Number(args[key])) < 0.001 : state[key] === args[key]);
         };
         if (name === 'viewer_set_window_level') {
-          const modality = this.context().state.modality;
-          const preset = args.preset ? this.services.customizationService?.getCustomization?.('cornerstone.windowLevelPresets')?.[String(modality)]?.[String(args.preset)] : undefined;
-          const width = args.windowWidth ?? preset?.window, center = args.windowCenter ?? preset?.level;
-          predicate = () => { const state = this.context().state; return Math.abs(Number(state.windowWidth) - Number(width)) < 0.001 && Math.abs(Number(state.windowCenter) - Number(center)) < 0.001; };
+          predicate = () => { const properties = viewport.getProperties?.(); const range = properties?.voiRange;
+            return Boolean(range && Math.abs(Math.abs(range.upper-range.lower)+1-Number(args.windowWidth)) < 0.001 && Math.abs((range.upper+range.lower+1)/2-Number(args.windowCenter)) < 0.001); };
         }
         if (name === 'viewer_jump_to_slice') predicate = () => this.viewport(args.viewportId).viewport.getCurrentImageIdIndex?.() === args.index;
         if (name === 'viewer_open_series') predicate = () => this.viewport(args.viewportId).grid.displaySetInstanceUIDs.includes(this.resolve(args.displaySetId,'series'));
@@ -560,8 +578,7 @@ export class OHIFAdapter {
     this.services.viewportGridService.setActiveViewportId(id);
     switch (name) {
       case 'viewer_set_window_level':
-        if (args.preset) await run('setWindowLevelPreset', { presetName: text(args.preset, 80) });
-        else await run('setViewportWindowLevel', { viewportId: id, windowWidth: number(args.windowWidth, 0.01, 100000, 'window width'), windowCenter: number(args.windowCenter, -100000, 100000, 'window center') });
+        await run('setViewportWindowLevel', { viewportId: id, ...this.windowLevel(args) });
         break;
       case 'viewer_set_layout': {
         const rows = number(args.rows, 1, 4, 'rows'), columns = number(args.columns, 1, 4, 'columns');
@@ -577,7 +594,7 @@ export class OHIFAdapter {
         const count = viewport.getImageIds?.()?.length;
         const index = number(args.index, 0, typeof count === 'number' ? count - 1 : 100000, 'slice index');
         if (!Number.isInteger(index)) throw new Error('Slice index must be an integer.');
-        await run('jumpToImage', { imageIndex: index }); break;
+        await run('jumpToImage', { imageIndex: index, viewport: { id } }); break;
       }
       case 'viewer_set_tool': {
         const toolName = text(args.tool, 80);

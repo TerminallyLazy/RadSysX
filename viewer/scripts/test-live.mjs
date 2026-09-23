@@ -109,7 +109,7 @@ test('viewer action uses the named OHIF seam and reports the resulting current s
   const { adapter, calls } = fixture();
   const result = await adapter.execute('viewer_jump_to_slice', { index: 2 });
   assert.equal(result.state.index, 2);
-  assert.deepEqual(calls[0], ['jumpToImage', { imageIndex: 2 }, 'CORNERSTONE']);
+  assert.deepEqual(calls[0], ['jumpToImage', { imageIndex: 2, viewport: { id: 'private-viewport-id' } }, 'CORNERSTONE']);
   await assert.rejects(adapter.execute('viewer_jump_to_slice', { index: 3 }), /slice index/);
   await assert.rejects(adapter.execute('viewer_set_layout', { rows: 1.5, columns: 2 }), /integers/);
   await assert.rejects(adapter.execute('viewer_set_tool', { tool: 'storeSegmentation' }), /not available/);

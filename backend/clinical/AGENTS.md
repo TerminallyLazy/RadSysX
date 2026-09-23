@@ -128,3 +128,5 @@
 
 - Whole-reading-view scope permits the visible overview/panes, not offscreen acquisition frames. Omit `series_read_frames` from its tool declarations and independently reject non-series frame requests in the service. Only terminal incomplete series runs offer continuation. Preserve the first terminal Stop/Take over reason during worker cleanup.
 - Codex PubMed arguments allow 1–10 abstracts and default omitted/null limits to five. Invalid arguments return actionable bounded tool feedback; retain safe search-failure messages with the research result. No successful PubMed receipt means a failed research result, never completed literature research. Distinguish service, timeout, rate-limit and response-format errors without returning raw exceptions or query URLs.
+
+- When a renderer pauses after an already recorded unknown action, the saved activity explains that a viewer action could not be confirmed. Do not label that failure as a user changing controls. Keep unknown-effect revocation and no-replay rules intact.

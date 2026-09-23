@@ -1,3 +1,4 @@
+import { ReadingToolUnavailable } from './reading-tools.js';
 import { OHIFAdapter } from './ohif.js';
 import { ObservationService, DesktopWorkspaceObserver } from './observations.js';
 import { request, type DesktopStudyCapture, type ExplorationGrant, type TaskSnapshot, type ShareSelection, type RendererCommand, type ObservationRequest, type RendererBinding } from './protocol.js';
@@ -131,8 +132,9 @@ export class ExplorationController {
             const raw=await this.adapter.execute(command.name,command.args,signal); current();
             const revision=binding.revision+(command.name==='viewer_get_state' || command.name==='viewer_get_capabilities'?0:1);
             result={operationId:command.operationId,claimId:claimed.claimId,status:'completed',beforeRevision:binding.revision,revision,state:{...raw,...(raw.state?{state:this.scopedState(raw.state as Record<string,unknown>,binding)}:this.scopedState(raw,binding))},canUndo:raw.canUndo===true};
-          } catch {
-            current(); result={operationId:command.operationId,claimId:claimed.claimId,status:!permitted||reading?'failed':'outcome_unknown',beforeRevision:binding.revision,revision:binding.revision, state:{},canUndo:false,error:!permitted||reading?'unavailable':'unknown'};
+          } catch (error) {
+            const rejected = !permitted || reading || error instanceof ReadingToolUnavailable;
+            current(); result={operationId:command.operationId,claimId:claimed.claimId,status:rejected?'failed':'outcome_unknown',beforeRevision:binding.revision,revision:binding.revision, state:{},canUndo:false,error:rejected?'unavailable':'unknown'};
           }
         }
         current();

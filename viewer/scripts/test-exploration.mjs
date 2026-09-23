@@ -95,7 +95,7 @@ async function readingFixture(){
   const services={viewportGridService:{getActiveViewportId:()=>active,setActiveViewportId:id=>active=id,getState:()=>({viewports:grid,layout:{numRows:1,numCols:2}})},cornerstoneViewportService:{getCornerstoneViewport:id=>id==='native-a'?pane:{...pane,id}},displaySetService:{activeDisplaySets:displays},measurementService:{getMeasurements:()=>[]},segmentationService:{getSegmentations:()=>[]},cineService:cine,hangingProtocolService:{getProtocolById:()=>({id:'mpr'})}};
   const browser={location:{pathname:'/viewer/local'},document:{addEventListener(){},removeEventListener(){},querySelector(){return null;}}};
   const managers={servicesManager:{services},extensionManager:{getModuleEntry:()=>({exports:{getCornerstoneLibraries:()=>({cornerstone:{utilities:{HistoryMemo:{DefaultHistoryMemo:{push:one=>memos.push(one)}}}},cornerstoneTools:{}})}})},commandsManager:{runCommand(name,args){if(name==='jumpToImage')index=args.imageIndex;}}};
-  const adapter=new OHIFAdapter(browser);adapter.bind(managers);return {adapter,services,pane,displays,cines,memos,changeStudy(){active='native-b';}};
+  const adapter=new OHIFAdapter(browser);adapter.bind(managers);return {adapter,services,pane,displays,cines,memos,managers,changeStudy(){active='native-b';}};
 }
 test('native reading dispatch validates pane study, MPR geometry and stops owned cine',async()=>{
   const f=await readingFixture();assert.equal(f.adapter.readingAvailability('viewer_set_mpr').available,false);
@@ -244,5 +244,43 @@ test('viewer state reads survive an adjacent unshared localizer and incidental s
     await c.execute({operationId:'op-1',kind:'action',name:'viewer_get_state',args:{},expectedRevision:0,binding});
     const result=calls.find(([url])=>url.endsWith('/result'))[1].result;
     assert.equal(result.status,'completed');assert.equal(result.state.viewports.length,1);assert.equal(c.active,true);
+    const {ReadingToolUnavailable}=await import('../.cache/live-runtime/reading-tools.js');
+    host.execute=async()=>{throw new ReadingToolUnavailable('Preset unavailable');};
+    await c.execute({operationId:'op-2',kind:'action',name:'viewer_set_window_level',args:{preset:'abdomen'},expectedRevision:0,binding});
+    assert.equal(calls.at(-1)[1].result.status,'failed');assert.equal(c.active,true);
+    assert.equal(calls.some(([url])=>url.endsWith('/takeover')),false);
+
   } finally {c.release();globalThis.fetch=old;}
+});
+
+
+test('named window presets use native array values and an explicit target pane', async () => {
+  const f=await readingFixture(); let range, effects=0;
+  f.services.customizationService={getCustomization:()=>({CT:[{id:'ct-brain',description:'Brain',window:'80',level:'40'},{id:'ct-soft-tissue',description:'Soft tissue',window:'400',level:'40'}]})};
+  f.pane.getProperties=()=>({voiRange:range});
+  f.managers.commandsManager.runCommand=(name,args)=>{
+    assert.equal(name,'setViewportWindowLevel'); assert.equal(args.viewportId,'native-a'); effects++;
+    range={lower:args.windowCenter-0.5-(args.windowWidth-1)/2,upper:args.windowCenter-0.5+(args.windowWidth-1)/2};
+  };
+  const brain=await f.adapter.execute('viewer_set_window_level',{preset:'brain'});
+  assert.equal(brain.state.windowWidth,80);assert.equal(brain.state.windowCenter,40);
+  const soft=await f.adapter.execute('viewer_set_window_level',{preset:'soft_tissue'});assert.equal(soft.state.windowWidth,400);
+  await assert.rejects(f.adapter.execute('viewer_set_window_level',{preset:'abdomen'}),{name:'Error',message:/preset is unavailable/});
+  assert.equal(effects,2,'Unavailable presets must fail before changing the viewer');
+});
+
+test('slice jumps name their pane and wait for deferred active-pane selection', async () => {
+  const f=await readingFixture();f.displays[1].StudyInstanceUID=f.displays[0].StudyInstanceUID;
+  let active='native-a', targetIndex=0;
+  const target={...f.pane,id:'native-b',getCurrentImageIdIndex:()=>targetIndex};
+  f.services.cornerstoneViewportService.getCornerstoneViewport=id=>id==='native-b'?target:f.pane;
+  f.services.viewportGridService.getActiveViewportId=()=>active;
+  f.services.viewportGridService.setActiveViewportId=id=>{setTimeout(()=>active=id,5);};
+  const id=f.adapter.context().state.viewports[1].id;
+  f.managers.commandsManager.runCommand=(name,args)=>{
+    assert.equal(name,'jumpToImage');assert.equal(active,'native-b');
+    assert.deepEqual(args.viewport,{id:'native-b'});targetIndex=args.imageIndex;
+  };
+  const result=await f.adapter.execute('viewer_jump_to_slice',{viewportId:id,index:15});
+  assert.equal(result.state.index,15);assert.equal(f.pane.getCurrentImageIdIndex(),0);
 });
