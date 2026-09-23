@@ -300,6 +300,8 @@ class ResearchTools:
 
 
 def validate_research_model(provider: str, model: str):
+    if provider == "codex" and isinstance(model, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", model):
+        return
     if provider == "gemini" and model == MODEL:
         return
     if provider == "nvidia_nim" and isinstance(model,str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}/[A-Za-z0-9][A-Za-z0-9._-]{0,159}",model):

@@ -50,3 +50,5 @@ The evidence-review CLI tests exercise real private artifacts and mocked capture
 - Research observability regressions cover actual graph model-wait/tool stages, fixed private timeout frames, persisted broker progress, recorded provider/model history and no late progress after terminal completion. Adapt supervisor fixtures to the optional `on_progress` callback without contacting hosted models.
 
 - `test_ai_text.py` verifies chat/research without Realtime keys, native text adapter input, public research isolation, owner/Origin/private-error gates, idempotency, cancellation before execution and context invalidation. Use synthetic keys/workers; never let tests read owner `.env.ai`.
+
+- `test_ai_codex.py` uses synthetic App Server frames/factories to cover isolated account login, model selection, subscription chat/research, receipts, tool budgets, cancellation, private HTTP gates and model drift. It must not read real Codex credentials or initiate real sign-in. Native signed-out protocol checks and user-completed subscription inference are separate acceptance evidence.

@@ -673,6 +673,7 @@ async function startRuntime() {
     RADSYSX_DICOMWEB_PUBLIC_BASE_URL:
       process.env.RADSYSX_DICOMWEB_PUBLIC_BASE_URL ?? "/dicom-web",
     RADSYSX_LOCAL_IMAGING_ENABLED: process.env.RADSYSX_LOCAL_IMAGING_ENABLED ?? "true",
+    RADSYSX_CODEX_ENABLED: process.env.RADSYSX_CODEX_ENABLED ?? "true",
     RADSYSX_LOCAL_IMAGING_STORAGE_DIR:
       process.env.RADSYSX_LOCAL_IMAGING_STORAGE_DIR ??
       path.join(workspaceRoot, "backend", "local-imaging-data"),

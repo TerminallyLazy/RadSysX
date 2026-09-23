@@ -47,6 +47,9 @@ class TextService:
             context = clean_context(request.viewer_context)
             if context.get("privacyClass") == "phi-bearing":
                 raise HTTPException(403, "Patient-bearing context is not supported in this release.")
+            if self.live.config_for(actor).research_provider == "codex":
+                await self.live.codex.status(actor)
+                self.live.require_research_settings(actor)
             try:
                 provider, _, model = self.live.config_for(actor).research_configuration()
             except ValueError:
@@ -129,7 +132,12 @@ class TextService:
                 query = "Public literature question: " + query + "\nNo image pixels were shared. Neutral viewer metadata: " + json.dumps({k: v for k, v in metadata.items() if k in {"modality", "imageCount"}})
             remaining = (parse_iso_z(actor.expires_at) - utc_now()).total_seconds()
             async with asyncio.timeout(max(0.01, min(120, remaining))):
-                result = await worker.run(query, on_progress=progress)
+                if provider == "codex":
+                    result = await self.live.codex.run(actor, model, query, research=tool["name"] == "research_run",
+                        context=metadata if tool["name"] == "text_chat" else None,
+                        history=self.chat_history(sid, actor) if tool["name"] == "text_chat" else None, on_progress=progress)
+                else:
+                    result = await worker.run(query, on_progress=progress)
             check()
             if tool["name"] == "text_chat" and result.get("error"):
                 result["summary"] = "The text request timed out." if result["error"] == "research_timeout" else "The selected text model could not complete this request."

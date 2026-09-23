@@ -46,3 +46,5 @@
 - Research presentation checks distinguish model waiting, PubMed search and terminal timeout/cancellation; recorded model identity must remain unknown when absent. Ending-session tests require backend terminal receipts or explicit unconfirmed status, never a stale running card.
 
 - Text-controller regressions prove Send/Research without voice or audio allocation, preserved draft/operation identity on uncertain submission, and stale polling rejection after End. Keep these separate from actual hosted-model acceptance.
+
+- `test-subscription.mjs` covers official OAuth-link validation, signed-in receipt handling, sign-out and stale polling responses. `test:live` includes it; shared compile checks include AICodexAccount. Synthetic account fixtures are not proof of subscription inference.

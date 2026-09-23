@@ -421,7 +421,7 @@ export type AISidebarSessionResponse = {
   attestation: "synthetic" | "deidentified" | null;
   viewerContext: AISidebarViewerContext | null;
   modelId: string;
-  providerId: "gemini" | "openai" | "nvidia_nim";
+  providerId: "gemini" | "openai" | "nvidia_nim" | "codex";
   inputSampleRate: 16000 | 24000 | null;
   outputSampleRate: 24000 | null;
 };
@@ -564,7 +564,8 @@ export type ClinicalPlatformConfig = {
   aiAllowActive: boolean;
 };
 
-export type ResearchProviderId = 'gemini' | 'nvidia_nim';
+export type ResearchProviderId = 'gemini' | 'nvidia_nim' | 'codex';
+export type AICodexAccount = { available: boolean; signedIn: boolean; email: string | null; plan: string | null; loginState: string; credentialStorage: 'keyring' };
 export type AIResearchSettings = { providerId: ResearchProviderId; modelId: string; source: 'saved' | 'environment'; providers: { id: ResearchProviderId; label: string; configured: boolean }[] };
 export type AIResearchModels = { providerId: ResearchProviderId; models: string[]; capabilitiesVerified: boolean };
 

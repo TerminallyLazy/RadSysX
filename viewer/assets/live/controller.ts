@@ -1,4 +1,5 @@
 import { EvidenceController } from './evidence.js';
+import { SubscriptionController } from './subscription.js';
 import type { EvidenceReviewAvailability } from './protocol.js';
 import { LiveAudio } from './audio.js';
 import { OHIFAdapter } from './ohif.js';
@@ -6,6 +7,10 @@ import { EventGate, TranscriptStore, object, parseEvent, request, safeUrl, toolF
 
 export class LiveController {
   readonly evidence = new EvidenceController(() => this.emit());
+  readonly subscription = new SubscriptionController(() => this.emit(), async () => {
+    this.evidence.dispose(); this.requireAttestation();
+    await this.end(); this.session = undefined; this.activeProvider = undefined;
+  }, async () => { await this.loadResearchSettings(); });
   evidenceAvailability?: EvidenceReviewAvailability;
   get evidenceSessionId(): string | undefined { return this.historical ? this.viewedHistoryId : this.session?.sessionId; }
   status = 'loading';
@@ -552,7 +557,7 @@ export class LiveController {
     try {
       const settings = await request<AIResearchSettings>('/api/ai/sidebar/research-settings');
       if (epoch !== this.researchEpoch) return;
-      if (!['gemini', 'nvidia_nim'].includes(settings.providerId) || !Array.isArray(settings.providers)) throw new Error();
+      if (!['gemini', 'nvidia_nim', 'codex'].includes(settings.providerId) || !Array.isArray(settings.providers)) throw new Error();
       this.researchSettings = settings;
       this.researchProviderId = settings.providerId; this.researchModelId = settings.modelId;
       await this.loadResearchModels();
@@ -600,8 +605,10 @@ export class LiveController {
   async showCredentials(): Promise<void> {
     this.credentialsOpen = true; this.emit();
     await Promise.all([this.loadCredentials(), this.loadResearchSettings()]);
+    await this.subscription.refresh();
   }
   closeCredentials(): void {
+    this.subscription.stop();
     this.credentialsOpen = false; this.credentialInputEpoch += 1; this.emit();
   }
   async loadCredentials(): Promise<void> {
@@ -684,6 +691,7 @@ export class LiveController {
   private failMessage(error: unknown): void { this.message = error instanceof Error ? error.message : 'The assistant is unavailable.'; }
   private fail(error: unknown): void { this.failMessage(error); this.status = 'unavailable'; this.audio.close(); this.emit(); }
   dispose(): void {
+    this.subscription.stop();
     clearTimeout(this.textPollTimer); this.textBusy = false; this.pendingText = undefined;
     this.evidence.dispose();
     this.credentialInputEpoch += 1; this.emit();

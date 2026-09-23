@@ -237,6 +237,18 @@ export function createClinicalApi(options?: ClinicalApiOptions) {
       return requestJson("/api/ai/sidebar/research-settings", { cache: "no-store" }, options);
     },
 
+    getAICodexAccount(): Promise<import("./contracts").AICodexAccount> {
+      return requestAIText("/api/ai/sidebar/codex/account", { method: "GET" }, options);
+    },
+
+    startAICodexLogin(): Promise<{ authUrl: string }> {
+      return requestAIText("/api/ai/sidebar/codex/login", { method: "POST", body: "{}" }, options);
+    },
+
+    signOutAICodex(): Promise<import("./contracts").AICodexAccount> {
+      return requestAIText("/api/ai/sidebar/codex/logout", { method: "POST", body: "{}" }, options);
+    },
+
     getAIResearchModels(providerId: ResearchProviderId, refresh = false): Promise<AIResearchModels> {
       return requestJson(`/api/ai/sidebar/research-settings/models/${encodeURIComponent(providerId)}${refresh ? '?refresh=true' : ''}`, { cache: "no-store" }, options);
     },

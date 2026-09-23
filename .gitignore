@@ -73,6 +73,7 @@ npm-debug.log*
 .env.ai
 .ai-secrets/
 .ai-evidence/
+.ai-codex/
 # Other environment files
 .env*
 

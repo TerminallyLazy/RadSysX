@@ -128,7 +128,7 @@ function venvPythonPath() {
 
 function checkNodeDependencies() {
   try {
-    for (const [workspace, dependency] of [["desktop", "electron"], ["frontend", "next"], ["viewer", "@ohif/app"]]) {
+    for (const [workspace, dependency] of [["desktop", "electron"], ["desktop", "@openai/codex"], ["frontend", "next"], ["viewer", "@ohif/app"]]) {
       const workspaceRequire = createRequire(path.join(workspaceRoot, workspace, "package.json"));
       workspaceRequire.resolve(`${dependency}/package.json`);
     }

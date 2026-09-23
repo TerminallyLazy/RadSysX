@@ -49,6 +49,8 @@ class AISettings:
         self.typesafe_api_key = SecretStr(setting("RADSYSX_TYPESAFE_AI_API_KEY")
             if self.enabled and app_mode in {"research", "pilot"} else "")
         self.evidence_dir = setting("RADSYSX_AI_EVIDENCE_DIR")
+        self.codex_enabled = setting("RADSYSX_CODEX_ENABLED", "false").lower() in {"1", "true", "yes"}
+        self.codex_ready = False
         self.voice = setting("RADSYSX_GEMINI_VOICE", "Puck")
 
     def research_configuration(self):
@@ -56,6 +58,9 @@ class AISettings:
         if not self.enabled or self.app_mode not in {"research", "pilot"}:
             raise ValueError("Research disabled")
         validate_research_model(self.research_provider, self.research_model)
+        if self.research_provider == "codex":
+            if not self.codex_enabled or not self.codex_ready: raise ValueError("ChatGPT sign-in required")
+            return "codex", "", self.research_model
         key = self.nvidia_api_key if self.research_provider == "nvidia_nim" else self.api_key
         if not key or self.research_provider in self.credential_errors:
             raise ValueError("Research credential unavailable")

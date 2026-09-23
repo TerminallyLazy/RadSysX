@@ -521,6 +521,7 @@ async def clinical_auth_logout(response: Response, request: Request) -> SessionR
     actor = _optional_session(request)
     if actor:
         await ai_live_service.stop_owner(actor)
+        await ai_live_service.codex.disconnect(actor)
     _clear_session_cookie(response)
     return SessionResponse(authenticated=False, session=None)
 

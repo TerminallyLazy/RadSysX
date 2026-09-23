@@ -430,20 +430,29 @@ class AICredentialStatusResponse(ClinicalModel):
 
 
 class AIResearchProvider(ClinicalModel):
-    id: Literal["gemini", "nvidia_nim"]
+    id: Literal["gemini", "nvidia_nim", "codex"]
     label: str
     configured: bool
 
 
+class AICodexAccount(ClinicalModel):
+    available: bool
+    signed_in: bool = Field(alias="signedIn")
+    email: str | None
+    plan: str | None
+    login_state: str = Field(alias="loginState")
+    credential_storage: Literal["keyring"] = Field(alias="credentialStorage")
+
+
 class AIResearchSettings(ClinicalModel):
-    provider_id: Literal["gemini", "nvidia_nim"] = Field(alias="providerId")
+    provider_id: Literal["gemini", "nvidia_nim", "codex"] = Field(alias="providerId")
     model_id: str = Field(alias="modelId")
     source: Literal["saved", "environment"]
     providers: list[AIResearchProvider]
 
 
 class AIResearchModels(ClinicalModel):
-    provider_id: Literal["gemini", "nvidia_nim"] = Field(alias="providerId")
+    provider_id: Literal["gemini", "nvidia_nim", "codex"] = Field(alias="providerId")
     models: list[str]
     capabilities_verified: bool = Field(default=False, alias="capabilitiesVerified")
 
@@ -490,7 +499,7 @@ class AISidebarSessionResponse(ClinicalModel):
     attestation: Literal["synthetic", "deidentified"] | None = None
     viewer_context: AISidebarViewerContext | None = Field(default=None, alias="viewerContext")
     model_id: str = Field(default="gemini-3.8-live-extended-thinking", alias="modelId")
-    provider_id: Literal["gemini", "openai", "nvidia_nim"] = Field(default="gemini", alias="providerId")
+    provider_id: Literal["gemini", "openai", "nvidia_nim", "codex"] = Field(default="gemini", alias="providerId")
     input_sample_rate: Literal[16000, 24000] | None = Field(default=16000, alias="inputSampleRate")
     output_sample_rate: Literal[24000] | None = Field(default=24000, alias="outputSampleRate")
 
