@@ -318,7 +318,9 @@ class ExplorationService:
         if not task or task.closing: return await self.snapshot(task_id,actor)
         task.closing=True
         task.snapshot.status=status; task.snapshot.grant.status='revoked'
-        task.snapshot.activity='Viewer control changed. Review paused.' if status=='paused' else 'Review stopped.'
+        uncertain_action=any(action['status']=='outcome_unknown' for action in task.snapshot.actions)
+        task.snapshot.activity=('A viewer action could not be confirmed. Review paused; inspect viewer activity before retrying.' if uncertain_action
+            else 'Viewer control changed. Review paused.') if status=='paused' else 'Review stopped.'
         self.live.actions.release_viewer(actor,task.snapshot.grant.grant_id)
         for key,op in task.operations.items():
             if not op.future.done():

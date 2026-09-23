@@ -149,3 +149,5 @@
 
 - Series-scoped capture can coexist with adjacent unshared panes: main captures only explicitly permitted study/series panes and rejects an unshared requested pane. Whole-view overview still requires every visible pane to match its scope. Sensitive-panel, epoch, revision, ownership and before/after surface checks remain mandatory.
 - The scoped synthetic smoke drives the Research tab through an eight-frame partial answer and the visible remaining-frames action, verifies 34/34 cumulative delivery and preserved draft, then proves whole-view and active-viewport scope counts remain distinct. The real subscription smoke additionally requires a successful public PubMed receipt and source alongside synthetic-pixel delivery and native actions; this is separate from clinical accuracy.
+
+- Combining --study-inventory with the synthetic --study-exploration smoke additionally exercises a two-pane layout: select the first pane, jump the second to frame index 15, apply the native brain preset at width 80/center 40, and verify the first pane did not scroll. This tests the real OHIF adapter without hosted inference or patient images.
