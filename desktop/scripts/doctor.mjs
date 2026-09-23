@@ -95,14 +95,28 @@ function checkAiConfiguration() {
   const inspection = spawnSync(pythonPath, ["-c", [
     "import json, os",
     "from backend.clinical.ai_config import AISettings",
-    "print(json.dumps(AISettings(os.environ.get('RADSYSX_APP_MODE', 'pilot')).profiles()))",
+    "from backend.clinical.config import read_app_mode",
+    "os.environ.setdefault('RADSYSX_APP_MODE', 'pilot')",
+    "config = AISettings(read_app_mode())",
+    "research = None",
+    "try:",
+    "    provider, _, model = config.research_configuration()",
+    "    research = {'provider': provider, 'model': model}",
+    "except ValueError: pass",
+    "print(json.dumps({'profiles': config.profiles(), 'research': research, 'nvidia': bool(config.nvidia_api_key) and config.enabled and config.app_mode in {'research', 'pilot'}, 'jev': bool(config.typesafe_api_key.get_secret_value())}))",
   ].join("\n")], { cwd: workspaceRoot, encoding: "utf8" });
   try {
-    const profiles = JSON.parse(inspection.stdout);
-    for (const profile of profiles) {
+    const configuration = JSON.parse(inspection.stdout);
+    for (const profile of configuration.profiles) {
       if (profile.availability === "configured") pass(`App-level ${profile.label} key is configured. Personal saved keys, provider connectivity and model access are not checked.`);
       else warn(`App-level ${profile.label} configuration is ${profile.availability}.`, `${profile.reason} Personal keys can be managed in the sidebar's API keys settings; doctor does not inspect signed-in accounts.`);
     }
+    if (configuration.research) pass(`App-level DeepAgents/LangGraph research default: ${configuration.research.provider} / ${configuration.research.model}. Saved account settings may override this; no research request was executed.`);
+    else warn("App-level research default is unavailable.", "Configure the selected provider/model in .env.ai or Settings → Research models. No fallback is selected automatically.");
+    if (configuration.nvidia) pass("App-level NVIDIA NIM key is configured. Catalog/model access requires a live request.");
+    else warn("App-level NVIDIA NIM is unavailable.", "Research/pilot requires RADSYSX_NVIDIA_API_KEY in backend-only .env.ai.");
+    if (configuration.jev) pass("Jev evidence review is configured. It runs only after an explicit public/synthetic preview confirmation; no review was executed.");
+    else warn("Jev evidence review is unavailable.", "Research/pilot requires RADSYSX_TYPESAFE_AI_API_KEY in backend-only .env.ai.");
   } catch { warn("AI configuration could not be inspected.", "Check backend AI dependencies with npm run desktop:bootstrap."); }
 }
 

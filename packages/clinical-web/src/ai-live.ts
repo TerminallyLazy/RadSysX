@@ -6,6 +6,7 @@ export type AILiveTool = {
   toolCallId: string; name: string; args: Record<string, unknown>;
   status: AILiveToolStatus; requiresApproval: boolean; contextVersion: number;
   result?: Record<string, unknown> | null;
+  research?: { providerId: string; modelId: string; recordedAt: string };
 };
 type Envelope = { sessionId: string; sequence: number; contextVersion: number; interactionId?: string };
 export type AILiveEvent = Envelope & (
@@ -15,6 +16,7 @@ export type AILiveEvent = Envelope & (
   | { kind: "interrupted" }
   | { kind: "audio_chunk"; itemId: string; contentIndex: number }
   | { kind: "screen_status"; active: boolean; frameReceived: boolean }
+  | { kind: "research_progress"; toolCallId: string; stage: string }
   | ({ kind: "tool" } & AILiveTool)
   | { kind: "viewer_action"; toolCallId: string; name: string; args: Record<string, unknown> }
   | { kind: "citations"; sources: AILiveSource[]; suggestionsHtml?: string }

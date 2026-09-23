@@ -300,7 +300,7 @@ def test_live_transport_and_research_receive_owner_keys_not_global_defaults(live
             class Research:
                 def __init__(self, **kwargs):
                     captured.append(kwargs)
-                async def run(self, query):
+                async def run(self, query, on_progress=None):
                     return {"summary": "Synthetic result", "sources": []}
             monkeypatch.setattr("backend.clinical.ai_research.ResearchSupervisor", Research)
             await runtime.schedule_tool(call("research_run", query="Public synthetic topic"))
@@ -335,7 +335,7 @@ def test_changing_key_stops_only_owner_jobs_before_mutation_and_blocks_new_use(l
         class Research:
             def __init__(self, **kwargs):
                 pass
-            async def run(self, query):
+            async def run(self, query, on_progress=None):
                 running.append(query)
                 try:
                     await asyncio.Event().wait()
@@ -424,7 +424,7 @@ def test_nim_research_dispatch_keeps_personal_google_key_separate(live,monkeypat
         captured=[]
         class Research:
             def __init__(self,**kwargs): captured.append(kwargs)
-            async def run(self,query): return {'summary':'Synthetic result','sources':[]}
+            async def run(self,query,on_progress=None): return {'summary':'Synthetic result','sources':[]}
         monkeypatch.setattr('backend.clinical.ai_research.ResearchSupervisor',Research)
         runtime=runtime_for(live)
         try:

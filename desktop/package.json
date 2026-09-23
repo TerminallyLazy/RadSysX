@@ -9,7 +9,7 @@
     "dev": "electron --no-sandbox .",
     "dev:frontend": "node ./scripts/dev-frontend.mjs",
     "doctor": "node ./scripts/doctor.mjs",
-    "test:live": "node --test ./tests/live-capture.test.mjs",
+    "test:live": "node --test ./tests/live-capture.test.mjs ./tests/npm-environment.test.mjs",
     "smoke:ai-live": "node ./scripts/ai-live-smoke.mjs",
     "smoke:ai-viewer": "node ./scripts/ui-import-smoke.mjs --local-start --ai-live",
     "launch": "node ./scripts/launch.mjs",

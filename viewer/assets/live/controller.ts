@@ -69,6 +69,9 @@ export class LiveController {
   private syncedState = '';
   private stateSync: Promise<void> = Promise.resolve();
   private closed = false;
+  textBusy = false;
+  private textPollTimer?: ReturnType<typeof setTimeout>;
+  private pendingText?: { sessionId: string; idempotencyKey: string; action: 'chat' | 'research'; text: string; contextVersion: number };
   private authTimer: ReturnType<typeof setInterval>;
 
   constructor(readonly adapter: OHIFAdapter, private browser: Window = window) {
@@ -142,6 +145,13 @@ export class LiveController {
       if (!this.providers.length) this.providers = [{ id: 'gemini', label: 'Gemini', modelId: String(capabilities.modelId ?? this.model), availability: capabilities.availability === 'configured' ? 'configured' : 'unavailable', reason: String(capabilities.reason ?? 'Configure the backend Gemini key to enable live conversation.'), inputSampleRate: 16000, outputSampleRate: 24000, screen: true, tools: true }];
       if (!this.providers.some(profile => profile.id === this.providerId)) this.providerId = capabilities.defaultProviderId === 'openai' ? 'openai' : 'gemini';
       this.applyProviderSelection();
+      // Text configuration is independent of voice availability and does not load a model catalog.
+      try {
+        if (!this.researchSettings && !this.credentialsBusy) {
+          const settings = await request<AIResearchSettings>('/api/ai/sidebar/research-settings');
+          if (Array.isArray(settings.providers)) this.researchSettings = settings;
+        }
+      } catch { /* Sending reports authoritative configuration errors; voice can still work. */ }
     } catch (error) { this.fail(error); }
     finally { this.initializing = false; }
     this.targetId = this.adapter.context().targetId;
@@ -176,6 +186,7 @@ export class LiveController {
   async connect(attestation?: Attestation): Promise<void> {
     if (this.credentialsBusy || ['connecting', 'ready', 'reconnecting'].includes(this.status)) return;
     if (!attestation) { this.message = 'Confirm that the displayed image is synthetic or deidentified.'; this.emit(); return; }
+    if (this.session?.mode === 'text' && !this.closed) await this.end();
     if (this.availability !== 'configured') { await this.initialize(); if (this.availability !== 'configured') return; }
     this.closed = false; this.interaction = 'IDLE'; this.status = 'connecting'; this.message = `Connecting ${this.provider?.label ?? 'AI'}…`; this.emit();
     const generation = ++this.generation;
@@ -284,7 +295,12 @@ export class LiveController {
       }
       case 'tool': {
         const id = String(event.toolCallId);
-        this.tools.set(id, toolFromWire(event));
+        this.tools.set(id, { ...toolFromWire(event), progress: this.tools.get(id)?.progress });
+        break;
+      }
+      case 'research_progress': {
+        const tool = this.tools.get(String(event.toolCallId));
+        if (tool?.name === 'research_run' && tool.status === 'running') tool.progress = String(event.stage);
         break;
       }
       case 'viewer_action': {
@@ -318,10 +334,10 @@ export class LiveController {
   send(event: Json): void {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ ...event, contextVersion: this.contextVersion }));
   }
-  async sendText(): Promise<void> {
+  async sendText(attestation?: Attestation): Promise<void> {
     const draft = this.draft.trim();
     if (!draft && !this.selected.size) return;
-    if (!this.ready) { this.message = 'Your draft is kept here. Connect to send it.'; this.emit(); return; }
+    if (!this.ready) { await this.sendTyped('chat', attestation); return; }
     const context = this.adapter.context();
     if (context.targetId !== this.targetId) { await this.refreshContext(); return; }
     try { await this.syncState(); } catch (error) { this.failMessage(error); this.emit(); return; }
@@ -329,6 +345,74 @@ export class LiveController {
     const attachments = this.adapter.attachments().filter(item => this.selected.has(item.id));
     const suffix = attachments.length ? '\nSelected viewer context: ' + JSON.stringify(attachments.map(item => item.summary)) : '';
     this.suppressOutput = false; this.send({ kind: 'text', text: draft + suffix }); this.draft = ''; this.selected.clear(); this.emit();
+  }
+  async research(attestation?: Attestation): Promise<void> { await this.sendTyped('research', attestation); }
+  private async sendTyped(action: 'chat' | 'research', confirmation?: Attestation): Promise<void> {
+    const text = this.draft.trim();
+    if (!text || this.textBusy || this.credentialsBusy) return;
+    if (this.initializing) { this.message = 'Checking assistant settings; your draft is kept.'; this.emit(); return; }
+    if (['connecting', 'reconnecting'].includes(this.status)) { this.message = 'End the connecting voice session to use text independently.'; this.emit(); return; }
+    const attestation = confirmation ?? this.attestation;
+    if (!attestation) { this.message = 'Confirm synthetic or deidentified data above, then send. Voice is optional; your draft is kept.'; this.emit(); return; }
+    if (text.length > (action === 'research' ? 1700 : 2000)) { this.message = `Keep this ${action} question under ${action === 'research' ? 1700 : 2000} characters.`; this.emit(); return; }
+    if (this.selected.size) { this.message = 'Remove @ attachments before text-only requests. These use your question and neutral case/series metadata; no image pixels.'; this.emit(); return; }
+    if (this.pendingText && (this.pendingText.text !== text || this.pendingText.action !== action)) { this.message = 'A previous send is unconfirmed. Restore that question and retry, or end the conversation before sending a different request.'; this.emit(); return; }
+    if (this.session && !this.closed && this.adapter.context().targetId !== this.targetId) { await this.refreshContext(); return; }
+    if (this.historical || (this.session?.mode !== 'text' && !this.ready && !this.closed)) await this.end();
+    this.textBusy = true; this.message = action === 'research' ? 'Starting literature research…' : 'Sending to the text model…'; this.emit();
+    const generation = this.generation;
+    try {
+      if (!this.ready && (!this.session || this.closed || this.historical)) {
+        const context = this.adapter.context();
+        const session = await request<Session>('/api/ai/sidebar/text-sessions', { viewerContext: context, attestation });
+        if (generation !== this.generation || context.targetId !== this.adapter.context().targetId) { void request(this.base(session.sessionId) + '/close', {}); if (generation === this.generation) this.textBusy = false; return; }
+        this.session = session; this.contextVersion = session.contextVersion; this.targetId = context.targetId;
+        this.attestation = attestation; this.closed = false; this.status = 'text_ready'; this.recoverySessionId = undefined;
+        this.syncedState = JSON.stringify(context.state); this.transcript = new TranscriptStore(); this.tools.clear(); this.citations = [];
+        this.historical = false; this.viewedHistoryId = undefined; this.historyOpen = false;
+      }
+      await this.syncState();
+      if (generation !== this.generation || !this.session || this.closed) return;
+      const pending = this.pendingText ?? { sessionId: this.session.sessionId, idempotencyKey: crypto.randomUUID(), action, text, contextVersion: this.contextVersion };
+      this.pendingText = pending;
+      const { sessionId, ...payload } = pending;
+      const tool = await request<Json>(this.base(sessionId) + '/text-turns', payload);
+      if (generation !== this.generation) return;
+      this.pendingText = undefined;
+      if (this.draft.trim() === text) this.draft = '';
+      this.tools.set(String(tool.toolCallId), toolFromWire(tool));
+      this.message = action === 'research' ? 'Research started. Follow its progress below.' : 'Text request started · no image shared.';
+      if (this.session.mode === 'text') {
+        void this.pollText(sessionId, String(tool.toolCallId), generation, Date.now());
+      } else this.textBusy = false; // Live socket carries the explicitly requested research receipts.
+    } catch (error) {
+      if (generation === this.generation) {
+        this.textBusy = false; this.failMessage(error);
+        if (this.pendingText) this.message += ' Send was not confirmed. Retry the same question to check it safely, or end the conversation.';
+      }
+    }
+    this.emit();
+  }
+  private async pollText(id: string, toolId: string, generation: number, started: number, failures = 0): Promise<void> {
+    const current = () => generation === this.generation && !this.closed && !this.historical && this.session?.sessionId === id;
+    if (!current()) return;
+    try {
+      const history = await request<SavedConversation>(this.base(id));
+      if (!current()) return;
+      this.restoreConversation(history); failures = 0;
+      const tool = this.tools.get(toolId);
+      if (tool && !['pending', 'running'].includes(tool.status)) {
+        this.textBusy = false;
+        this.message = tool.status === 'completed' ? 'Ready for your next question · text only · no image shared.' : `Request ${tool.status}. Review the task details below.`;
+        this.emit(); return;
+      }
+    } catch { failures++; }
+    if (!current()) return;
+    if (Date.now() - started > 135000) {
+      this.textBusy = false; this.message = 'Task status is unconfirmed. Open saved research to refresh, or end this conversation.'; this.emit(); return;
+    }
+    this.emit();
+    this.textPollTimer = setTimeout(() => void this.pollText(id, toolId, generation, started, failures), Math.min(1000 * 2 ** failures, 4000));
   }
   async toggleMicrophone(): Promise<void> {
     if (this.audio.listening) { this.audio.stopInput(); this.send({ kind: 'audio_end' }); this.updateMediaMessage(); this.emit(); return; }
@@ -385,7 +469,7 @@ export class LiveController {
   async refreshContext(): Promise<void> {
     const context = this.adapter.context();
     if (context.targetId === this.targetId) {
-      if (this.ready) try { await this.syncState(); } catch (error) { this.failMessage(error); }
+      if (this.ready || (this.session?.mode === 'text' && !this.closed)) try { await this.syncState(); } catch (error) { this.failMessage(error); }
       this.emit(); return;
     }
     this.recoverySessionId = undefined; this.interaction = 'IDLE'; this.targetId = context.targetId; this.selected.clear(); this.requireAttestation();
@@ -393,22 +477,23 @@ export class LiveController {
     if (this.session && !this.closed) {
       const old = this.session;
       this.closed = true; this.generation += 1; this.socket?.close(); clearTimeout(this.reconnectTimer);
+      clearTimeout(this.textPollTimer); this.textBusy = false; this.pendingText = undefined;
       try { this.session = await request<Session>(this.base(old.sessionId) + '/context', { contextVersion: this.contextVersion, viewerContext: context }); this.contextVersion = this.session.contextVersion; }
       catch { /* Reconnection allocates a clean session after fresh attestation. */ }
-      this.status = 'disconnected'; this.message = 'Image changed. Confirm the new displayed data to reconnect.';
+      this.status = 'disconnected'; this.message = 'Image changed. Confirm the new displayed data before sending or connecting voice.';
     }
     this.emit();
   }
   private async syncState(): Promise<void> {
     const work = this.stateSync.catch(() => {}).then(async () => {
-      if (!this.session || !this.ready) return;
+      if (!this.session || this.closed || (!this.ready && this.session.mode !== 'text')) return;
       const context = this.adapter.context();
       const signature = JSON.stringify(context.state);
       if (context.targetId !== this.targetId || signature === this.syncedState) return;
       const generation = this.generation;
       const session = await request<Session>(this.base() + '/context', { contextVersion: this.contextVersion, viewerContext: context });
       if (generation !== this.generation || context.targetId !== this.targetId) return;
-      this.sessionProfile(session);
+      if (session.mode !== 'text') this.sessionProfile(session);
       this.session = session; this.contextVersion = session.contextVersion;
       if (this.gate) this.gate.contextVersion = session.contextVersion;
       this.syncedState = signature;
@@ -433,7 +518,7 @@ export class LiveController {
   async readHistory(id: string): Promise<void> {
     try {
       // A historic transcript must never merge with audio from a live conversation.
-      if (this.ready || this.status === 'connecting' || this.status === 'reconnecting') await this.end();
+      if (this.session && !this.closed) await this.end();
       const history = await request<SavedConversation>(this.base(id));
       this.restoreConversation(history);
       this.historyOpen = false; this.historical = true; this.viewedHistoryId = id; this.message = 'Viewing saved conversation. Audio and image frames are not recorded.';
@@ -446,6 +531,10 @@ export class LiveController {
     this.transcript.interrupt(); // A new provider may reuse turn IDs; never merge with interrupted saved speech.
     this.tools.clear();
     for (const entry of (history.tools ?? []).slice(-100)) this.tools.set(String(entry.toolCallId), toolFromWire(entry, true));
+    for (const event of history.events.filter(event => event.kind === 'research_progress')) {
+      const tool = this.tools.get(String(event.toolCallId));
+      if (tool && ['research_run', 'text_chat'].includes(tool.name)) tool.progress = String(event.stage);
+    }
     this.citations = []; this.suggestionsHtml = '';
     const sources = history.events.filter(event => event.kind === 'citations').at(-1);
     if (sources) {
@@ -570,16 +659,32 @@ export class LiveController {
     } catch (error) { this.failMessage(error); this.emit(); }
   }
   async end(): Promise<void> {
+    clearTimeout(this.textPollTimer); this.textBusy = false; this.pendingText = undefined;
     this.credentialInputEpoch += 1; this.emit();
     this.recoverySessionId = undefined;
     this.closed = true; this.interaction = 'IDLE'; this.generation += 1; clearTimeout(this.reconnectTimer);
     this.audio.close(); this.stopSpeaking(); await this.stopSharing(); this.socket?.close(); this.socket = undefined;
-    if (this.session) try { await request(this.base() + '/close', {}); } catch {}
-    this.status = 'disconnected'; this.message = 'Session ended. Conversation history is saved locally.'; this.emit();
+    const sessionId = this.session?.sessionId, generation = this.generation;
+    let receiptsRefreshed = true;
+    if (sessionId) try {
+      await request(this.base(sessionId) + '/close', {});
+      const history = await request<SavedConversation>(this.base(sessionId));
+      if (generation === this.generation && this.session?.sessionId === sessionId) {
+        for (const entry of history.tools ?? []) this.tools.set(String(entry.toolCallId), toolFromWire(entry, true));
+      }
+    } catch {
+      receiptsRefreshed = false;
+      if (generation === this.generation) for (const tool of this.tools.values()) {
+        if (['pending', 'running', 'awaiting_approval'].includes(tool.status)) { tool.status = 'outcome_unknown'; tool.approval = false; }
+      }
+    }
+    if (generation !== this.generation) return;
+    this.status = 'disconnected'; this.message = receiptsRefreshed ? 'Session ended. Conversation history is saved locally.' : 'Connection ended. Task status could not be refreshed; open saved research to check.'; this.emit();
   }
   private failMessage(error: unknown): void { this.message = error instanceof Error ? error.message : 'The assistant is unavailable.'; }
   private fail(error: unknown): void { this.failMessage(error); this.status = 'unavailable'; this.audio.close(); this.emit(); }
   dispose(): void {
+    clearTimeout(this.textPollTimer); this.textBusy = false; this.pendingText = undefined;
     this.evidence.dispose();
     this.credentialInputEpoch += 1; this.emit();
     clearInterval(this.authTimer);

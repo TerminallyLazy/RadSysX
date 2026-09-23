@@ -19,11 +19,12 @@ export type ViewerContext = {
   state: Json;
 };
 export type Session = {
+  mode?: 'voice' | 'text';
   sessionId: string;
-  providerId?: ProviderId;
+  providerId?: ProviderId | 'nvidia_nim';
   modelId?: string;
-  inputSampleRate?: 16000 | 24000;
-  outputSampleRate?: 24000;
+  inputSampleRate?: 16000 | 24000 | null;
+  outputSampleRate?: 24000 | null;
   status: string;
   contextVersion: number;
   liveUrl?: string | null;
@@ -39,7 +40,7 @@ export type ServerEvent = Json & {
   contextVersion: number;
 };
 export type Transcript = { id: string; role: string; text: string; finished: boolean };
-export type Tool = { id: string; name: string; args: Json; status: string; approval: boolean; result?: Json };
+export type Tool = { id: string; name: string; args: Json; status: string; approval: boolean; result?: Json; research?: Json; progress?: string };
 export type Citation = { title: string; url: string };
 export type CaptureRequest = {
   sessionId: string; contextVersion: number; targetId: string; viewportId: string;
@@ -60,6 +61,7 @@ export function toolFromWire(value: Json, historical = false): Tool {
   return { id: String(value.toolCallId), name: String(value.name), args: object(value.args), status: String(value.status),
     approval: !historical && value.requiresApproval === true && value.status === 'awaiting_approval',
     ...(value.result && typeof value.result === 'object' ? { result: object(value.result) } : {}),
+    ...(value.research && typeof value.research === 'object' ? { research: object(value.research) } : {}),
   };
 }
 export function safeUrl(value: unknown): string | null {
@@ -115,7 +117,7 @@ export class TranscriptStore {
 
 export async function request<T>(path: string, body?: unknown, method?: string): Promise<T> {
   const response = await fetch(path, {
-    credentials: 'include', method: method ?? (body === undefined ? 'GET' : 'POST'),
+    credentials: 'include', cache: 'no-store', method: method ?? (body === undefined ? 'GET' : 'POST'),
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
