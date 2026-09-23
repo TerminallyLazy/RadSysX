@@ -9,7 +9,7 @@ import { ImageInputRejected, EventGate, TranscriptStore, object, parseEvent, req
 
 export class LiveController {
   readonly exploration: ExplorationController;
-  shareKind: 'current_image' | 'entire_view' | 'series' = 'series';
+  shareKind: 'off' | 'current_image' | 'entire_view' | 'series' = 'off';
   allowViewerTools = false;
   shareBusy = false;
   sidebarView: 'chat' | 'research' | 'review' = 'chat';
@@ -368,11 +368,11 @@ export class LiveController {
   async research(attestation?: Attestation): Promise<void> { await this.sendTyped('research', attestation); }
   get canAttachView(): boolean { return this.researchSettings?.providerId === 'codex' && !this.ready && !['connecting', 'reconnecting'].includes(this.status); }
   get canShareStudy(): boolean { return this.canAttachView && (this.browser as any).radsysxDesktop?.studyCaptureVersion === 1; }
-  async prepareStudy(confirmation?: Attestation, continuing = false): Promise<void> {
+  async prepareStudy(confirmation?: Attestation, continuing = false, sending = false): Promise<void> {
     const attestation=confirmation??this.attestation;
-    if (!this.canShareStudy || this.textBusy || this.shareBusy) return;
+    if (!this.canShareStudy || (this.textBusy && !sending) || this.shareBusy || this.shareKind === 'off') return;
     if (!attestation) { this.message='Confirm synthetic or deidentified data before sharing.';this.emit();return; }
-    if(this.shareKind==='current_image' && !continuing){await this.exploration.stop();await this.attachCurrentView(attestation);return;}
+    if(this.shareKind==='current_image' && !continuing){await this.exploration.stop();await this.attachCurrentView(attestation,sending);return;}
     this.shareBusy=true;this.emit();
     try {
       if(!await this.ensureTextSession(attestation,this.generation))return;
@@ -383,8 +383,9 @@ export class LiveController {
         seriesIds:this.shareKind==='series'?[String(state.seriesId)]:[...new Set(panes.flatMap(p=>p.seriesIds??[]))],allowViewerTools:this.allowViewerTools};
       if(continuing)await this.exploration.continueReview(this.session!.sessionId,this.contextVersion);
       else await this.exploration.prepare(this.session!.sessionId,this.contextVersion,selection);
-      this.message='Scope prepared locally. Send or Research starts the model; Stop removes access.';
-    } catch(error){this.failMessage(error);}finally{this.shareBusy=false;this.emit();}
+      await this.exploration.waitUntilPrepared();
+      this.message='Image scope selected. Images will be captured with your question.';
+    } catch(error){if(sending)throw error;this.failMessage(error);}finally{this.shareBusy=false;this.emit();}
   }
   private clearView(): void { this.viewEpoch++; this.viewAttachment = undefined; this.viewCaptureBusy = false; }
   removeView(): void {
@@ -405,8 +406,8 @@ export class LiveController {
     this.historical = false; this.viewedHistoryId = undefined; this.historyOpen = false;
     return true;
   }
-  async attachCurrentView(confirmation?: Attestation): Promise<void> {
-    if (this.textBusy || this.viewCaptureBusy || this.credentialsBusy || this.pendingText) return;
+  async attachCurrentView(confirmation?: Attestation, sending = false): Promise<void> {
+    if ((this.textBusy && !sending) || this.viewCaptureBusy || this.credentialsBusy || this.pendingText) return;
     await this.exploration.stop();
     const attestation = confirmation ?? this.attestation, bridge = this.captureBridge();
     if (!this.canAttachView) { this.message = 'Choose a ChatGPT / Codex model in Settings to attach a view to text or research.'; this.emit(); return; }
@@ -455,6 +456,12 @@ export class LiveController {
       if (!await this.ensureTextSession(attestation, generation)) { if (generation === this.generation) this.textBusy = false; return; }
       await this.syncState();
       if (generation !== this.generation || !this.session || this.closed) return;
+      if (!this.pendingText && this.canShareStudy && this.shareKind !== 'off' && !this.exploration.prepared) {
+        this.message = 'Capturing the images you selected…'; this.emit();
+        await this.prepareStudy(attestation, false, true);
+        if (generation !== this.generation || this.closed) return;
+        if (this.shareKind === 'current_image' ? !this.viewAttachment : !this.exploration.prepared) throw new Error('Images could not be prepared. Your question has not been sent.');
+      }
       if (!this.pendingText && this.viewAttachment && (this.viewAttachment.revision !== this.viewRevision || this.viewAttachment.signature !== JSON.stringify(this.adapter.context().state) || this.viewAttachment.image.contextVersion !== this.contextVersion || Date.now() - Date.parse(this.viewAttachment.image.capturedAt) > 300000)) {
         this.clearView(); this.textBusy = false; this.message = 'The view changed or the preview expired. Attach the current view again before sending.'; this.emit(); return;
       }
@@ -467,7 +474,7 @@ export class LiveController {
       this.clearView();
       if (this.draft.trim() === text) this.draft = '';
       this.tools.set(String(tool.toolCallId), toolFromWire(tool));
-      this.message = pending.explorationId ? 'Study task started. Frame delivery and native actions appear above.' : pending.image ? 'Request started with one attached view. Follow its progress below.' : action === 'research' ? 'Research started. Follow its progress below.' : 'Text request started · no image shared.';
+      this.message = pending.explorationId ? 'Capturing and delivering your selected images…' : pending.image ? 'Image submitted · waiting for the answer…' : action === 'research' ? 'Searching public literature…' : 'Waiting for the answer · text only.';
       if (this.session.mode === 'text') {
         void this.pollText(sessionId, String(tool.toolCallId), generation, Date.now());
       } else this.textBusy = false; // Live socket carries the explicitly requested research receipts.
@@ -490,7 +497,8 @@ export class LiveController {
       const tool = this.tools.get(toolId);
       if (tool && !['pending', 'running'].includes(tool.status)) {
         this.textBusy = false;
-        this.message = tool.status === 'completed' ? tool.result?.explorationReceipt ? 'Study response ready. Review frame coverage above.' : tool.result?.imageReceipt ? 'Answer ready · one attached view was submitted. Attach again to share another view.' : 'Ready for your next question · no image shared.' : `Request ${tool.status}. Review the task details below.`;
+        const receipt = object(tool.result?.explorationReceipt);
+        this.message = tool.status === 'completed' ? tool.result?.explorationReceipt ? `${Number(receipt.imagesDelivered ?? 0)} images delivered · answer ready.` : tool.result?.imageReceipt ? 'Answer ready · one image submitted.' : 'Answer ready · text only.' : `Request ${tool.status}. Review the task details.`;
         this.emit(); return;
       }
     } catch { failures++; }

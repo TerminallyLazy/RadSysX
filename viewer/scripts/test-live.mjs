@@ -759,7 +759,7 @@ test('Codex view attachment previews locally and sends only with the confirmed q
     assert.equal(requests.some(([url])=>url.endsWith('/text-turns')),false);assert.equal(c.audio.context,undefined);assert.equal(c.ready,false);
     c.draft='Describe the attached synthetic view';await c.sendText('synthetic');await tick();
     const sent=requests.find(([url])=>url.endsWith('/text-turns'))[1];assert.equal(sent.image.data,'YWJj');assert.equal(sent.image.contextVersion,1);
-    assert.equal(c.viewAttachment,undefined);assert.match(c.message,/view was submitted/);
+    assert.equal(c.viewAttachment,undefined);assert.match(c.message,/image submitted/);
     await c.attachCurrentView('synthetic');c.viewAttachment.signature='old';c.draft='Keep my draft';await c.sendText('synthetic');
     assert.equal(c.draft,'Keep my draft');assert.equal(c.viewAttachment,undefined);assert.match(c.message,/view changed/);
     assert.equal(requests.filter(([url])=>url.endsWith('/text-turns')).length,1);

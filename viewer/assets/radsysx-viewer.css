@@ -1064,16 +1064,58 @@ body.radsysx-local-viewer [data-radsysx-local-upload-modal="true"] button:focus-
 .radsysx-view-attachment details[open] { grid-column: 1 / -1; }
 .radsysx-view-attachment summary { cursor: pointer; padding: 0.25rem 0; }
 
-/* Compact study scope and explicit native activity, within the reading-room theme. */
-.radsysx-study-share { font-size: 12px; color: #bbc9d2; margin: 6px 0; }
-.radsysx-study-share summary { cursor: pointer; padding: 6px 0; }
-.radsysx-study-share label { display: grid; gap: 5px; margin: 8px 0; }
-.radsysx-study-share .radsysx-study-permission { display: flex; align-items: center; gap: 8px; }
-.radsysx-study-share p,.radsysx-study-status p { color: #94a9b7; font-size: 12px; line-height: 1.5; }
-.radsysx-study-status { padding: 12px; margin: 8px 0; border: 1px solid #30414c; border-radius: 8px; background: #121e27; }
-.radsysx-study-status strong,.radsysx-study-status>span { display: block; margin-bottom: 5px; }
-.radsysx-study-status>span { font-size: 12px; color: #b8cbd8; font-variant-numeric: tabular-nums; }
-.radsysx-study-actions { display: flex; gap: 8px; }
-.radsysx-study-status details { margin-top: 10px; font-size: 12px; }
+/* Reading-room assistant: conversation first; capture and delivery beside Send. */
+.radsysx-live-shell { background: #12171c; gap: 0; font-weight: 400; }
+.radsysx-live-header { padding: 16px 16px 4px; justify-content: space-between; }
+.radsysx-assistant-title { font-size: 16px; font-weight: 550; letter-spacing: -0.02em; color: #d1d9df; }
+.radsysx-model-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 16px 8px; }
+.radsysx-model-row .radsysx-sidebar-model { margin: 0; color: #9baab6; font-size: 11px; }
+.radsysx-live-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.radsysx-sidebar-tabs { margin: 0 12px 8px; padding: 3px; background: #0d1115; border-color: #303940; border-radius: 7px; }
+.radsysx-sidebar-tabs button { padding: 8px 6px; color: #a6b1ba; }
+.radsysx-sidebar-tabs button[aria-pressed="true"] { background: #29343e; border-color: #46525d; color: #d9e1e7; }
+.radsysx-voice-options { margin: 0 16px 6px; }
+.radsysx-live-shell > .radsysx-live-status { margin: 0 16px 6px; font-size: 11px; color: #a9b8c3; }
+.radsysx-live-shell .radsysx-ai-thread { padding: 12px 16px; gap: 22px; }
+.radsysx-live-shell .radsysx-ai-message { border: 0; border-radius: 0; background: transparent; padding: 0; }
+.radsysx-live-shell .radsysx-ai-message[data-role="user"] { margin-left: 20px; padding: 10px 12px; border-radius: 8px; background: #232c34; }
+.radsysx-live-shell .radsysx-ai-message-role { font-size: 11px; font-weight: 500; color: #a2b2bf; margin-bottom: 5px; }
+.radsysx-live-shell .radsysx-ai-message-body { font-size: 13px; font-weight: 400; line-height: 1.7; color: #c9d2da; }
+.radsysx-live-shell .radsysx-ai-message-body strong { font-weight: 600; color: #d8e0e5; }
+.radsysx-live-shell .radsysx-ai-message-body p:first-child { margin-top: 0; }
+.radsysx-live-shell .radsysx-ai-message-body p:last-child { margin-bottom: 0; }
+.radsysx-live-shell .radsysx-ai-message-body ul { padding-left: 20px; }
+.radsysx-tool-history { margin: 4px 16px 16px; font-size: 11px; color: #acbecb; }
+.radsysx-tool-history > summary { padding: 6px 0; cursor: pointer; }
+.radsysx-tool-history .radsysx-live-tools { padding: 0; }
+.radsysx-tool-history .radsysx-live-tool { border: 0; border-radius: 0; border-top: 1px solid #343e47; background: transparent; padding: 10px 0; margin: 0; }
+.radsysx-live-shell .radsysx-ai-composer { margin: 8px 12px 12px; padding: 12px; gap: 9px; border: 1px solid #414b54; border-radius: 10px; background: #1a2128; box-shadow: none; }
+.radsysx-live-shell .radsysx-ai-attachment-row:empty { display: none; }
+.radsysx-live-shell .radsysx-ai-composer textarea { min-height: 64px; max-height: 144px; border: 0; border-radius: 4px; background: #1a2128; padding: 8px 0; font-size: 13px; color: #d0d9e1; }
+.radsysx-live-shell .radsysx-ai-composer textarea::placeholder { color: #9cabb7; }
+.radsysx-live-shell .radsysx-ai-composer textarea:focus-visible { outline-offset: 4px; }
+.radsysx-data-confirmation { margin: 0; gap: 8px; font-size: 11px; color: #acb9c3; }
+.radsysx-data-confirmation select,.radsysx-study-share select { min-width: 0; background: #11181f; color: #c9d5de; border: 1px solid #455462; border-radius: 5px; padding: 7px; font: inherit; cursor: pointer; }
+.radsysx-study-share { display: grid; gap: 9px; margin: 0; font-size: 12px; color: #c4d0da; }
+.radsysx-image-select { display: flex; align-items: center; gap: 8px; }
+.radsysx-image-select select { flex: 1; font-size: 12px; }
+.radsysx-study-permission { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.radsysx-study-permission input { margin: 3px 0 0; accent-color: #819eb1; width: 14px; height: 14px; }
+.radsysx-study-permission small { display: block; margin-top: 3px; color: #a3b2be; font-size: 11px; }
+.radsysx-live-shell [data-role="disclosure"] { font-size: 11px; color: #a3b2be; margin: 0; line-height: 1.5; }
+.radsysx-live-shell .radsysx-ai-send-button,.radsysx-live-shell [data-action="research"] { min-height: 34px; padding: 0 12px; border: 1px solid #63849a; border-radius: 6px; background: #385569; color: #edf1f4; font-size: 12px; font-weight: 500; }
+.radsysx-live-shell button:active:not(:disabled) { background-color: #2b4252; }
+.radsysx-live-shell [data-action="end-text"] { margin: 0; color: #a3b2be; font-size: 11px; padding: 6px; }
+.radsysx-live-shell [data-role="study-progress"] { margin: 0 16px; max-height: 30%; overflow-y: auto; }
+.radsysx-live-shell [data-role="study-progress"]:empty { display: none; }
+.radsysx-study-status { padding: 10px 0 2px; border-top: 1px solid #343e47; font-size: 12px; }
+.radsysx-study-status-line { display: flex; justify-content: space-between; gap: 8px; line-height: 1.5; }
+.radsysx-study-status-line strong { font-weight: 500; color: #ced9e1; }
+.radsysx-study-status-line span { color: #b5c5d1; font-variant-numeric: tabular-nums; }
+.radsysx-study-status p { color: #a6b5c1; font-size: 11px; line-height: 1.5; margin: 5px 0; }
+.radsysx-study-actions { display: flex; gap: 6px; margin-top: 8px; }
+.radsysx-study-status button { padding: 6px 10px; border: 1px solid #526574; border-radius: 5px; background: #25333e; color: #d5dfe7; font: inherit; cursor: pointer; }
+.radsysx-study-status details { margin-top: 7px; font-size: 11px; color: #acbecb; }
+.radsysx-study-status summary { cursor: pointer; padding: 3px 0; }
 .radsysx-study-proposal { padding-top: 10px; }
 .radsysx-study-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font-size: 11px; }

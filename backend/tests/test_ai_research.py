@@ -349,8 +349,8 @@ def test_pubmed_uses_fixed_endpoints_and_registers_actual_pmids(monkeypatch):
     def handler(request):
         requests.append(request)
         if request.url.path.endswith("esearch.fcgi"):
-            return httpx.Response(200, json={"esearchresult": {"idlist": ["123"]}})
-        return httpx.Response(200, content=b"<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMID><Article><ArticleTitle>Synthetic evidence</ArticleTitle><Journal><JournalIssue><PubDate><Year>2026</Year></PubDate></JournalIssue></Journal><Abstract><AbstractText>Public synthetic abstract.</AbstractText></Abstract></Article></MedlineCitation></PubmedArticle></PubmedArticleSet>")
+            return httpx.Response(200, json={"esearchresult": {"idlist": ["123"], 'count':'42', 'querytranslation':'synthetic imaging[Title/Abstract]'}})
+        return httpx.Response(200, content=b"<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMID><Article><ArticleTitle>Synthetic evidence</ArticleTitle><Journal><Title>Synthetic journal</Title><JournalIssue><PubDate><Year>2026</Year></PubDate></JournalIssue></Journal><Abstract><AbstractText Label='RESULTS'>Public synthetic abstract.</AbstractText></Abstract><PublicationTypeList><PublicationType>Review</PublicationType></PublicationTypeList></Article><MeshHeadingList><MeshHeading><DescriptorName>Diagnostic Imaging</DescriptorName></MeshHeading></MeshHeadingList></MedlineCitation></PubmedArticle></PubmedArticleSet>")
     original = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
     tools = ResearchTools(None, MODEL, lambda event: None)
@@ -359,6 +359,13 @@ def test_pubmed_uses_fixed_endpoints_and_registers_actual_pmids(monkeypatch):
     assert result["sources"][0]["url"] == "https://pubmed.ncbi.nlm.nih.gov/123/"
     assert all(request.url.host == "eutils.ncbi.nlm.nih.gov" for request in requests)
     assert requests[0].url.params["retmax"] == "10"
+    article=result['articles'][0]
+    assert article['abstract']=='Public synthetic abstract.'
+    assert article['abstractSections']==[{'label':'RESULTS','start':0,'end':len(article['abstract'])}]
+    assert article['publicationTypes']==['Review'] and article['meshTerms']==['Diagnostic Imaging']
+    assert article['journal']=='Synthetic journal'
+    assert result['search']['totalMatches']==42 and result['search']['returnedPmids']==['123']
+    assert tools.pubmed_searches[0]['translatedQuery']=='synthetic imaging[Title/Abstract]'
 
 
 def test_real_graph_tool_turn_and_structured_result_without_network(monkeypatch):

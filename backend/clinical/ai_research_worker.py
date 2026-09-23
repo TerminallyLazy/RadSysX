@@ -15,6 +15,8 @@ import logging
 import os
 import re
 import sys
+import time
+from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from typing import Any
@@ -92,11 +94,19 @@ def normalize_result(value: Any) -> dict[str, Any]:
     # Google-generated suggestions are kept separate from text and must be
     # rendered by the caller in a sandbox, never injected into the app DOM.
     suggestions = value.get("suggestionsHtml")
+    searches = []
+    for item in value.get('pubmedSearches', [])[:8]:
+        if not isinstance(item, dict) or item.get('scope') != 'pubmed_abstracts': continue
+        searches.append({'query': _public_text(item.get('query'), 1000), 'translatedQuery': _public_text(item.get('translatedQuery'), 3000),
+            'totalMatches': item.get('totalMatches') if type(item.get('totalMatches')) is int and 0 <= item['totalMatches'] < 10**11 else None,
+            'returnedPmids': [pmid for pmid in item.get('returnedPmids', [])[:10] if isinstance(pmid, str) and re.fullmatch(r'[0-9]{1,12}', pmid)],
+            'retrievedAt': _public_text(item.get('retrievedAt'), 40), 'scope': 'pubmed_abstracts'})
     return {
         "summary": summary,
         "sources": sources,
         "limitations": limitations,
         "usage": usage,
+        **({'pubmedSearches': searches} if searches else {}),
         **({"suggestionsHtml": suggestions[:32000]} if isinstance(suggestions, str) and suggestions else {}),
     }
 
@@ -145,6 +155,9 @@ class ResearchTools:
         self.model_calls = 0
         self.suggestions: list[str] = []
         self.usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        self.pubmed_searches: list[dict] = []
+        self._pubmed_request_lock = asyncio.Lock()
+        self._pubmed_next_request = 0.0
 
     def _begin(self, stage: str) -> None:
         self.emit({"kind": "progress", "stage": stage})
@@ -245,7 +258,12 @@ class ResearchTools:
             return {"error": "Source reading is unavailable."}
 
     async def search_pubmed(self, query: str, limit: int = 5) -> dict:
-        """Search PubMed and return titles, abstracts, dates and PMID source IDs."""
+        """Search public PubMed concepts; MeSH OR title/abstract variants avoid indexing lag.
+
+        Use [dp] date ranges and [pt] article types when relevant. Returns original
+        structured abstracts, journal/date/MeSH metadata and a reproducible query
+        receipt. No patient text, full-text crawling or inferred evidence grades.
+        """
         self._begin("searching_pubmed")
         if not 1 <= len(query.strip()) <= 1000:
             return {"error": "Invalid search query."}
@@ -255,19 +273,32 @@ class ResearchTools:
         try:
             async with httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False) as client:
                 async def fetch(endpoint: str, params: dict) -> bytes:
-                    async with client.stream("GET", "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/" + endpoint, params=params) as response:
-                        response.raise_for_status()
-                        data = bytearray()
-                        async for chunk in response.aiter_bytes():
-                            data.extend(chunk)
-                            if len(data) > MAX_NETWORK_BYTES:
-                                raise ValueError("Research response limit reached")
-                        return bytes(data)
+                    async with self._pubmed_request_lock:
+                        for attempt in range(2):
+                            await asyncio.sleep(max(0, self._pubmed_next_request - time.monotonic()))
+                            self._pubmed_next_request = time.monotonic() + 0.4
+                            async with client.stream("GET", "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/" + endpoint, params={**params, 'tool': 'radsysx'}) as response:
+                                if response.status_code in {429, 503} and not attempt:
+                                    self._pubmed_next_request = time.monotonic() + 1
+                                    continue
+                                response.raise_for_status()
+                                data = bytearray()
+                                async for chunk in response.aiter_bytes():
+                                    data.extend(chunk)
+                                    if len(data) > MAX_NETWORK_BYTES:
+                                        raise ValueError("Research response limit reached")
+                                return bytes(data)
 
                 search = json.loads(await fetch("esearch.fcgi", {"db": "pubmed", "term": query, "retmax": limit, "retmode": "json"}))
                 pmids = [str(pmid) for pmid in search.get("esearchresult", {}).get("idlist", [])[:limit] if re.fullmatch(r"[0-9]{1,12}", str(pmid))]
+                search_result = search.get('esearchresult', {})
+                count = str(search_result.get('count', ''))
+                receipt = {'query': query, 'translatedQuery': str(search_result.get('querytranslation', query))[:3000],
+                    'totalMatches': int(count) if count.isdigit() and len(count) < 12 else None,
+                    'returnedPmids': pmids, 'retrievedAt': datetime.now(timezone.utc).isoformat(), 'scope': 'pubmed_abstracts'}
                 if not pmids:
-                    return {"articles": [], "sources": []}
+                    self.pubmed_searches.append(receipt)
+                    return {"articles": [], "sources": [], 'search': receipt}
                 raw = await fetch("efetch.fcgi", {"db": "pubmed", "id": ",".join(pmids), "retmode": "xml"})
                 if b"<!ENTITY" in raw:
                     raise ValueError("Unexpected XML entity")
@@ -289,10 +320,27 @@ class ResearchTools:
                         # Capture loss is reported by the separate evaluator;
                         # it must not change the research tool result.
                         pass
-                abstract = "\n".join("".join(node.itertext()) for node in article.findall(".//AbstractText"))[:10000]
-                articles.append({"sourceId": source["id"], "title": title[:500], "pmid": pmid, "year": article.findtext(".//PubDate/Year", ""), "abstract": abstract})
+                # Keep the exact text/budget seen by the original evidence capture.
+                # Labels are offsets into that text, never extra prefixes that
+                # silently remove the last characters at the truncation boundary.
+                nodes = article.findall('.//AbstractText')
+                parts = [''.join(node.itertext()) for node in nodes]
+                abstract = '\n'.join(parts)[:10000]
+                sections, offset = [], 0
+                for node, part in zip(nodes, parts):
+                    if offset >= len(abstract): break
+                    sections.append({'label': node.get('Label', '')[:200], 'start': offset, 'end': min(offset+len(part), len(abstract))})
+                    offset += len(part)+1
+                articles.append({"sourceId": source["id"], "title": title[:500], "pmid": pmid,
+                    "year": article.findtext(".//PubDate/Year", ""), 'publicationDate': article.findtext('.//PubDate/MedlineDate') or '-'.join(filter(None, [article.findtext('.//PubDate/'+k) for k in ('Year','Month','Day')])),
+                    'journal': article.findtext('.//Journal/Title', '')[:300],
+                    'publicationTypes': [''.join(n.itertext())[:200] for n in article.findall('.//PublicationType')[:12]],
+                    'meshTerms': [''.join(n.itertext())[:200] for n in article.findall('.//MeshHeading/DescriptorName')[:30]],
+                    "abstract": abstract, 'abstractSections': sections, 'offsetUnit': 'unicode_code_points'})
                 sources.append(source)
-            return {"articles": articles, "sources": sources}
+            receipt['returnedPmids'] = [article['pmid'] for article in articles]
+            self.pubmed_searches.append(receipt)
+            return {"articles": articles, "sources": sources, 'search': receipt}
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -445,6 +493,7 @@ async def run_worker(request: dict, emit: Callable[[dict], None], *, on_pubmed: 
             "sources": sources,
             "limitations": answer.get("limitations", []),
             "usage": usage,
+            'pubmedSearches': research_tools.pubmed_searches,
             "suggestionsHtml": "\n".join(research_tools.suggestions)[:32000],
         })
     finally:

@@ -15,7 +15,10 @@ const workspaceRoot = path.resolve(desktopRoot, "..");
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "radsysx-desktop-ui-import-smoke-"));
 const fixtureRoot = path.join(tmpRoot, "fixtures");
 const storageRoot = path.join(tmpRoot, "local-imaging-data");
-const dbPath = path.join(tmpRoot, "clinical.db");
+const realCodexAcceptance = process.argv.includes('--real-codex');
+// A fresh disposable DB beside the signed-in desktop DB reuses its OS-keyring
+// namespace. Neither credential values nor the user's application DB are read.
+const dbPath = realCodexAcceptance ? path.join(path.resolve(process.env.RADSYSX_CODEX_ACCEPTANCE_ACCOUNT_DIR ?? path.join(workspaceRoot, 'backend')), path.basename(tmpRoot)+'.db') : path.join(tmpRoot, "clinical.db");
 const maxStartupMs = Number.parseInt(process.env.RADSYSX_UI_IMPORT_SMOKE_STARTUP_MS ?? "120000", 10);
 const manyDicomCount = 32;
 const smokeMode = resolveSmokeMode();
@@ -69,6 +72,7 @@ function resolveSmokeMode() {
 
 async function main() {
   try {
+    if (realCodexAcceptance && (!studyExplorationSmoke || smokeMode !== 'local-start' || visionSmoke || aiViewerSmoke || realOpenAiAcceptance)) throw Error('--real-codex requires --local-start --study-exploration without fixture or voice flags.');
     if (studyInventorySmoke && (!visionSmoke || realOpenAiAcceptance)) throw new Error("--study-inventory requires synthetic --local-start --vision.");
     if (visionSmoke && (smokeMode !== "local-start" || realOpenAiAcceptance || aiViewerSmoke)) throw new Error("--vision requires synthetic --local-start without voice.");
     if (evidenceReviewSmoke && (!aiViewerSmoke || realOpenAiAcceptance)) throw new Error("--evidence-review requires synthetic --local-start --ai-live.");
@@ -94,6 +98,7 @@ async function main() {
     process.exitCode = 1;
   } finally {
     await stopDesktopRuntime();
+    if (realCodexAcceptance) for (const suffix of ['', '-wal', '-shm']) fs.rmSync(dbPath+suffix, {force:true});
     if (process.env.RADSYSX_KEEP_UI_IMPORT_SMOKE_TMP === "1") {
       console.log(`Kept UI smoke workspace at ${tmpRoot}`);
     } else {
@@ -375,7 +380,7 @@ async function startDesktopRuntime() {
   );
 
   const env = {
-    ...(aiViewerSmoke || audioPlaybackSmoke || visionSmoke || realOpenAiAcceptance ? publicChildEnvironment(process.env) : process.env),
+    ...(aiViewerSmoke || audioPlaybackSmoke || visionSmoke || realOpenAiAcceptance || realCodexAcceptance ? publicChildEnvironment(process.env) : process.env),
     RADSYSX_DESKTOP_PORT: String(appPort),
     RADSYSX_DESKTOP_FRONTEND_PORT: String(frontendPort),
     RADSYSX_DESKTOP_BACKEND_PORT: String(backendPort),
@@ -397,7 +402,7 @@ async function startDesktopRuntime() {
       RADSYSX_DESKTOP_EVIDENCE_FIXTURE: evidenceReviewSmoke ? "1" : "0",
       RADSYSX_DESKTOP_BACKEND_APP: "backend.clinical.ai_fixture_server:app",
     } : {}),
-    ...(realOpenAiAcceptance ? { RADSYSX_APP_MODE: "pilot", RADSYSX_AI_ENABLED: "true", RADSYSX_DESKTOP_BACKEND_APP: "backend.server:app" } : {}),
+    ...(realOpenAiAcceptance || realCodexAcceptance ? { RADSYSX_APP_MODE: "pilot", RADSYSX_AI_ENABLED: "true", RADSYSX_DESKTOP_BACKEND_APP: "backend.server:app" } : {}),
     ...(pickerSmokeModes.has(smokeMode)
       ? { RADSYSX_DESKTOP_PICKER_TEST_PATHS: JSON.stringify(pickerTestPathsForSmokeMode()) }
       : {}),
@@ -530,7 +535,12 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         fs.writeFileSync(credentialScreenshotPath, Buffer.from(screenshot.data, "base64"));
         await evaluateInRenderer(cdp, `document.querySelector('radsysx-ai-chat-panel [data-action="close-credentials"]').click()`);
       }
-      const studyExploration = studyExplorationSmoke ? await evaluateInRenderer(cdp, `(${exerciseStudyExploration.toString()})()`, 150000) : undefined;
+      const studyExploration = studyExplorationSmoke ? await evaluateInRenderer(cdp, `(${exerciseStudyExploration.toString()})(${realCodexAcceptance})`, realCodexAcceptance ? 660000 : 150000) : undefined;
+      if (realCodexAcceptance) {
+        const marker = Number(fs.readFileSync(path.join(fixtureRoot, 'study/expected-marker.txt'), 'utf8'));
+        if (!new RegExp('Marker count:\\s*'+marker+'\\b', 'i').test(studyExploration.answer)) throw Error('The real model did not identify the private random marker count.');
+        studyExploration.pixelMarkerVerified = true;
+      }
       const visionState = visionSmoke && !studyExplorationSmoke ? await evaluateInRenderer(cdp, `(${exerciseVisionWithoutVoice.toString()})()`, 45000) : undefined;
       const textState = evidenceReviewSmoke ? await evaluateInRenderer(cdp, `(${exerciseTextWithoutVoice.toString()})()`, 45000) : undefined;
       if (aiViewerSmoke) console.log('[smoke] actual sidebar live path');
@@ -2722,26 +2732,26 @@ async function exerciseVisionWithoutVoice() {
   return {chat:true,research:true,localPreview:true,imagesSubmitted:2,voiceConnections:0,historyContainsPixels:false,cloudCalls:false};
 }
 
-async function exerciseStudyExploration() {
+async function exerciseStudyExploration(real = false) {
   const panel=()=>document.querySelector('radsysx-ai-chat-panel');
   const button=a=>panel().querySelector(`[data-action="${a}"]`);
   const api=async(path,body)=>{const r=await fetch('/api/ai/'+path,{credentials:'include',cache:'no-store',method:body?'PUT':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error('Study API '+r.status);return r.json();};
-  const wait=async(fn,label)=>{const end=Date.now()+120000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,200));}throw Error('Study timeout: '+label+' '+panel().querySelector('[data-role="status"]').textContent+' '+panel().querySelector('[data-role="study-progress"]').textContent);};
+  const wait=async(fn,label)=>{const end=Date.now()+(real?610000:120000);while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,500));}throw Error('Study timeout: '+label+' '+panel().querySelector('[data-role="status"]').textContent+' '+panel().querySelector('[data-role="study-progress"]').textContent);};
   console.log('study-phase: model');
-  await api('sidebar/research-settings',{providerId:'codex',modelId:'synthetic-vision'});
+  const account = await api('sidebar/codex/account');
+  if (real && !account.signedIn) throw Error('Sign in with ChatGPT in the desktop app before real Codex acceptance.');
+  await api('sidebar/research-settings',{providerId:'codex',modelId:real?'gpt-6-astra':'synthetic-vision'});
   console.log('study-phase: settings');
   button('credentials').click();await wait(()=>!panel().querySelector('[data-role="research-model"]').disabled,'models');button('close-credentials').click();
   const confirmation=panel().querySelector('#radsysx-live-attestation');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));
-  panel().querySelector('[data-role="study-share"]').open=true;
   const scope=panel().querySelector('[data-role="share-kind"]');scope.value='entire_view';scope.dispatchEvent(new Event('change',{bubbles:true}));
   const tools=panel().querySelector('[data-role="share-tools"]');tools.checked=true;tools.dispatchEvent(new Event('change',{bubbles:true}));
-  console.log('study-phase: prepare');
-  button('prepare-study').click();
-  await wait(()=>panel().querySelector('[data-role="study-progress"]').textContent.includes('Ready to share'),'inventory');
+  if(panel().querySelector('[data-role="attachments"]').dataset.open==='true')button('toggle-mention').click();
   console.log('study-phase: send');
-  const sid=panel().state.backendSessionId;
-  const input=panel().querySelector('textarea');input.value='Review every frame in this synthetic series, navigate to its late frame, adjust the window and observe the reading workspace.';input.dispatchEvent(new Event('input',{bubbles:true}));
+  const input=panel().querySelector('textarea');input.value=real?'Inspect every frame in this synthetic series using your viewer tools. A late frame contains small bright rectangles. Count them from the pixels, not metadata. Navigate to slice index 31, set window width 800 and center 80, and observe the whole reading view. Fetch technical series metadata too. Do not search literature. In your final answer include the exact line Marker count: N with the number you saw.':'Review every frame in this synthetic series, navigate to its late frame, adjust the window and observe the reading workspace.';input.dispatchEvent(new Event('input',{bubbles:true}));
   panel().querySelector('[data-role="composer"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+  await wait(()=>panel().state.backendSessionId,'owned text session');
+  const sid=panel().state.backendSessionId;
   let history;
   await wait(async()=>{history=await api('sidebar/sessions/'+sid);return history.tools.some(t=>t.name==='text_chat'&&['completed','failed'].includes(t.status));},'result');
   const result=history.tools.find(t=>t.name==='text_chat');
@@ -2749,8 +2759,11 @@ async function exerciseStudyExploration() {
   const coverage=result.result.explorationReceipt.coverage[0];
   if(coverage.frameCount!==34 || coverage.delivered.length!==34 || coverage.status!=='complete')throw Error('Incomplete study delivery');
   if(JSON.stringify(history).includes('data:image'))throw Error('Persisted pixels');
-  const counters=await api('_fixture/vision');if(counters.studyImages<35||counters.studyActions!==2)throw Error('Missing native observation/action');
-  if((await api('_fixture/media')).activeProviders!==0)throw Error('Study review allocated voice');
+  if (!real) {
+    const counters=await api('_fixture/vision');if(counters.studyImages<35||counters.studyActions!==2)throw Error('Missing native observation/action');
+    if((await api('_fixture/media')).activeProviders!==0)throw Error('Study review allocated voice');
+  }
   await wait(()=>panel().querySelector('[data-role="study-progress"]').textContent.includes('34/34'),'coverage UI');
-  return {framesDelivered:34,nativeActions:2,workspaceObserved:true,voiceConnections:0,cloudCalls:false};
+  await wait(()=>!panel().querySelector('[aria-label="Send message"]').disabled && panel().querySelector('[data-role="thread"]').textContent.includes(result.result.summary.split('\n')[0]),'visible completed answer');
+  return {framesDelivered:34,imagesDelivered:result.result.explorationReceipt.imagesDelivered,cloudCalls:real,...(real?{answer:result.result.summary}:{nativeActions:2,workspaceObserved:true,voiceConnections:0})};
 }

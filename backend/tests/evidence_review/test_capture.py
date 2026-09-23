@@ -13,6 +13,15 @@ from backend.clinical.ai_research_worker import MODEL, ResearchTools
 
 
 def install_pubmed_fixture(monkeypatch, abstract="Synthetic evidence."):
+    from datetime import datetime, timezone
+    from backend.clinical import ai_research_worker
+    class FixtureDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 23, tzinfo=timezone.utc)
+    # Separate captured/plain fetches must represent the same instant as well
+    # as the same HTTP data. Retain full result and model-input equality checks.
+    monkeypatch.setattr(ai_research_worker, 'datetime', FixtureDateTime)
     def handler(request):
         if request.url.path.endswith("esearch.fcgi"):
             return httpx.Response(200, json={"esearchresult": {"idlist": ["123"]}})

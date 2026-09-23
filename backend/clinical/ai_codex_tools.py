@@ -12,6 +12,7 @@ from .ai_exploration_contracts import Record, Handle, ObservationRequest, Presen
 from .ai_exploration import identity
 from .ai_tools import TOOL_MODELS, DESCRIPTIONS, validate_tool, bound_json
 from .contracts import parse_iso_z, utc_now
+from .ai_radiology import MetadataRequest, StructureReportRequest, series_metadata, structure_report
 
 READ_TOOLS = {'viewer_get_state','viewer_get_capabilities'}
 ACTION_TOOLS = {name for name in TOOL_MODELS if name.startswith('viewer_')} - {'viewer_open_worklist'}
@@ -60,12 +61,31 @@ class CodexToolBridge:
         reservation=task.budget.reserve(images=0,calls=1,encoded_bytes=0,now=time.monotonic())
         task.budget.mark_sent(reservation)
 
+    async def initial_observation(self):
+        task = self.check()
+        if task.snapshot.grant.scope.kind == 'series':
+            manifest, ledger = next(iter(task.ledgers.items()))
+            delivered = set(ledger.receipt().delivered)
+            frames = [frame for frame, index in ledger.indices.items() if index not in delivered][:8]
+            if not frames: frames = list(ledger.indices)[:1]
+            result = await self.call('initial-images', 'series_read_frames', {'manifest_id': manifest, 'frame_ids': frames})
+        else:
+            result = await self.call('initial-images', 'viewer_observe', {'kind': 'workspace'})
+        if not result.success or not any(item['type'] == 'inputImage' for item in result.content_items):
+            raise HTTPException(409, 'No images could be captured. Nothing was sent to the model; retry sharing.')
+        return result
+
+    def delivered_images(self):
+        return sum(len(record['receipt'].get('images', [])) for record in self.records.values() if record['acknowledged'])
+
     def declarations(self):
         task=self.check()
         names=ACTION_TOOLS if 'mutate' in task.snapshot.grant.permissions else READ_TOOLS
         declarations=[{'type':'function','name':name,'description':DESCRIPTIONS[name],
                        'inputSchema':TOOL_MODELS[name].model_json_schema()} for name in sorted(names)]
         for name,model,description in (
+            ('series_get_metadata',MetadataRequest,'Get identifier-free technical DICOM metadata from the shared series: modality, frame count, dimensions, pixel spacing in mm and orientation. No image findings or PHI audit.'),
+            ('structure_radiology_report',StructureReportRequest,'Structure supplied report text into its literal sections and measurements with exact source offsets. Preserve negation, uncertainty and recommendations; infer no diagnosis. Then use report_draft for a visible unsaved draft.'),
             ('series_get_manifest',ManifestRequest,'Read the complete ordered inventory page of an explicitly shared series. Use its opaque frame IDs; subsequent pages start at offset plus returned frame count.'),
             ('series_read_frames',FramesRequest,'Observe one to eight ordered full frames from a shared manifest. Request every frame for a full-series review. Repeated deliveries consume budget. Image acknowledgment is delivery, not diagnostic validation.'),
             ('viewer_observe',ObservationRequest,'Observe the shared reading workspace or selected visible panes. This is the only current screen awareness. Pane frameId plus revision authorizes geometry on that pane; refresh after any change.')):
@@ -94,7 +114,15 @@ class CodexToolBridge:
             operation='op-'+uuid4().hex
             record={'identity':digest,'operation':operation,'receipt':{'status':'outcome_unknown'},'success':False,'image':False,'submitted':False,'acknowledged':False}
             self.records[call_id]=record
-            if name=='series_get_manifest':
+            if name=='structure_radiology_report':
+                args=StructureReportRequest.model_validate(arguments)
+                result=DynamicToolResult.text(structure_report(args.text))
+            elif name=='series_get_metadata':
+                args=MetadataRequest.model_validate(arguments)
+                pages=next((p for p in task.manifests.values() if p[0]['seriesId']==args.series_id),None)
+                if not pages: raise ValueError('Series is outside the shared inventory')
+                result=DynamicToolResult.text(series_metadata(pages))
+            elif name=='series_get_manifest':
                 args=ManifestRequest.model_validate(arguments)
                 pages=next((p for p in task.manifests.values() if p[0]['seriesId']==args.series_id),None)
                 page=next((p for p in pages or [] if p['offset']==args.offset),None)
@@ -156,6 +184,10 @@ class CodexToolBridge:
                 self.service.persist(task)
                 result=DynamicToolResult.text(receipt,success=receipt.get('status') not in {'failed','outcome_unknown','cancelled','denied'})
             else: raise ValueError('Unknown study tool')
+            if name in {'series_get_metadata', 'structure_radiology_report'}:
+                task.snapshot.actions.append({'operationId': operation, 'name': name, 'kind': 'read', 'status': 'completed'})
+                task.snapshot.actions = task.snapshot.actions[-64:]
+                self.service.persist(task)
             record.update(receipt=result.receipt,success=result.success)
             return result
 
@@ -164,6 +196,7 @@ class CodexToolBridge:
         record=self.records.get(call_id)
         if not record or not record['image'] or record['submitted']: return
         record['submitted']=True; record['receipt']['status']='submitted'
+        self.service.action_status(task,record['operation'],'submitted')
         if record.get('manifest'):
             task.ledgers[record['manifest']].submitted(record['operation'],record['frames'],'frame')
         self.service.persist(task)
@@ -175,6 +208,7 @@ class CodexToolBridge:
         try: task=self.check()
         except (ValueError,HTTPException): self.close(); return
         record['acknowledged']=True; record['receipt']['status']='acknowledged'
+        self.service.action_status(task,record['operation'],'delivered')
         if record.get('manifest'): task.ledgers[record['manifest']].acknowledge(record['operation'])
         for image in record['receipt'].get('images',[]):
             if image['kind']=='pane' and image.get('frameId') and image.get('viewportId'):

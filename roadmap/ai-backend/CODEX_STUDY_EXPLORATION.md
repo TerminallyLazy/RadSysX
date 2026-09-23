@@ -6,7 +6,7 @@ Implemented 2026-09-23. This extends subscription chat/research independently of
 
 1. Choose an image-capable ChatGPT / Codex model in Settings and confirm the displayed data.
 2. Open **Share images with AI**. Choose the current image, reading workspace, or selected series. Enable **Allow viewer tools** separately when the model should operate the viewer.
-3. Prepare the scope, then use **Send** or **Research**. Preparation inventories images locally; it does not contact the model.
+3. Choose the **Images** scope, then use **Send with images** or **Research**. Inventory preparation and fresh capture happen automatically. The initial model turn includes real pixels; capture failure cannot silently fall back to text-only inference.
 4. Follow frame-delivery counts and activity in the task card. **Stop** revokes access; **Take over** pauses model control. Manual interaction with the reading workspace also takes over. Continue explicitly to grant access again.
 
 The RadSysX logo returns local reading to the local study loader and governed/FHIR reading to the worklist. It does not enter OHIF's disabled study-list route.
@@ -21,7 +21,7 @@ Every grant binds the owner, text session, exact model, study/series handles, re
 
 ## Evidence and limits
 
-Series manifests enumerate every frame in native display-set order, including multiframe acquisitions. Batches contain at most eight images, with task limits of 128 submitted images and 64 calls. Coverage counts distinct frames only after the matching App Server tool acknowledgment. An overview or thumbnail does not count as complete-series delivery. The UI distinguishes complete and partial coverage; delivery itself is not diagnostic validation.
+Series manifests enumerate every frame in native display-set order, including multiframe acquisitions. Batches contain at most eight images, with task limits of 128 submitted images and 64 calls. Coverage counts distinct frames after the matching App Server turn acceptance for initial inputs or matching tool acknowledgment for subsequent observations. An overview or thumbnail does not count as complete-series delivery. The UI distinguishes complete and partial coverage; delivery itself is not diagnostic validation.
 
 Image bytes are transient. History stores hashes, scope, dimensions, presentation, acknowledged frame IDs and execution receipts. Continuing a task restores metadata without replaying old pixels or mutations. Geometry edits require an acknowledged pane frame at the current revision. Preparation lasts at most 60 seconds; active work lasts at most ten minutes and needs a live renderer heartbeat.
 
@@ -42,3 +42,13 @@ At the user's explicit request, additional exhaustive fixture expansion and repe
 On 2026-09-23, the working checkout was fast-forwarded to the implementation and launched with `npm run desktop`. Bootstrap passed, the pinned OHIF distribution rebuilt, and the normal `backend.server:app` started from that checkout on port 8000. The desktop origin on port 3000 serves the current generated bundle with study sharing, viewer-tool permission and supported logo navigation. The production frontend uses port 3013. The unrelated local `.DS_Store` edit and owner credentials were preserved. Release is tracked in [PR #85](https://github.com/TerminallyLazy/RadSysX/pull/85).
 
 The CI browser fixture was updated to provide both `addEventListener` and `removeEventListener`; otherwise teardown threw before clearing the existing auth timer. Its focused controller regressions passed (38 tests). This was a test-double repair, with no change to production behavior.
+
+## 2026-09-23 image delivery repair and real subscription acceptance
+
+The first implementation advertised scoped tools while retaining contradictory text-only instructions. Preparing a scope only enumerated metadata, so a real model could stop after the inventory with zero delivered images. Synthetic scripted tools did not reveal that defect.
+
+The repaired path uses coherent scoped instructions and captures initial pixels before asking the model to answer. The sidebar replaces Prepare sharing with an explicit Images selector and Send with images, repeats fresh capture for subsequent sends, displays acknowledged delivery beside the composer, and folds completed native actions into Task details. Chat, Research and Jev retain separate workspaces. Voice setup is optional and stays behind its header control. The reading-room palette remains subdued.
+
+Real hosted acceptance used the existing signed-in ChatGPT subscription, the normal backend, the actual isolated Electron sidebar, and a generated 34-frame study. `gpt-6-astra` received all 34 distinct frames (50 total observations including repeats/views), correctly reported the randomly generated pixel-only marker count of four, queried technical metadata, navigated the series, set width 800/center 80 and observed the reading view. The expected count was not present in metadata or the prompt. The final answer explicitly reported it. The logo also returned to the local loader. No Realtime session was needed; no patient images were used. This establishes actual vision/tool transport, not clinical accuracy or exhaustive modality/tool parity.
+
+The final UI iteration also passed the isolated scripted 34-frame desktop path with 38 image observations, two native actions, zero voice connections and no saved pixel payloads. Focused backend checks covered subscription transport, literal report extraction, metadata exclusion and research orchestration; viewer type checking/build and targeted controller checks cover the updated path. See the separate OpenMed adaptation note for literature scope. Production activation is recorded separately from these isolated runs.

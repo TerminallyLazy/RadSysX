@@ -281,7 +281,19 @@ if os.environ.get('RADSYSX_DESKTOP_VISION_FIXTURE') == '1':
             if method == 'thread/start': return {'model': params['model'], 'modelProvider': 'openai', 'instructionSources': [], 'sandbox': {'type': 'readOnly', 'networkAccess': False}, 'thread': {'id': 'synthetic-thread'}}
             if method == 'turn/start':
                 self.bind_turn('synthetic-turn')
-                if self.job.get('bridge'): await self.study_run()
+                if self.job.get('bridge'):
+                    async def finish_study():
+                        await asyncio.sleep(0)  # turn/start accepts initial inputs before tool dispatch
+                        try:
+                            await self.study_run()
+                            self.job['answer']='Synthetic image transport verified.'
+                            self.job['status']='completed'
+                        except Exception:
+                            self.job['status']='failed'
+                        self.job['done'].set()
+                    _vision['studyImages'] += sum(item['type']=='image' for item in params['input'])
+                    asyncio.create_task(finish_study())
+                    return {'turn': {'id': 'synthetic-turn'}}
                 _vision['turns'] += 1
                 for item in params['input']:
                     if item['type'] == 'image':
