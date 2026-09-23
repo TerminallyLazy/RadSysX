@@ -80,9 +80,10 @@ class EvidenceReviewService:
     def _summary(self,row):
         values={k:v for k,v in row.progress_json.items() if k in {
             'generation','totalPairs','completedPairs','settledPairs','submittedAttempts','unknownUsageAttempts'}}
+        empty = row.status == 'ready' and not values.get('totalPairs')
         return EvidenceReviewSummary(review_id=row.id,session_id=row.session_id,tool_call_id=row.tool_id,
-            source_context_version=row.context_version,status=row.status,created_at=row.created_at,
-            updated_at=row.updated_at,reason=row.reason,**values)
+            source_context_version=row.context_version,status='unavailable' if empty else row.status,created_at=row.created_at,
+            updated_at=row.updated_at,reason='no_reviewable_claims' if empty else row.reason,**values)
 
     def list(self,actor,session_id):
         self.require(actor)
@@ -247,11 +248,12 @@ class EvidenceReviewService:
                         'data_class':'public_literature','generation':job.row.progress_json['generation'],
                         'result':result.model_dump(mode='json'),'evidence':[e.model_dump(mode='json') for e in evidence],
                         'capture_exclusions':[e.model_dump(mode='json') for e in exclusions]},limits=self.limits)
-                    plan=build_review_plan(snapshot,limits=self.limits)
+                    plan=build_review_plan(snapshot,limits=self.limits,builder_version='cited-passages-v2')
                     ref,digest=self.artifacts(job.row).create_preview(snapshot,plan,job.row.progress_json['generation'])
                     self.repository.update_if_current(job.row.id,job.row.generation,preview_ref=ref,preview_hash=digest,
                         progress_json={**job.row.progress_json,'totalPairs':len(plan.pairs)})
-                    status='ready'
+                    status='ready' if plan.pairs else 'unavailable'
+                    reason=None if plan.pairs else 'no_reviewable_claims'
                 else:
                     with self.artifacts(job.row).open_run() as store:
                         job.store=store

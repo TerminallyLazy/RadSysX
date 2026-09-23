@@ -285,7 +285,7 @@ Last updated: 2026-09-22
 - Favor rigorous, beautiful, professional solutions with high signal-to-noise.
 - Prefer Linux-native commands and paths.
 - Record durable behavior changes in this file or the nearest relevant child `AGENTS.md`.
-- `.impeccable/config.json` records reasoned, file-scoped design-detector exceptions. The muted 2 px Jev judgment separator is intentional grouping, not a decorative card accent; its `side-tab` exception is limited to `viewer/assets/radsysx-viewer.css`.
+- Keep sidebar information separated into Chat, Research and Jev review views. Use a quiet reading-room palette and progressive disclosure; technical receipts and full abstracts stay collapsed by default. Jev judgment groups use subtle horizontal separators; the old side-accent exception is removed.
 
 ## Child DOX Index
 
@@ -339,7 +339,7 @@ The standalone [evidence-review runbook](backend/evidence_review/README.md) docu
 - See `roadmap/ai-backend/NIM_IMPLEMENTATION.md` for configuration, commands and dated acceptance. Keep provider keys separate and never silently fall back when the chosen model fails.
 
 - The sidebar **Settings → Research models** saves Gemini/NVIDIA NIM provider and exact model per signed account. Environment supplies the default until a saved choice exists. The dropdown includes the entire hosted NVIDIA catalog; catalog inclusion does not verify tool support or entitlement. Saving closes that account's sessions/jobs and requires reconnection; live voice selection and offline evidence CLI model flags remain separate.
-- Keep the AI sidebar compact: one header row, inline data confirmation/connect, and media controls visible only during an active connection. Data attestation, transmission disclosure and separate microphone/image consent remain required.
+- Keep the AI sidebar compact: show the text/research model near the header and separate Chat, Research and Jev review views. Optional voice setup is collapsed within Chat; data attestation and disclosure live by the composer. Keep media state visible while connected and preserve separate microphone/image consent.
 
 - Sidebar Jev reviews run through backend-owned `/api/ai/sidebar/*/evidence-reviews` contracts in research/pilot only, using backend-only `RADSYSX_TYPESAFE_AI_API_KEY`. They retain original answers, require independent text confirmation, and persist POSIX-private artifacts in `.ai-evidence/` beside the actual database (or absolute `RADSYSX_AI_EVIDENCE_DIR`). Ending voice preserves review; explicit cancel/account changes/logout stop it; source-history deletion cancels jobs and removes their artifacts. Clinical use and the qualified human evidence-quality study remain unapproved/pending.
 

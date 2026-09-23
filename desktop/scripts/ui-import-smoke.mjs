@@ -1298,6 +1298,8 @@ async function exerciseLiveViewer(providerId, keepOpen = false) {
       profile.inputSampleRate !== expectedRate || profile.outputSampleRate !== 24000 || !profile.screen || !profile.tools) {
     throw new Error('Synthetic provider profile did not match the selected audio/action contract');
   }
+  panel.querySelector('[data-action="view-chat"]').click();
+  panel.querySelector('[data-role="voice-options"]').open = true;
   const providerSelect = panel.querySelector('[data-role="provider"]');
   if (providerSelect && !providerSelect.options.length) {
     if (button('connect').textContent !== 'Retry setup') throw new Error('Initial setup failure did not expose an actionable retry');
@@ -1308,7 +1310,7 @@ async function exerciseLiveViewer(providerId, keepOpen = false) {
   if (!providerSelect || providerSelect.disabled || !Array.from(providerSelect.options).some(option => option.value === providerId)) throw new Error(`Provider dropdown unavailable: ${JSON.stringify({ present: Boolean(providerSelect), disabled: providerSelect?.disabled, values: providerSelect ? Array.from(providerSelect.options).map(option => option.value) : [], status: panel.state.backendStatus, message: panel.querySelector('[data-role="status"]')?.textContent })}`);
   providerSelect.value = providerId; providerSelect.dispatchEvent(new Event('change', { bubbles: true }));
   await waitFor(() => providerSelect.value === providerId && panel.state.backendStatus === 'disconnected' &&
-    panel.querySelector('[data-role="disclosure"]').textContent.includes(profile.label), 'Provider selection did not update the sidebar');
+    providerSelect.title === expectedModel && providerSelect.selectedOptions[0]?.textContent.includes(profile.label), 'Provider selection did not update the sidebar');
   const select = panel.querySelector('#radsysx-live-attestation');
   if (select.value !== '') throw new Error('Provider selection did not require fresh data confirmation');
   select.value = 'synthetic'; select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2459,6 +2461,10 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   };
   const card = id => panel.querySelector(`[data-evidence-tool="${id}"]`);
   const button = (host,action) => host.querySelector(`[data-evidence-action="${action}"]`);
+  const openReview = id => {
+    panel.querySelector('[data-action="view-research"]').click();
+    panel.querySelector(`[data-action="open-review"][data-id="${id}"]`).click();
+  };
   const counters = () => api('_fixture/evidence');
   const sid = prior.sessionId ?? panel.state.backendSessionId;
   if (phase==='prepare') {
@@ -2468,13 +2474,16 @@ async function exerciseEvidenceReview(phase, prior = {}) {
     const history = await api(`sidebar/sessions/${sid}`);
     assert(card('smoke-research-one'), 'Missing public PubMed fixture / Review evidence with Jev action');
     assert(panel.querySelector('[aria-label="Jev evidence review"]') && !panel.querySelector('[data-action="review-latest"]').disabled, 'Prominent Jev action is missing or unavailable');
-    assert(panel.querySelector('[data-role="research-tools"]').textContent.includes('Literature research'), 'Research activity is not visible above the transcript');
+    panel.querySelector('[data-action="view-research"]').click();
+    assert(!panel.querySelector('[data-role="research-view"]').hidden && panel.querySelector('[data-role="chat-view"]').hidden, 'Research and chat workspaces are not separated');
+    assert(panel.querySelector('[data-role="research-tools"] [data-action="open-review"]'), 'Research result has no explicit Jev action');
     assert(history.events.some(event=>event.kind==='research_progress' && event.stage==='searching_pubmed'), 'Research progress was not journaled through the broker');
     assert(history.tools.filter(tool=>tool.name==='research_run').every(tool=>tool.research?.modelId), 'Research cards have no recorded dispatch model');
     const original = history.tools.find(t=>t.toolCallId==='smoke-research-one').result;
     await wait(()=>!button(card('smoke-research-one'),'open').disabled,'Review button remained busy');
-    button(card('smoke-research-one'),'open').click();
-    await wait(()=>card('smoke-research-one').textContent.includes('Ready to review'),()=> 'Preview did not become ready: '+card('smoke-research-one').textContent);
+    openReview('smoke-research-one');
+    await wait(()=>card('smoke-research-one').textContent.includes('Ready for your confirmation'),()=> 'Preview did not become ready: '+card('smoke-research-one').textContent);
+    assert(!panel.querySelector('[data-role="review-view"]').hidden && panel.querySelector('[data-role="composer"]').hidden, 'Review workspace did not hide the composer');
     const host = card('smoke-research-one');
     const foreground=getComputedStyle(host.querySelector('[data-evidence-detail] > p:not([data-evidence-message])')).color;
     assert(foreground!=='rgb(0, 0, 0)','Review text is unreadable on the dark card');
@@ -2516,7 +2525,7 @@ async function exerciseEvidenceReview(phase, prior = {}) {
     // through GET; pre-submission consent/focus still has the strict check above.
     if(current && !first.isConnected && !button(current,'open').disabled) {
       first=current;
-      if(!button(first,'open').hidden)button(first,'open').click();
+      if(!button(first,'open').hidden)openReview('smoke-research-one');
     }
     return first.isConnected && first.textContent.includes('Supported by this abstract');
   },()=> 'Completed judgment did not appear: '+JSON.stringify({connected:first.isConnected,current:card('smoke-research-one')?.textContent}));
@@ -2542,8 +2551,8 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   const catalog=await api('sidebar/research-settings/models/nvidia_nim');
   assert(catalog.models.length===82 && catalog.models.every(id=>[...modelSelect.options].some(o=>o.value===id)),'NVIDIA models were filtered');
   panel.querySelector('[data-action="close-credentials"]').click();
-  const second=card('smoke-research-two');panel.querySelector('[data-action="review-latest"]').click();
-  await wait(()=>second.textContent.includes('Ready to review'),'Second review preview failed');
+  const second=card('smoke-research-two');panel.querySelector('[data-action="view-review"]').click();panel.querySelector('[data-action="review-latest"]').click();
+  await wait(()=>second.textContent.includes('Ready for your confirmation'),'Second review preview failed');
   const confirmation=second.querySelector('[data-evidence-confirmation]');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));button(second,'start').click();
   await wait(async()=> (await counters()).submitted===2,'Blocked review was not submitted');
   panel.querySelector('[data-action="end"]').click();
@@ -2554,7 +2563,7 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   assert((await api(`sidebar/evidence-reviews/${secondSummary.reviewId}`)).unknownUsageAttempts===1,'Cancelled submitted attempt lost unknown usage');
   assert(!button(second,'prepare').hidden,'Cancelled review has no fresh preparation action');
   button(second,'prepare').click();
-  await wait(()=>second.textContent.includes('Ready to review'),'Fresh abstract preparation failed');
+  await wait(()=>second.textContent.includes('Ready for your confirmation'),'Fresh abstract preparation failed');
   const freshSummary=(await api(`sidebar/sessions/${sid}/evidence-reviews`)).reviews.find(r=>r.toolCallId==='smoke-research-two');
   assert(freshSummary.reviewId!==secondSummary.reviewId,'Fresh preparation reused cancelled review');
   assert((await api(`sidebar/evidence-reviews/${secondSummary.reviewId}`)).status==='cancelled','Fresh preparation replaced prior receipt');
@@ -2562,7 +2571,7 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   assert((await counters()).submitted===2,'Fresh abstract preparation inferred before confirmation');
   panel.querySelector('[data-action="history"]').click();await wait(()=>panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`),'History action missing');
   panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`).click();
-  await wait(()=>panel.querySelector('[data-role="status"]').textContent.includes('Viewing saved conversation'),'Saved history did not open');
+  await wait(()=>panel.querySelector('[data-role="status"]').textContent.includes('Saved conversation'),'Saved history did not open');
   await wait(()=>!button(card('smoke-research-one'),'open').disabled,'Saved review summaries did not load');
   // Delay a genuine owned GET across a history switch, even after its abort.
   const other=await api('sidebar/sessions',{});
@@ -2574,7 +2583,7 @@ async function exerciseEvidenceReview(phase, prior = {}) {
     }
     return response;
   };
-  button(card('smoke-research-one'),'open').click();await wait(()=>releaseOld,'Saved review GET was not captured');
+  openReview('smoke-research-one');await wait(()=>releaseOld,'Saved review GET was not captured');
   panel.querySelector('[data-action="history"]').click();await wait(()=>panel.querySelector(`[data-action="read-history"][data-id="${other.sessionId}"]`),'Other history missing');
   panel.querySelector(`[data-action="read-history"][data-id="${other.sessionId}"]`).click();await wait(()=>!card('smoke-research-one'),'History did not switch');
   window.fetch=originalFetch;releaseOld();await new Promise(resolve=>setTimeout(resolve,100));
@@ -2582,10 +2591,9 @@ async function exerciseEvidenceReview(phase, prior = {}) {
   panel.querySelector('[data-action="history"]').click();await wait(()=>panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`),'Original history missing');
   panel.querySelector(`[data-action="read-history"][data-id="${sid}"]`).click();await wait(()=>card('smoke-research-one') && !button(card('smoke-research-one'),'open').disabled,'Original review card did not reload');
   await api(`sidebar/sessions/${other.sessionId}`,undefined,'DELETE');
-  button(card('smoke-research-one'),'open').click();await wait(()=>card('smoke-research-one').textContent.includes('Supported by this abstract'),'Saved receipt was not restored');
+  openReview('smoke-research-one');await wait(()=>card('smoke-research-one').textContent.includes('Supported by this abstract'),'Saved receipt was not restored');
   assert((await counters()).submitted===2,'Reopen triggered inference');
-  // Expand the real receipt for the retained synthetic screenshot.
-  card('smoke-research-one').querySelectorAll('details').forEach(node=>{if(node.querySelector('summary')?.textContent.includes('Execution receipt'))node.open=true;});
+  // Keep technical details collapsed in the final reading-flow screenshot.
   card('smoke-research-one').scrollIntoView({block:'start'});
   return {...prior,status:receipt.status,resolvedModel:receipt.assessments[0].resolvedModel,submitted:2,completedPairs:1,excludedSubmitted:false,unknownUsageAttempts:1,unchangedAnswer:true,reopenWithoutInference:true,repreparedWithoutInference:true,endVoiceIndependent:true,staleHistoryReplyDiscarded:true,geometry,nvidiaModelCount:catalog.models.length};
 }
@@ -2605,6 +2613,7 @@ async function exerciseTextWithoutVoice() {
   const sid=panel().state.backendSessionId;
   const chat=await api('sidebar/sessions/'+sid);
   if(chat.session.mode!=='text' || chat.session.liveUrl!==null)throw Error('Text request allocated a voice session');
+  panel().querySelector('[data-action="view-research"]').click();
   fill('Find public literature for synthetic research one.');panel().querySelector('[data-action="research"]').click();
   await wait(async()=> (await api('sidebar/sessions/'+sid)).tools.some(t=>t.name==='research_run' && t.status==='completed'));
   await wait(()=> !panel().querySelector('[data-action="review-latest"]').disabled);
@@ -2619,5 +2628,7 @@ async function exerciseTextWithoutVoice() {
   try {panel().querySelector(`[data-action="clear-history"][data-id="${sid}"]`).click();} finally {window.confirm=originalConfirm;}
   await wait(()=>!panel().state.backendSessionId);
   if(!panel().querySelector('[data-role="history"]').hidden)panel().querySelector('[data-action="history"]').click();
+  panel().querySelector('[data-action="view-chat"]').click();
+  panel().querySelector('[data-role="voice-options"]').open=true;
   return {chat:true,research:true,jevEligible:true,voiceConnections:0,modelRecorded:completed.tools.every(t=>Boolean(t.research?.modelId))};
 }

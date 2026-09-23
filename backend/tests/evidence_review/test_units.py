@@ -1,6 +1,23 @@
 import pytest
 
 
+def test_cited_passage_groups_terminal_reference_without_guessing_sentence_scope(snapshot_factory):
+    from backend.evidence_review.contracts import Limits
+    from backend.evidence_review.units import build_review_plan
+    passage = '**Finding:** Only seven studies assessed reproducibility. Standardized workflows were recommended. [s1]'
+    answer = 'Uncited introduction.\n\n' + passage + '\n\nThis is not image analysis.\n'
+    snapshot = snapshot_factory(answer=answer)
+    plan = build_review_plan(snapshot, limits=Limits(), builder_version='cited-passages-v2')
+    assert len(plan.pairs) == 1
+    unit = plan.pairs[0].unit
+    assert unit.text == passage == answer[unit.start:unit.end]
+    assert unit.origin == 'automatic' and unit.builder_version == 'cited-passages-v2'
+    assert len(unit.citation_spans) == 1
+    assert not build_review_plan(snapshot, limits=Limits()).pairs  # Legacy plans remain reproducible.
+    with pytest.raises(ValueError):
+        build_review_plan(snapshot, limits=Limits(), builder_version='untrusted-version')
+
+
 @pytest.mark.parametrize("answer,expected", [
     ("The response was 3.5 and toxicity increased [s1].",1),
     ("Smith et al. found an effect [s1].",1),

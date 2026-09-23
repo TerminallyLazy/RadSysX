@@ -31,6 +31,22 @@ function reviewFixture(overrides = {}) {
   };
 }
 const response = value => new Response(JSON.stringify(value));
+
+test('empty previews explain that Jev has not run, and show no misleading ready count', () => {
+ const html = renderEvidenceSummary(reviewFixture({status:'ready',totalPairs:0,completedPairs:0}));
+ assert.match(html,/No reviewable passages/); assert.match(html,/Nothing has been sent/);
+ assert.doesNotMatch(html,/Ready|0 of 0/);
+ const ready = renderEvidenceSummary(reviewFixture({status:'ready',completedPairs:0}));
+ assert.match(ready,/Ready for your confirmation/); assert.match(ready,/Jev has not run yet/);
+});
+
+test('review preview includes only selected source abstracts and keeps details collapsed', () => {
+ const detail = reviewFixture();
+ detail.abstracts.push({...detail.abstracts[0],evidenceId:'unrelated',title:'UNRELATED_ABSTRACT'});
+ const html = renderEvidenceDetail(detail);
+ assert.doesNotMatch(html,/UNRELATED_ABSTRACT|<details[^>]* open/);
+ assert.match(html,/Source abstracts · 1/); assert.match(html,/Source provenance/);
+});
 const flush = async () => { for (let i=0;i<20;i++) await Promise.resolve(); };
 function harness(detail=reviewFixture({status:'ready',selectedUnitIds:null,assessments:[],attempts:[]})) {
   const calls=[]; let current=detail;

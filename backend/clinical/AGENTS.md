@@ -69,6 +69,8 @@
 
 ## Explicit Jev evidence reviews
 
+- New sidebar preparations use the versioned intact-passage extractor (`cited-passages-v2`) for trailing paragraph citations and comma-grouped source IDs. Preserve original offsets/text and rebuild the declared plan during evaluation. A preview with no executable pairs is unavailable with `no_reviewable_claims`; legacy ready/zero-pair summaries are projected the same way without rewriting artifacts. Explicit Prepare review again creates a fresh preview and requires renewed confirmation.
+
 - Own `ai_evidence_contracts.py`, `ai_evidence_repository.py`, `ai_evidence_artifacts.py`, `ai_evidence_review.py` and their additive `ai_jev_reviews`/`ai_jev_operations` persistence. These focused contracts stay separate from live conversation messages and primary-model tool results.
 - Only signed unexpired `ai.run` actors in enabled research/pilot may prepare an owned completed PubMed research result. Freeze its original answer/source/context identity and recorded generation, retrieve original abstracts by fixed PMID endpoints, then require exact-preview public/synthetic confirmation and backend-issued claim selection before pinned `jev-1.13.0` inference. Saved-history review does not require a live connection. The preview is not patient-text approval.
 - One active review per actor, two globally; preparation is bounded to 20 seconds, evaluation/cleanup to 70 (the runner itself remains 60 plus five). Recheck authority/source identity before every external call. Account stop invalidates queued starts, even if they were waiting for the owner lock. Operation identity and starting state commit together; duplicate requests never schedule duplicate inference.

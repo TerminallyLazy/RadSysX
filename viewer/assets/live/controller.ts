@@ -6,6 +6,7 @@ import { OHIFAdapter } from './ohif.js';
 import { EventGate, TranscriptStore, object, parseEvent, request, safeUrl, toolFromWire, type AIResearchSettings, type AIResearchModels, type ResearchProviderId, type AICredentialStatusResponse, type Attestation, type ProviderId, type ProviderProfile, type AudioChunk, type CaptureRequest, type Citation, type DesktopCapture, type Json, type ServerEvent, type Session, type SavedConversation, type Tool } from './protocol.js';
 
 export class LiveController {
+  sidebarView: 'chat' | 'research' | 'review' = 'chat';
   readonly evidence = new EvidenceController(() => this.emit());
   readonly subscription = new SubscriptionController(() => this.emit(), async () => {
     this.evidence.dispose(); this.requireAttestation();
