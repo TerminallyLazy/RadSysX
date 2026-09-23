@@ -1,4 +1,6 @@
-import { CornerstoneSeriesRenderer, type SeriesSource, type PrivateFrame } from './series.js';
+import { capabilities, READING_TOOLS } from './capabilities.js';
+import { executeReadingTool } from './reading-tools.js';
+import { alive, abortable, CornerstoneSeriesRenderer, type SeriesSource, type PrivateFrame } from './series.js';
 import type { Presentation, RendererBinding } from './protocol.js';
 import { object, type CaptureRequest, type Json, type ViewerContext } from './protocol.js';
 
@@ -21,6 +23,7 @@ function list(value: unknown): Host[] { return Array.isArray(value) ? value : []
 /** Semantic adapter; no model-provided JavaScript, selectors, paths, or arbitrary commands. */
 export class OHIFAdapter {
   private managers?: Managers;
+  private cineOwned = new Map<string, Host>();
   private aliases = new Map<string, string>();
   private actual = new Map<string, string>();
   private subscriptions: Array<{ unsubscribe(): void }> = [];
@@ -204,7 +207,282 @@ export class OHIFAdapter {
     const bounds = element.getBoundingClientRect();
     return { viewportId: id, rect: { x: Math.round(bounds.x), y: Math.round(bounds.y), width: Math.round(bounds.width), height: Math.round(bounds.height) } };
   }
-  async execute(name: string, args: Json): Promise<Json> {
+  private viewportAdapter(viewport: Host): Host | undefined {
+    return this.managers?.extensionManager.getModuleEntry?.('@ohif/extension-cornerstone.utilityModule.common')?.exports?.getViewportAdapter?.(viewport);
+  }
+  private panelId(panel: unknown): string | undefined {
+    const choices: Record<string, string[]> = {
+      series: ['@ohif/extension-default.panelModule.seriesList'],
+      measurements: ['@ohif/extension-measurement-tracking.panelModule.trackedMeasurements', '@ohif/extension-cornerstone.panelModule.panelMeasurement'],
+      segmentation: ['@ohif/extension-cornerstone.panelModule.panelSegmentation', '@ohif/extension-cornerstone.panelModule.panelSegmentationWithToolsLabelMap'],
+      report: ['@radsysx/extension-clinical.panelModule.workspace'],
+    };
+    const panels = ['left','right'].flatMap(side => this.services.panelService?.getPanels?.(side) ?? []);
+    return choices[String(panel)]?.find(id => panels.some((entry: Host) => entry.id === id));
+  }
+  readingAvailability(name: string, args: Json = {}): { available: boolean; reason?: string } {
+    try {
+      const { id, viewport, grid } = this.viewport(args.viewportId);
+      const native = this.viewportAdapter(viewport);
+      const displays = list(this.services.displaySetService?.activeDisplaySets).filter(ds => grid.displaySetInstanceUIDs.includes(ds.displaySetInstanceUID));
+      const reconstructable = displays.some(ds => ds.isReconstructable === true);
+      const toolbar = this.services.toolbarService?.state?.buttons ?? {};
+      const disabled = (button: string) => toolbar[button]?.props?.disabled === true || toolbar[button]?.props?.visible === false;
+      let available = true;
+      switch (name) {
+        case 'viewer_set_orientation': available = Boolean(reconstructable && native?.canReorientInPlace() && !disabled('orientationMenu')); break;
+        case 'viewer_set_mpr': available = Boolean(reconstructable && this.services.hangingProtocolService?.getProtocolById?.(String(args.layout ?? 'mpr'))); break;
+        case 'viewer_set_crosshair': available = Boolean(native?.isVolumeRendering() && viewport.jumpToWorld && this.services.toolGroupService?.getToolGroupForViewport?.(id)?.hasTool('Crosshairs')); break;
+        case 'viewer_set_cine': available = Boolean(this.services.cineService?.setCine && (viewport.getImageIds?.()?.length ?? displays[0]?.numImageFrames ?? 0) > 1 && !disabled('Cine')); break;
+        case 'viewer_set_sync': available = Boolean(this.services.syncGroupService?.addViewportToSyncGroup && this.services.viewportGridService.getState().viewports.size > 1); break;
+        case 'viewer_open_panel': available = args.panel ? Boolean(this.panelId(args.panel)) : ['series','measurements','segmentation','report'].some(panel => this.panelId(panel)); break;
+        case 'viewer_set_fusion': available = Boolean(native?.isVolumeRendering() && displays.length > 1 && displays.every(ds => ds.StudyInstanceUID === displays[0].StudyInstanceUID)); break;
+        case 'viewer_set_rendering': available = Boolean(native?.hasContent()); break;
+        case 'viewer_set_volume': available = Boolean(native && ['volume','volume3d'].includes(native.getShape())); break;
+      }
+      return { available, ...(available ? {} : { reason: 'Unavailable for the current pane, data or native tool group.' }) };
+    } catch { return { available: false, reason: 'Open a supported image in the current study.' }; }
+  }
+  private assertPaneStudy(id: string, studyId: string): void {
+    const grid = this.services.viewportGridService.getState().viewports.get(id);
+    const displays = list(this.services.displaySetService?.activeDisplaySets).filter(ds => grid?.displaySetInstanceUIDs.includes(ds.displaySetInstanceUID));
+    if (!displays.length || displays.some(ds => this.alias('study', ds.StudyInstanceUID) !== studyId)) throw new Error('This pane is outside the shared study.');
+  }
+  private async settleReading(signal: AbortSignal, predicate: () => boolean = () => true, guard: () => void = () => {}): Promise<void> {
+    const started = Date.now(); let frames = 0;
+    do {
+      alive(signal);
+      await abortable(new Promise<void>(resolve => this.browser.requestAnimationFrame ? this.browser.requestAnimationFrame(() => resolve()) : setTimeout(resolve, 0)), signal, 8000);
+      alive(signal); guard(); frames++;
+      if (frames >= 2 && predicate()) return;
+    } while (Date.now() - started < 8000);
+    throw new Error('Native reading state did not settle.');
+  }
+  private presentationMemo(viewport: Host, id: string): () => void {
+    const native = this.viewportAdapter(viewport);
+    const overlays = Array.from(viewport.element.querySelectorAll('.viewport-overlay')) as HTMLElement[];
+    const visibility = overlays.map(element => !element.classList.contains('hidden'));
+    const group = this.services.toolGroupService?.getToolGroupForViewport(id);
+    const modes = ['ReferenceLines','ImageOverlayViewer'].filter(tool => group?.hasTool(tool)).map(tool => ({ tool, mode: group.getToolInstance(tool)?.mode }));
+    const view = structuredClone(native?.getViewState() ?? viewport.getCamera?.() ?? {});
+    const grid = this.services.viewportGridService.getState().viewports.get(id);
+    const layers = native ? (grid?.displaySetInstanceUIDs ?? []).map((uid: string) => { const dataId = native.getDataIdForDisplaySet(uid); return { dataId, properties: structuredClone(native.getPresentation(dataId)) }; }) : [];
+    const properties = structuredClone(viewport.getProperties?.() ?? {});
+    const pan = viewport.getPan?.(), zoom = viewport.getZoom?.();
+    const actor = viewport.getActors?.()?.[0]?.actor, mapper = actor?.getMapper?.(), lighting = actor?.getProperty?.();
+    const light = Object.fromEntries(['Ambient','Diffuse','Specular','Shade'].filter(key => lighting?.[`get${key}`]).map(key => [key, lighting[`get${key}`]() ]));
+    const mapping = Object.fromEntries(['SampleDistance','MaximumSamplesPerRay','BlendMode'].filter(key => mapper?.[`get${key}`]).map(key => [key, mapper[`get${key}`]() ]));
+    const slab = viewport.getSlabThickness?.(), opacity = lighting?.getScalarOpacity?.(0);
+    const opacityPoints = opacity && Array.from({ length: opacity.getSize() }, (_, index) => { const point = [0,0,0,0]; opacity.getNodeValue(index, point); return point; });
+    return () => {
+      overlays.forEach((element,index) => element.classList.toggle('hidden', !visibility[index]));
+      modes.forEach(({ tool, mode }) => { if (mode === 'Enabled') group.setToolEnabled(tool); else if (mode === 'Disabled') group.setToolDisabled(tool); });
+      if (native) { native.setViewState(view); layers.forEach((layer: Host) => native.setPresentation(layer.properties, layer.dataId)); }
+      else { viewport.setCamera?.(view); viewport.setProperties?.(properties); }
+      if (pan) viewport.setPan?.(pan); if (zoom) viewport.setZoom?.(zoom);
+      Object.entries(light).forEach(([key,value]) => lighting[`set${key}`]?.(value));
+      Object.entries(mapping).forEach(([key,value]) => mapper[`set${key}`]?.(value));
+      if (slab !== undefined) viewport.setSlabThickness?.(slab);
+      if (opacityPoints) { opacity.removeAllPoints(); opacityPoints.forEach((point: number[]) => opacity.addPoint(...point)); }
+      viewport.render();
+    };
+  }
+  stopReadingActivity(): void {
+    for (const [id, viewport] of this.cineOwned) {
+      this.services.cineService?.setCine?.({ id, isPlaying: false });
+      this.services.cineService?.stopClip?.(viewport.element);
+    }
+    this.cineOwned.clear();
+  }
+  async performReadingTool(name: string, args: Json, signal: AbortSignal): Promise<Json> {
+    alive(signal);
+    const study = this.studyBinding();
+    const { id, viewport, grid } = this.viewport(args.viewportId);
+    this.assertPaneStudy(id, study.studyId);
+    const native = this.viewportAdapter(viewport);
+    const affected = [id];
+    const before = new Map([[id, this.presentationMemo(viewport, id)]]);
+    const guard = () => { alive(signal); const current = this.context().state.studyId; if (current && current !== study.studyId) throw new Error('The study changed during the action.'); };
+    const run = async (command: string, options: Json = {}, context = 'CORNERSTONE') => { guard(); const value = await this.run(command, options, context); guard(); return value; };
+
+    let predicate = () => true;
+    let result: Json = {};
+    let presentationChanged = false;
+    this.services.viewportGridService.setActiveViewportId(id);
+    switch (name) {
+      case 'viewer_select_viewport': predicate = () => this.services.viewportGridService.getActiveViewportId() === id; break;
+      case 'viewer_set_orientation':
+        await run('setViewportOrientation', { viewportId: id, orientation: args.orientation });
+        predicate = () => { const normal = native?.getViewPlaneNormal(); const expected = ({ axial: [0,0,1], coronal: [0,1,0], sagittal: [1,0,0] } as Record<string,number[]>)[String(args.orientation)]; return Boolean(normal && Math.abs(normal.reduce((sum: number, v: number, i: number) => sum + v * expected[i], 0)) > 0.999); };
+        presentationChanged = true; break;
+      case 'viewer_set_overlays': {
+        if (typeof args.visible === 'boolean') {
+          for (const element of Array.from(viewport.element.querySelectorAll('.viewport-overlay')) as HTMLElement[]) element.classList.toggle('hidden', !args.visible);
+        }
+        const group = this.services.toolGroupService?.getToolGroupForViewport(id);
+        for (const [key, tool] of [['referenceLines','ReferenceLines'],['imageOverlay','ImageOverlayViewer']] as const) {
+          if (typeof args[key] !== 'boolean') continue;
+          if (!group?.hasTool(tool)) throw new Error('This overlay is unavailable.');
+          for (const pane of group.getViewportsInfo()) this.assertPaneStudy(pane.viewportId, study.studyId);
+          if (args[key]) group.setToolEnabled(tool); else group.setToolDisabled(tool);
+        }
+        viewport.render();
+        predicate = () => {
+          const overlays = Array.from(viewport.element.querySelectorAll('.viewport-overlay')) as HTMLElement[];
+          return (args.visible === undefined || overlays.every(element => element.classList.contains('hidden') !== args.visible)) && [['referenceLines','ReferenceLines'],['imageOverlay','ImageOverlayViewer']].every(([key,tool]) => args[key] === undefined || group.getToolInstance(tool)?.mode === (args[key] ? 'Enabled' : 'Disabled'));
+        };
+        presentationChanged = true; break;
+      }
+      case 'viewer_set_sync': {
+        const ids = (args.viewportIds as string[]).map(value => this.resolve(value, 'viewport'));
+        if (new Set(ids).size !== ids.length) throw new Error('Choose distinct panes.');
+        ids.forEach(selected => this.assertPaneStudy(selected, study.studyId));
+        const sync = this.services.syncGroupService;
+        const syncId = `radsysx-${args.type}-${(args.viewportIds as string[]).slice().sort().join('-')}`;
+        if (args.enabled) for (const selected of ids) {
+          const pane = this.services.cornerstoneViewportService.getCornerstoneViewport(selected);
+          sync.addViewportToSyncGroup(selected, pane.getRenderingEngine().id, { id: syncId, type: args.type, source: true, target: true });
+        }
+        const synchronizer = sync.getSynchronizer(syncId);
+        if (!synchronizer && args.enabled) throw new Error('Synchronization did not start.');
+        synchronizer?.setEnabled(Boolean(args.enabled));
+        predicate = () => !synchronizer ? !args.enabled : synchronizer.isDisabled() !== args.enabled;
+        break;
+      }
+      case 'viewer_open_panel': {
+        const panel = this.panelId(args.panel); if (!panel) throw new Error('This panel is unavailable.');
+        this.services.panelService.activatePanel(panel, true);
+        const panelName = this.services.panelService.getPanelData(panel).name;
+        predicate = () => Array.from(this.browser.document.querySelectorAll('[data-radsysx-open-panel]')).some(node => (node as HTMLElement).dataset.radsysxOpenPanel === panelName);
+        result = { panel: args.panel }; break;
+      }
+      case 'viewer_set_cine': {
+        const cine = this.services.cineService;
+        for (const linked of cine.getSyncedViewports?.(id) ?? []) this.assertPaneStudy(linked.viewportId, study.studyId);
+        cine.setIsCineEnabled(true); cine.setCine({ id, isPlaying: args.playing, frameRate: args.fps ?? 24 });
+        if (args.playing) this.cineOwned.set(id, viewport); else { this.cineOwned.delete(id); cine.stopClip?.(viewport.element); }
+        predicate = () => Boolean(cine.getState().cines?.[id]?.isPlaying) === args.playing;
+        result = { playing: args.playing, fps: args.fps ?? 24 }; break;
+      }
+      case 'viewer_set_mpr': {
+        const display = list(this.services.displaySetService.activeDisplaySets).find(ds => grid.displaySetInstanceUIDs.includes(ds.displaySetInstanceUID));
+        if (!display) throw new Error('The selected series is unavailable.');
+        const applied = await run('setHangingProtocol', { protocolId: args.layout, activeStudyUID: display.StudyInstanceUID }, 'DEFAULT');
+        if (applied === false) throw new Error('The requested layout cannot be applied to this study.');
+        predicate = () => this.services.hangingProtocolService.getState().protocolId === args.layout;
+        break;
+      }
+      case 'viewer_set_crosshair': {
+        const point = args.worldPoint as number[];
+        const data = viewport.getImageData?.(); const imageData = data?.imageData;
+        const index = imageData?.worldToIndex?.(point); const dimensions = imageData?.getDimensions?.() ?? data?.dimensions;
+        if (!index || !dimensions || index.some((n: number, i: number) => !Number.isFinite(n) || n < 0 || n > dimensions[i] - 1)) throw new Error('Crosshair point is outside the volume.');
+        const group = this.services.toolGroupService.getToolGroupForViewport(id);
+        for (const info of group.getViewportsInfo()) {
+          this.assertPaneStudy(info.viewportId, study.studyId);
+          const pane = this.services.cornerstoneViewportService.getCornerstoneViewport(info.viewportId);
+          if (pane.jumpToWorld) {
+            if (!before.has(info.viewportId)) { affected.push(info.viewportId); before.set(info.viewportId, this.presentationMemo(pane, info.viewportId)); }
+            pane.jumpToWorld(point); pane.render();
+          }
+        }
+        group.getToolInstance('Crosshairs')?.computeToolCenter?.();
+        predicate = () => affected.every(paneId => { const pane = this.services.cornerstoneViewportService.getCornerstoneViewport(paneId); const adapter = this.viewportAdapter(pane); const focal = adapter?.getFocalPoint(), normal = adapter?.getViewPlaneNormal(); return focal && normal && Math.abs(normal.reduce((sum: number, v: number, i: number) => sum + (point[i] - focal[i]) * v, 0)) < 0.1; });
+        result = { worldPoint: point }; presentationChanged = true; break;
+      }
+      case 'viewer_set_fusion': {
+        const displaySetInstanceUID = this.resolve(args.displaySetId, 'series');
+        if (!grid.displaySetInstanceUIDs.includes(displaySetInstanceUID)) throw new Error('Fusion layer is outside this pane.');
+        if (args.preset) await run('setViewportColormap', { viewportId: id, displaySetInstanceUID, colormap: { name: args.preset }, opacity: args.opacity, immediate: true });
+        if (!native?.setLayerOpacity(displaySetInstanceUID, args.opacity)) throw new Error('This layer does not support opacity.');
+        viewport.render(); predicate = () => native?.getColormap(displaySetInstanceUID)?.opacity === args.opacity;
+        result = { opacity: args.opacity }; presentationChanged = true; break;
+      }
+      case 'viewer_set_rendering': {
+        const uid = this.resolve(args.displaySetId, 'series');
+        if (!native || !grid.displaySetInstanceUIDs.includes(uid)) throw new Error('Layer is outside this pane.');
+        if (args.threshold !== undefined && !native.setLayerThreshold(uid, args.threshold)) throw new Error('Threshold is unavailable for this layer.');
+        if (args.opacity !== undefined && !native.setLayerOpacity(uid, args.opacity)) throw new Error('Opacity is unavailable for this layer.');
+        if (args.preset) native.setPresentation({ colormap: { ...native.getColormap(uid), name: args.preset } }, native.getDataIdForDisplaySet(uid));
+        if (typeof args.colorbar === 'boolean') {
+          const colors = this.services.colorbarService;
+          if (!colors) throw new Error('Colorbar controls are unavailable.');
+          if (colors.hasColorbar(id) !== args.colorbar) await run('toggleViewportColorbar', { viewportId: id, displaySetInstanceUIDs: [uid] });
+        }
+        viewport.render();
+        predicate = () => { const color = native.getColormap(uid); return (args.opacity === undefined || color?.opacity === args.opacity) && (args.threshold === undefined || color?.threshold === args.threshold) && (!args.preset || color?.name === args.preset) && (args.colorbar === undefined || this.services.colorbarService.hasColorbar(id) === args.colorbar); };
+        presentationChanged = true; break;
+      }
+      case 'viewer_set_volume': {
+        const actor = viewport.getActors?.()?.[0]?.actor, mapper = actor?.getMapper?.(), lighting = actor?.getProperty?.();
+        const opacity = lighting?.getScalarOpacity?.(0);
+        const opacityBefore = opacity && Array.from({ length: opacity.getSize() }, (_, index) => { const point = [0,0,0,0]; opacity.getNodeValue(index, point); return point; });
+        if (args.opacityShift !== undefined) { if (!opacityBefore?.length) throw new Error('Volume opacity is unavailable.'); await run('shiftVolumeOpacityPoints', { viewportId: id, shift: args.opacityShift }); }
+        if (args.blend !== undefined) {
+          const key = ({ composite: 'COMPOSITE', maximum: 'MAXIMUM_INTENSITY_BLEND', minimum: 'MINIMUM_INTENSITY_BLEND', average: 'AVERAGE_INTENSITY_BLEND' } as Record<string,string>)[String(args.blend)];
+          const mode = this.libraries().cornerstone.Enums.BlendModes[key];
+          if (!viewport.setBlendMode || mode === undefined) throw new Error('Volume blending is unavailable.');
+          viewport.setBlendMode(mode);
+        }
+        if (args.slabThickness !== undefined) { if (!viewport.setSlabThickness) throw new Error('Slab controls are unavailable.'); viewport.setSlabThickness(args.slabThickness); }
+        if (args.quality !== undefined) await run('setVolumeRenderingQulaity', { viewportId: id, volumeQuality: args.quality });
+        if (['ambient','diffuse','specular','shade'].some(key => args[key] !== undefined)) {
+          const options = Object.fromEntries(['ambient','diffuse','specular','shade'].filter(key => args[key] !== undefined).map(key => [key,args[key]]));
+          await run('setVolumeLighting', { viewportId: id, options });
+        }
+        if (args.preset) await run('setViewportPreset', { viewportId: id, preset: args.preset });
+        viewport.render();
+        predicate = () => {
+          const blend = ({ composite: 'COMPOSITE', maximum: 'MAXIMUM_INTENSITY_BLEND', minimum: 'MINIMUM_INTENSITY_BLEND', average: 'AVERAGE_INTENSITY_BLEND' } as Record<string,string>)[String(args.blend)];
+          if (args.blend !== undefined && mapper?.getBlendMode?.() !== this.libraries().cornerstone.Enums.BlendModes[blend]) return false;
+          if (args.slabThickness !== undefined && Math.abs(Number(viewport.getSlabThickness?.()) - Number(args.slabThickness)) > 0.001) return false;
+          if (args.quality !== undefined) { const spacing = mapper?.getInputData?.()?.getSpacing?.(); const expected = spacing?.reduce((sum: number, v: number) => sum + v, 0) / 3; if (!Number.isFinite(expected) || Math.abs(Number(mapper.getSampleDistance()) - expected) > 0.001) return false; }
+          if (args.preset && native?.getPresentation()?.preset !== args.preset) return false;
+          for (const field of ['ambient','diffuse','specular','shade']) if (args[field] !== undefined && lighting?.[`get${field[0].toUpperCase()}${field.slice(1)}`]?.() !== args[field]) return false;
+          if (args.opacityShift !== undefined && !opacityBefore?.every((point: number[], index: number) => { const current = [0,0,0,0]; opacity.getNodeValue(index, current); return Math.abs(current[0] - point[0] - Number(args.opacityShift)) < 0.001; })) return false;
+          return true;
+        };
+        presentationChanged = true; break;
+      }
+      default: {
+        if (name === 'viewer_open_series' && !study.seriesIds.includes(String(args.displaySetId))) throw new Error('Choose a series in the current study.');
+        result = await this.executeLegacy(name, args, signal);
+        presentationChanged = ['viewer_set_view','viewer_set_window_level'].includes(name);
+        if (name === 'viewer_set_view') predicate = () => {
+          const state = this.context().state;
+          return ['zoom','panX','panY','rotation','invert','flipHorizontal','flipVertical'].filter(key => args[key] !== undefined).every(key => typeof args[key] === 'number' ? Math.abs(Number(state[key]) - Number(args[key])) < 0.001 : state[key] === args[key]);
+        };
+        if (name === 'viewer_set_window_level') {
+          const modality = this.context().state.modality;
+          const preset = args.preset ? this.services.customizationService?.getCustomization?.('cornerstone.windowLevelPresets')?.[String(modality)]?.[String(args.preset)] : undefined;
+          const width = args.windowWidth ?? preset?.window, center = args.windowCenter ?? preset?.level;
+          predicate = () => { const state = this.context().state; return Math.abs(Number(state.windowWidth) - Number(width)) < 0.001 && Math.abs(Number(state.windowCenter) - Number(center)) < 0.001; };
+        }
+        if (name === 'viewer_jump_to_slice') predicate = () => this.viewport(args.viewportId).viewport.getCurrentImageIdIndex?.() === args.index;
+        if (name === 'viewer_open_series') predicate = () => this.viewport(args.viewportId).grid.displaySetInstanceUIDs.includes(this.resolve(args.displaySetId,'series'));
+        if (name === 'viewer_set_layout') predicate = () => { const layout=this.services.viewportGridService.getState().layout; return layout.numRows===args.rows && layout.numCols===args.columns; };
+      }
+    }
+    await this.settleReading(signal, predicate, () => { if (this.studyBinding().studyId !== study.studyId) throw new Error('The study changed during the action.'); });
+    if (this.studyBinding().studyId !== study.studyId) throw new Error('The study changed during the action.');
+    if (presentationChanged && this.history()) {
+      const after = affected.map(paneId => this.presentationMemo(this.services.cornerstoneViewportService.getCornerstoneViewport(paneId), paneId));
+      this.history()!.push({ restoreMemo: (undo = true) => {
+        affected.forEach(paneId => this.assertPaneStudy(paneId, study.studyId));
+        if (undo) before.forEach(restore => restore()); else after.forEach(restore => restore());
+      } });
+    }
+    this.onChange?.();
+    const { state: _oldState, applied: _oldApplied, ...details } = result;
+    return { ...details, applied: true, state: this.context().state, canUndo: presentationChanged && Boolean(this.history()) };
+  }
+  async execute(name: string, args: Json, signal = new AbortController().signal): Promise<Json> {
+    if (name === 'viewer_get_capabilities') return { capabilities: capabilities(this) };
+    if (READING_TOOLS[name]) return executeReadingTool(this, name, args, signal);
+    alive(signal); const result = await this.executeLegacy(name, args, signal); alive(signal); return result;
+  }
+  private async executeLegacy(name: string, args: Json, signal = new AbortController().signal): Promise<Json> {
+    const run = async (command: string, options: Json = {}, context = 'CORNERSTONE') => { alive(signal); const value = await this.run(command, options, context); alive(signal); return value; };
     if (name === 'viewer_get_state') return this.context().state;
     if (name === 'viewer_open_worklist') { setTimeout(() => this.browser.location.assign('/worklist'), 150); return { applied: true }; }
     if (name === 'study_open') {
@@ -253,44 +531,44 @@ export class OHIFAdapter {
     this.services.viewportGridService.setActiveViewportId(id);
     switch (name) {
       case 'viewer_set_window_level':
-        if (args.preset) await this.run('setWindowLevelPreset', { presetName: text(args.preset, 80) });
-        else await this.run('setViewportWindowLevel', { viewportId: id, windowWidth: number(args.windowWidth, 0.01, 100000, 'window width'), windowCenter: number(args.windowCenter, -100000, 100000, 'window center') });
+        if (args.preset) await run('setWindowLevelPreset', { presetName: text(args.preset, 80) });
+        else await run('setViewportWindowLevel', { viewportId: id, windowWidth: number(args.windowWidth, 0.01, 100000, 'window width'), windowCenter: number(args.windowCenter, -100000, 100000, 'window center') });
         break;
       case 'viewer_set_layout': {
         const rows = number(args.rows, 1, 4, 'rows'), columns = number(args.columns, 1, 4, 'columns');
         if (!Number.isInteger(rows) || !Number.isInteger(columns)) throw new Error('Layout dimensions must be integers.');
-        await this.run('setViewportGridLayout', { numRows: rows, numCols: columns }, 'DEFAULT'); break;
+        await run('setViewportGridLayout', { numRows: rows, numCols: columns }, 'DEFAULT'); break;
       }
       case 'viewer_open_series': {
         const displaySetInstanceUID = this.resolve(args.displaySetId, 'series');
         if (!list(this.services.displaySetService.activeDisplaySets).some(item => item.displaySetInstanceUID === displaySetInstanceUID)) throw new Error('Series is no longer loaded.');
-        await this.run('setDisplaySetsForViewports', { viewportsToUpdate: [{ viewportId: id, displaySetInstanceUIDs: [displaySetInstanceUID] }] }); break;
+        await run('setDisplaySetsForViewports', { viewportsToUpdate: [{ viewportId: id, displaySetInstanceUIDs: [displaySetInstanceUID] }] }); break;
       }
       case 'viewer_jump_to_slice': {
         const count = viewport.getImageIds?.()?.length;
         const index = number(args.index, 0, typeof count === 'number' ? count - 1 : 100000, 'slice index');
         if (!Number.isInteger(index)) throw new Error('Slice index must be an integer.');
-        await this.run('jumpToImage', { imageIndex: index }); break;
+        await run('jumpToImage', { imageIndex: index }); break;
       }
       case 'viewer_set_tool': {
         const toolName = text(args.tool, 80);
         if (!TOOL_NAMES.has(toolName)) throw new Error('This tool is not available to the assistant.');
-        await this.run('setToolActive', { toolName }); break;
+        await run('setToolActive', { toolName }); break;
       }
       case 'viewer_set_view':
-        if (args.reset === true) await this.run('resetViewport');
+        if (args.reset === true) await run('resetViewport');
         if (args.zoom !== undefined) { if (!viewport.setZoom) throw new Error('Zoom is not supported here.'); viewport.setZoom(number(args.zoom, 0.1, 20, 'zoom')); }
         if (args.panX !== undefined || args.panY !== undefined) { if (!viewport.setPan) throw new Error('Pan is not supported here.'); viewport.setPan([number(args.panX ?? 0, -5000, 5000, 'pan'), number(args.panY ?? 0, -5000, 5000, 'pan')]); }
-        if (args.rotation !== undefined) await this.run('rotateViewportCWSet', { rotation: number(args.rotation, -360, 360, 'rotation') });
-        if (typeof args.flipHorizontal === 'boolean') await this.run('setViewportHorizontalFlip', { flipped: args.flipHorizontal });
-        if (typeof args.flipVertical === 'boolean') await this.run('setViewportVerticalFlip', { flipped: args.flipVertical });
+        if (args.rotation !== undefined) await run('rotateViewportCWSet', { rotation: number(args.rotation, -360, 360, 'rotation') });
+        if (typeof args.flipHorizontal === 'boolean') await run('setViewportHorizontalFlip', { flipped: args.flipHorizontal });
+        if (typeof args.flipVertical === 'boolean') await run('setViewportVerticalFlip', { flipped: args.flipVertical });
         if (typeof args.invert === 'boolean') viewport.setProperties({ invert: args.invert });
         viewport.render(); break;
       case 'viewer_measurement': await this.measurement(args, viewport, id); break;
       case 'viewer_segmentation': {
         const segmentationId = this.resolve(args.segmentationId, 'segmentation');
         if (!this.services.segmentationService.getSegmentation(segmentationId)) throw new Error('Segmentation no longer exists.');
-        if (args.operation === 'select') await this.run('setActiveSegmentation', { segmentationId, viewportId: id });
+        if (args.operation === 'select') await run('setActiveSegmentation', { segmentationId, viewportId: id });
         else if (args.operation === 'visibility' && typeof args.visible === 'boolean') {
           const service = this.services.segmentationService;
           const libs = this.libraries();
@@ -302,8 +580,8 @@ export class OHIFAdapter {
         } else throw new Error('Unsupported segmentation operation.');
         break;
       }
-      case 'viewer_undo': await this.run('undo'); break;
-      case 'viewer_redo': await this.run('redo'); break;
+      case 'viewer_undo': await run('undo'); break;
+      case 'viewer_redo': await run('redo'); break;
       default: throw new Error('Unsupported viewer action.');
     }
     this.onChange?.();

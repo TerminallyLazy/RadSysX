@@ -53,3 +53,5 @@
 - Live regressions cover explicit Codex view preview without provider dispatch, lease cleanup, no voice allocation, context/revision/age invalidation, receipt presentation and idempotent image retries. Unknown provider responses stay private; only fixed image-input rejection messages are surfaced.
 
 - `test-exploration.mjs` covers complete multiframe order, private ID omission, bounded manifest paging, changed/mixed study invalidation, sequential offscreen observations, failed late frames, aborts and encoding limits. Rendering doubles prove lifecycle only; native pixel/calibration acceptance remains a separate desktop fixture gate.
+
+- The build fingerprint also includes `ohif-build/study-tools.patch`; apply it independently from the security source patch so existing caches remain reproducible. The pinned adapter export and neutral panel marker support native semantic tooling. Navigation regressions reject native no-ops, manual case switches, foreign fusion layers and cross-study cine.

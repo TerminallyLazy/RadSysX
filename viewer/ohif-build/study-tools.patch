@@ -1,0 +1,22 @@
+diff --git a/extensions/cornerstone/src/index.tsx b/extensions/cornerstone/src/index.tsx
+--- a/extensions/cornerstone/src/index.tsx
++++ b/extensions/cornerstone/src/index.tsx
+@@ -257,6 +257,7 @@
+             return { cornerstone, cornerstoneTools };
+           },
+           getEnabledElement,
++          getViewportAdapter,
+           dicomLoaderService,
+         },
+       },
+diff --git a/platform/ui-next/src/components/SidePanel/SidePanel.tsx b/platform/ui-next/src/components/SidePanel/SidePanel.tsx
+--- a/platform/ui-next/src/components/SidePanel/SidePanel.tsx
++++ b/platform/ui-next/src/components/SidePanel/SidePanel.tsx
+@@ -459,6 +459,7 @@
+     <div
+       className={classnames(className, baseClasses)}
+       style={style}
++      data-radsysx-open-panel={panelOpen ? tabs[activeTabIndex]?.name : undefined}
+     >
+       {panelOpen ? (
+         <>

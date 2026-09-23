@@ -70,3 +70,61 @@ test('wrong rendered frame, unsupported orientation and oversized encoding produ
     assert.equal(result.images.length,0);assert.equal(result.failures.length,1);assert.equal(encodes,failure==='size'?1:0);service.dispose();
   }
 });
+
+test('capability registry rejects arbitrary commands and disabled reading controls',async()=>{
+  const {capabilities}=await import('../.cache/live-runtime/capabilities.js');
+  const {executeReadingTool}=await import('../.cache/live-runtime/reading-tools.js');
+  const calls=[];
+  const host={readingAvailability:name=>({available:name!=='viewer_set_cine',reason:'No temporal frames'}),async performReadingTool(name,args){calls.push([name,args]);return {state:{index:2},canUndo:true};}};
+  const result=capabilities(host);assert.ok(result.every(item=>typeof item.available==='boolean'));
+  assert.equal(result.find(item=>item.name==='viewer_set_cine').available,false);
+  await assert.rejects(executeReadingTool(host,'runCommand',{name:'anything'},new AbortController().signal));
+  await assert.rejects(executeReadingTool(host,'viewer_set_cine',{playing:true,fps:20},new AbortController().signal));
+  await assert.rejects(executeReadingTool(host,'viewer_set_view',{zoom:Infinity},new AbortController().signal));
+  await executeReadingTool(host,'viewer_select_viewport',{viewportId:'viewport-1'},new AbortController().signal);
+  assert.equal(calls.length,1);
+});
+
+async function readingFixture(){
+  const {OHIFAdapter}=await import('../.cache/live-runtime/ohif.js');
+  let active='native-a',index=0;const cines={};const memos=[];
+  const displays=[{displaySetInstanceUID:'private-series',StudyInstanceUID:'private-study',Modality:'CT',numImageFrames:34,isReconstructable:false},{displaySetInstanceUID:'private-other',StudyInstanceUID:'other-study',Modality:'CT',numImageFrames:3}];
+  const grid=new Map([['native-a',{displaySetInstanceUIDs:['private-series']}],['native-b',{displaySetInstanceUIDs:['private-other']}]]);
+  const pane={id:'native-a',element:{clientWidth:64,clientHeight:64,querySelectorAll:()=>[]},getImageIds:()=>Array(34).fill('private'),getCurrentImageIdIndex:()=>index,getProperties:()=>({}),getCamera:()=>({}),render(){},getPan:()=>[0,0],getZoom:()=>1,setProperties(){},setCamera(){}};
+  const cine={getState:()=>({cines}),setIsCineEnabled(){},setCine({id,isPlaying,frameRate}){cines[id]={isPlaying,frameRate};},stopClip(){}};
+  const services={viewportGridService:{getActiveViewportId:()=>active,setActiveViewportId:id=>active=id,getState:()=>({viewports:grid,layout:{numRows:1,numCols:2}})},cornerstoneViewportService:{getCornerstoneViewport:id=>id==='native-a'?pane:{...pane,id}},displaySetService:{activeDisplaySets:displays},measurementService:{getMeasurements:()=>[]},segmentationService:{getSegmentations:()=>[]},cineService:cine,hangingProtocolService:{getProtocolById:()=>({id:'mpr'})}};
+  const browser={location:{pathname:'/viewer/local'},document:{addEventListener(){},removeEventListener(){},querySelector(){return null;}}};
+  const managers={servicesManager:{services},extensionManager:{getModuleEntry:()=>({exports:{getCornerstoneLibraries:()=>({cornerstone:{utilities:{HistoryMemo:{DefaultHistoryMemo:{push:one=>memos.push(one)}}}},cornerstoneTools:{}})}})},commandsManager:{runCommand(name,args){if(name==='jumpToImage')index=args.imageIndex;}}};
+  const adapter=new OHIFAdapter(browser);adapter.bind(managers);return {adapter,services,pane,displays,cines,memos,changeStudy(){active='native-b';}};
+}
+test('native reading dispatch validates pane study, MPR geometry and stops owned cine',async()=>{
+  const f=await readingFixture();assert.equal(f.adapter.readingAvailability('viewer_set_mpr').available,false);
+  await assert.rejects(f.adapter.execute('viewer_set_mpr',{layout:'mpr'}));
+  await f.adapter.execute('viewer_jump_to_slice',{index:33});assert.equal(f.adapter.context().state.index,33);
+  const other=f.adapter.context().state.viewports[1].id;
+  await assert.rejects(f.adapter.execute('viewer_select_viewport',{viewportId:other}),/outside/);
+  await f.adapter.execute('viewer_set_cine',{playing:true,fps:12});assert.equal(f.cines['native-a'].isPlaying,true);
+  f.adapter.stopReadingActivity();assert.equal(f.cines['native-a'].isPlaying,false);
+});
+test('manual case change during an awaited native action prevents a success receipt',async()=>{
+  const f=await readingFixture();f.adapter.browser.requestAnimationFrame=fn=>setTimeout(()=>{f.changeStudy();fn();},0);
+  await assert.rejects(f.adapter.execute('viewer_select_viewport',{viewportId:f.adapter.context().state.viewportId}),/study changed/);
+});
+
+test('a native no-op cannot become a completed zoom action',async()=>{
+  const f=await readingFixture();f.pane.setZoom=()=>{};
+  await assert.rejects(f.adapter.execute('viewer_set_view',{zoom:2}),/settle/);
+});
+
+test('cine refuses native synchronization into another study',async()=>{
+  const f=await readingFixture();
+  f.services.cineService.getSyncedViewports=()=>[{viewportId:'native-b'}];
+  await assert.rejects(f.adapter.execute('viewer_set_cine',{playing:true}),/outside/);
+  assert.equal(f.cines['native-a'],undefined);
+});
+test('fusion rejects a layer absent from the selected pane before changing presentation',async()=>{
+  const f=await readingFixture(); f.adapter.readingAvailability=()=>({available:true});
+  const other=f.adapter.context().state.series[1].id;
+  await assert.rejects(f.adapter.execute('viewer_set_fusion',{displaySetId:other,opacity:0.2}),/outside/);
+  assert.equal(f.memos.length,0);
+});

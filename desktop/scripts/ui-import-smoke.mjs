@@ -21,6 +21,7 @@ const manyDicomCount = 32;
 const smokeMode = resolveSmokeMode();
 const aiViewerSmoke = smokeMode === "local-start" && process.argv.includes("--ai-live");
 const audioPlaybackSmoke = process.argv.includes("--audio-playback");
+const studyInventorySmoke = process.argv.includes("--study-inventory");
 const visionSmoke = process.argv.includes("--vision");
 const evidenceReviewSmoke = process.argv.includes("--evidence-review");
 const credentialsSmoke = process.argv.includes("--credentials");
@@ -67,6 +68,7 @@ function resolveSmokeMode() {
 
 async function main() {
   try {
+    if (studyInventorySmoke && (!visionSmoke || realOpenAiAcceptance)) throw new Error("--study-inventory requires synthetic --local-start --vision.");
     if (visionSmoke && (smokeMode !== "local-start" || realOpenAiAcceptance || aiViewerSmoke)) throw new Error("--vision requires synthetic --local-start without voice.");
     if (evidenceReviewSmoke && (!aiViewerSmoke || realOpenAiAcceptance)) throw new Error("--evidence-review requires synthetic --local-start --ai-live.");
     if (audioPlaybackSmoke && (smokeMode !== "local-start" || realOpenAiAcceptance)) throw new Error("--audio-playback requires --local-start and is synthetic-only.");
@@ -81,7 +83,7 @@ async function main() {
       manyDicomCount: smokeMode === "picker-many-folder" ? manyDicomCount : 0,
     });
     const runtime = await startDesktopRuntime();
-    if (aiViewerSmoke) await compileAdapterProbe();
+    if (aiViewerSmoke || studyInventorySmoke) await compileAdapterProbe();
     if (audioPlaybackSmoke) await compileAudioProbe();
     const result = await runUiImportSmoke(runtime.publicBaseUrl, runtime.debugPort);
     console.log(JSON.stringify(result, null, 2));
@@ -540,6 +542,21 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         evidenceState = { ...evidenceState, ...cleanup, keyboardReady, evidenceScreenshot };
       }
       const credentialsState = credentialsSmoke ? await evaluateInRenderer(cdp, `(${exerciseCredentials.toString()})("after")`, 45000) : undefined;
+      let studyInventory;
+      if (studyInventorySmoke) {
+        await evaluateInRenderer(cdp, fs.readFileSync(path.join(tmpRoot, "adapter-probe.js"), "utf8"), 30000);
+        studyInventory = await evaluateInRenderer(cdp, `(() => {
+          const managers=window.__RADSYSX_OHIF_MANAGERS__;
+          const adapter=new window.__RadSysXSmokeAdapter.OHIFAdapter();adapter.bind(managers);
+          const services=managers.servicesManager.services;
+          const buttons=services.toolbarService.state.buttons;
+          const active=services.viewportGridService.getActiveViewportId();
+          const group=services.toolGroupService.getToolGroupForViewport(active);
+          return {controls:Object.values(buttons).map(b=>({id:b.id,enabled:b.props?.disabled!==true,visible:b.props?.visible!==false})),
+            nativeTools:Object.keys(group?.getToolInstances?.()??{})};
+        })()`, 30000);
+        studyInventory.capabilities = await evaluateInRenderer(cdp, `(async()=>{const a=new window.__RadSysXSmokeAdapter.OHIFAdapter();a.bind(window.__RADSYSX_OHIF_MANAGERS__);return (await a.execute('viewer_get_capabilities',{})).capabilities;})()`, 30000);
+      }
       let adapterState;
       if (aiViewerSmoke) {
         await evaluateInRenderer(cdp, fs.readFileSync(path.join(tmpRoot, "adapter-probe.js"), "utf8"), 30000);
@@ -569,6 +586,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         ...(textState ? { textState } : {}),
         ...(credentialsState ? { credentialsState } : {}),
         ...(adapterState ? { adapterState } : {}),
+        ...(studyInventory ? { studyInventory } : {}),
         ...(audioPlaybackState ? { audioPlaybackState } : {}),
       };
     }

@@ -21,3 +21,5 @@ Own the pinned OHIF source-build inputs: upstream commit, source patch, pnpm wor
 - `npm run desktop:smoke:local-start`
 
 - OHIF OIDC uses `oidc-client-ts` authorization-code flow with PKCE. Never ship the old `oidc-client.min.js` asset or restore implicit-flow fallback. Copy the maintained silent-callback bundle before building the service-worker manifest.
+
+- `study-tools.patch` exposes the already-imported native viewport adapter through OHIF common utilities and adds a neutral rendered open-panel marker. Keep it independent of `source.patch` for upgradeable caches; include it in the build fingerprint. No private DICOM identifiers or new arbitrary command entry points are added.

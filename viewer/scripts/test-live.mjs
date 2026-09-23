@@ -70,7 +70,7 @@ test('review controls appear only while approval is pending; receipts render esc
 function fixture() {
   const calls = [], listeners = new Map(); let index = 0;
   const browser = { location: { pathname: '/viewer/dicomlocal', origin: 'http://localhost:3000', protocol: 'http:', assign(url) { calls.push(['navigate', url]); } }, document: { querySelector() { return null; }, addEventListener(name, callback, capture) { listeners.set(name, { callback, capture }); }, removeEventListener(name) { listeners.delete(name); } } };
-  const viewport = { getProperties: () => ({ voiRange: { lower: -160, upper: 239 } }), getCurrentImageIdIndex: () => index, getImageIds: () => ['one', 'two', 'three'], render() {}, element: { isConnected: true, getBoundingClientRect: () => ({ x: 100, y: 120, width: 800, height: 600 }) } };
+  const viewport = { getProperties: () => ({ voiRange: { lower: -160, upper: 239 } }), getCurrentImageIdIndex: () => index, getImageIds: () => ['one', 'two', 'three'], render() {}, element: { querySelectorAll: () => [], isConnected: true, getBoundingClientRect: () => ({ x: 100, y: 120, width: 800, height: 600 }) } };
   const grid = { displaySetInstanceUIDs: ['private-display-uid'] };
   const measurement = { uid: 'private-measurement-uid', displaySetInstanceUID: 'private-display-uid', toolName: 'Length', label: 'PRIVATE PATIENT LABEL', selected: true };
   const services = {

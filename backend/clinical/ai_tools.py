@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Arguments(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, allow_inf_nan=False)
 
 
 class ViewportArguments(Arguments):
@@ -29,7 +29,7 @@ class WindowLevel(ViewportArguments):
 
 class Layout(Arguments):
     rows: int = Field(ge=1, le=3)
-    columns: int = Field(ge=1, le=3)
+    columns: int = Field(ge=1, le=4)
 
 
 class OpenSeries(ViewportArguments):
@@ -80,6 +80,69 @@ class Segmentation(ViewportArguments):
     visible: bool | None = None
 
 
+class ReadingViewport(ViewportArguments):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, strict=True, allow_inf_nan=False)
+    viewportId: str | None = Field(default=None, pattern=r"^viewport-[A-Za-z0-9_-]{1,110}$")
+
+class SelectViewport(ReadingViewport):
+    viewportId: str = Field(pattern=r"^viewport-[A-Za-z0-9_-]{1,110}$")
+
+class Orientation(ReadingViewport):
+    orientation: Literal["axial", "coronal", "sagittal"]
+
+class Overlays(ReadingViewport):
+    visible: bool | None = None
+    referenceLines: bool | None = None
+    imageOverlay: bool | None = None
+
+class Sync(ReadingViewport):
+    enabled: bool
+    type: Literal["imageSlice", "voi"]
+    viewportIds: list[str] = Field(min_length=2, max_length=16)
+
+    @model_validator(mode="after")
+    def distinct(self):
+        import re
+        if len(set(self.viewportIds)) != len(self.viewportIds) or any(not re.fullmatch(r"viewport-[A-Za-z0-9_-]{1,110}", v) for v in self.viewportIds):
+            raise ValueError("Choose distinct current viewports")
+        return self
+
+class Panel(ReadingViewport):
+    panel: Literal["series", "measurements", "segmentation", "report"]
+
+class Cine(ReadingViewport):
+    playing: bool
+    fps: float = Field(default=24, ge=1, le=60)
+
+class MPR(ReadingViewport):
+    layout: Literal["mpr", "mprAnd3DVolume", "default"]
+
+class Crosshair(ReadingViewport):
+    worldPoint: list[float] = Field(min_length=3, max_length=3)
+
+class Fusion(ReadingViewport):
+    displaySetId: str = Field(pattern=r"^series-[A-Za-z0-9_-]{1,110}$")
+    opacity: float = Field(ge=0, le=1)
+    preset: Literal["Grayscale", "Hot Iron", "PET", "PET 20 Step", "Cool to Warm"] | None = None
+
+class Rendering(ReadingViewport):
+    displaySetId: str = Field(pattern=r"^series-[A-Za-z0-9_-]{1,110}$")
+    threshold: float | None = Field(default=None, ge=-1000000, le=1000000)
+    opacity: float | None = Field(default=None, ge=0, le=1)
+    colorbar: bool | None = None
+    preset: Literal["Grayscale", "Hot Iron", "PET", "PET 20 Step", "Cool to Warm"] | None = None
+
+class Volume(ReadingViewport):
+    opacityShift: float | None = Field(default=None, ge=-1000000, le=1000000)
+    quality: float | None = Field(default=None, ge=0, le=1)
+    ambient: float | None = Field(default=None, ge=0, le=1)
+    diffuse: float | None = Field(default=None, ge=0, le=1)
+    specular: float | None = Field(default=None, ge=0, le=1)
+    shade: bool | None = None
+    blend: Literal["composite", "maximum", "minimum", "average"] | None = None
+    slabThickness: float | None = Field(default=None, gt=0, le=1000)
+    preset: Literal["CT-Bone", "CT-Soft-Tissue", "CT-Lung", "CT-Coronary-Arteries", "MR-Default"] | None = None
+
 class Report(Arguments):
     findings: str = Field(default="", max_length=16000)
     impression: str = Field(default="", max_length=8000)
@@ -98,6 +161,10 @@ class Cancel(Arguments):
 
 
 TOOL_MODELS = {
+    "viewer_set_rendering": Rendering, "viewer_get_capabilities": Arguments, "viewer_select_viewport": SelectViewport,
+    "viewer_set_orientation": Orientation, "viewer_set_overlays": Overlays, "viewer_set_sync": Sync,
+    "viewer_open_panel": Panel, "viewer_set_cine": Cine, "viewer_set_mpr": MPR,
+    "viewer_set_crosshair": Crosshair, "viewer_set_fusion": Fusion, "viewer_set_volume": Volume,
     "viewer_get_state": Arguments, "viewer_set_window_level": WindowLevel,
     "viewer_set_layout": Layout, "viewer_open_series": OpenSeries, "viewer_jump_to_slice": Slice,
     "viewer_set_view": View, "viewer_set_tool": Tool, "viewer_measurement": Measurement,
@@ -108,6 +175,18 @@ TOOL_MODELS = {
 }
 
 DESCRIPTIONS = {
+    "viewer_set_rendering": "Adjust a visible layer color map, opacity, absolute pixel threshold or colorbar through native rendering controls.",
+    "viewer_get_capabilities": "Discover typed native reading tools and current availability.",
+    "viewer_select_viewport": "Select a pane within the shared study.",
+    "viewer_set_orientation": "Reorient a reconstructable volume to a named anatomical plane.",
+    "viewer_set_overlays": "Set reading overlays, reference lines or DICOM image overlay visibility.",
+    "viewer_set_sync": "Set native image-position or window synchronization for explicit same-study panes.",
+    "viewer_open_panel": "Show the series, measurements, segmentation or unsaved report panel.",
+    "viewer_set_cine": "Play or stop a native cine sequence at a bounded frame rate.",
+    "viewer_set_mpr": "Apply an available native MPR layout to reconstructable data.",
+    "viewer_set_crosshair": "Move MPR intersections to a calibrated world point inside the selected volume.",
+    "viewer_set_fusion": "Set opacity and an optional color map on an already visible same-study fusion layer.",
+    "viewer_set_volume": "Set native volume blend, slab thickness or a named volume-rendering preset.",
     "viewer_get_state": "Read current non-identifying viewer state and available study aliases.",
     "viewer_set_window_level": "Set window/level on a viewport using a preset or explicit width/center.",
     "viewer_set_layout": "Change the viewer rows and columns.",
@@ -153,6 +232,7 @@ SAFE_STATE_KEYS = {
     "layout", "windowWidth", "windowCenter", "preset", "zoom", "panX", "panY", "rotation",
     "invert", "flipHorizontal", "flipVertical", "visible", "selected", "points", "label",
     "length", "area", "unit", "value", "canUndo", "canRedo", "available", "status",
+    "playing", "fps", "opacity", "sampleDistance", "ambient", "diffuse", "specular", "shade", "blend", "slabThickness", "referenceLines", "imageOverlay", "enabled", "worldPoint", "panel", "seriesIds",
     "canvasWidth", "canvasHeight", "orientation", "position", "width", "height", "active", "state", "applied", "message",
 }
 
@@ -160,6 +240,10 @@ SAFE_STATE_KEYS = {
 def safe_state(value, depth=0):
     if depth > 8:
         return None
+    if isinstance(value, dict) and "capabilities" in value:
+        # Capability names/availability are data, never new authority or arbitrary schemas.
+        return {"capabilities": [{"name": c["name"], "available": c.get("available") is True}
+            for c in (value["capabilities"] if isinstance(value["capabilities"], list) else [])[:64] if isinstance(c, dict) and c.get("name") in TOOL_MODELS]}
     if isinstance(value, dict):
         return {k: safe_state(v, depth + 1) for k, v in value.items() if k in SAFE_STATE_KEYS}
     if isinstance(value, list):
