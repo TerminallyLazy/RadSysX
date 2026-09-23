@@ -1,6 +1,6 @@
 # Codex study exploration and viewer tools
 
-Date: 2026-09-23. Status: proposed design for user review. No implementation or provider acceptance of this extension is claimed. The existing single-viewport attachment remains the shipped behavior.
+Date: 2026-09-23. Status: written design approved by the user on 2026-09-23; implementation plan pending review. No implementation or provider acceptance of this extension is claimed. The existing single-viewport attachment remains the shipped behavior.
 
 ## Intended outcome
 
@@ -112,4 +112,4 @@ Screen content, DICOM annotations, imported documents and literature are untrust
 
 ## Review and handoff
 
-The implementation plan follows written-design review. Proposed work is one integrated feature with four implementation stages: shared action broker, scoped observations/series coverage, native tool parity, then sidebar and desktop acceptance. No runtime behavior changes until that review/plan handoff is complete.
+The user approved this written design on 2026-09-23 and requested the implementation plan. The [implementation plan](../plans/2026-09-23-codex-study-exploration.md) awaits review; the previously selected native execution method is preserved. This is one integrated feature with four implementation stages: shared action broker, scoped observations/series coverage, native tool parity, then sidebar and desktop acceptance. No runtime behavior changes until that review/plan handoff is complete.
