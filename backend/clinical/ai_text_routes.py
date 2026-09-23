@@ -1,4 +1,4 @@
-"""Explicit text-only requests, private errors and bounded JSON input."""
+"""Explicit typed requests with optional Codex viewport input, private errors and bounded JSON input."""
 from typing import Literal
 from types import SimpleNamespace
 from fastapi import APIRouter, HTTPException, Request
@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .contracts import AISidebarViewerContext
 from .ai_evidence_routes import read_body
+from .ai_view_image import ViewImage
 
 
 class TextSessionRequest(BaseModel):
@@ -21,6 +22,7 @@ class TextTurnRequest(BaseModel):
     idempotency_key: str = Field(alias="idempotencyKey", pattern=r"^[A-Za-z0-9_-]{1,80}$")
     action: Literal["chat", "research"]
     text: str = Field(min_length=1, max_length=2000)
+    image: ViewImage | None = None
 
     @model_validator(mode="after")
     def bounded(self):
@@ -63,8 +65,10 @@ def text_router(live, actor_for_request):
     async def start(session_id: str, request: Request):
         claims = actor(request)
         row = live.repository.owned(session_id, claims, active=True)
-        payload = await read_body(request, TextTurnRequest)
+        payload = await read_body(request, TextTurnRequest, max_bytes=720000)
         if row.get("mode") != "text":
+            if payload.image is not None:
+                raise HTTPException(409, "Attach current view in a separate text conversation. Voice has its own image-sharing control.")
             async with live.owner_lock(claims):
                 async with live.session_lock(session_id):
                     row = live.repository.owned(session_id, claims, active=True)

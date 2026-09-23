@@ -427,7 +427,8 @@ export type AISidebarSessionResponse = {
 };
 
 export type AITextSessionRequest = { viewerContext: AISidebarViewerContext; attestation: "synthetic" | "deidentified" };
-export type AITextTurnRequest = { contextVersion: number; idempotencyKey: string; action: "chat" | "research"; text: string };
+export type AIViewImage = { data: string; mimeType: "image/jpeg"; width: number; height: number; targetId: string; contextVersion: number; capturedAt: string };
+export type AITextTurnRequest = { contextVersion: number; idempotencyKey: string; action: "chat" | "research"; text: string; image?: AIViewImage };
 
 export type AISidebarAttachment = {
   id: string;

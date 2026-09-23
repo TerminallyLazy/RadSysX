@@ -51,3 +51,5 @@
 - The radiologist-facing AI sidebar uses the restrained reading-room palette in `radsysx-viewer.css`: charcoal/slate surfaces, muted blue actions, dark scrollbars and no luminous status glow. Scope the theme to `.radsysx-live-shell` and its controls; do not tint diagnostic canvases or change image presentation.
 
 - Chat, Research and Jev review each have one visible workspace within the shared scroll region. Keep long model IDs wrapped and restrained reading-room colors; evidence eligibility, confirmation and receipts remain owned by the typed controller.
+
+- The explicit Codex view attachment uses a compact removable preview with an expandable image inspection control. Keep it confined to the composer and preserve sidebar scrolling/focus; only captured viewport pixels appear, never model-generated images.

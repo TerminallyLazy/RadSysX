@@ -28,6 +28,8 @@ type CodexAccountComplete = Assert<CodexAccount extends AICodexAccount ? true : 
 
 import type * as SharedEvidence from '@radsysx/clinical-web/contracts';
 import type * as ViewerEvidence from '../assets/live/protocol';
+type ViewImageMatches = Assert<SharedEvidence.AIViewImage extends ViewerEvidence.ViewImage ? true : false>;
+type ViewImageComplete = Assert<ViewerEvidence.ViewImage extends SharedEvidence.AIViewImage ? true : false>;
 type EvidenceReviewDetailMatches = Assert<SharedEvidence.EvidenceReviewDetail extends ViewerEvidence.EvidenceReviewDetail ? true : false>;
 type EvidenceReviewDetailComplete = Assert<ViewerEvidence.EvidenceReviewDetail extends SharedEvidence.EvidenceReviewDetail ? true : false>;
 type EvidenceStartRequestMatches = Assert<SharedEvidence.EvidenceStartRequest extends ViewerEvidence.EvidenceStartRequest ? true : false>;

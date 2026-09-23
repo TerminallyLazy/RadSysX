@@ -235,3 +235,40 @@ if os.environ.get('RADSYSX_DESKTOP_EVIDENCE_FIXTURE')=='1':
     async def fixture_evidence_counters():
         root=ai_live_service.evidence_reviews.root
         return {**_evidence,'privateRuns':sum(p.is_dir() for p in root.iterdir()) if root.exists() else 0}
+
+if os.environ.get('RADSYSX_DESKTOP_VISION_FIXTURE') == '1':
+    from .ai_codex import CodexProcess
+    from .ai_view_image import jpeg_dimensions
+    import base64
+    _vision = {'images': 0, 'turns': 0}
+
+    class FixtureCodex(CodexProcess):
+        async def start(self): pass
+        async def send(self, message): pass
+        async def call(self, method, params=None):
+            if method == 'account/read': return {'account': {'type': 'chatgpt', 'email': 'synthetic@example.invalid', 'planType': 'pro'}}
+            if method == 'model/list': return {'data': [{'model': 'synthetic-vision', 'inputModalities': ['text', 'image']}], 'nextCursor': None}
+            if method == 'thread/start': return {'model': params['model'], 'modelProvider': 'openai', 'instructionSources': [], 'sandbox': {'type': 'readOnly', 'networkAccess': False}, 'thread': {'id': 'synthetic-thread'}}
+            if method == 'turn/start':
+                _vision['turns'] += 1
+                for item in params['input']:
+                    if item['type'] == 'image':
+                        assert item['url'].startswith('data:image/jpeg;base64,')
+                        width, height = jpeg_dimensions(base64.b64decode(item['url'].split(',', 1)[1], validate=True))
+                        assert 0 < width <= 768 and 0 < height <= 768
+                        _vision['images'] += 1
+                if self.job['research']:
+                    self.job['calls'] = 1
+                    self.job['tools'].ledger.add('Synthetic evidence only', 'https://pubmed.ncbi.nlm.nih.gov/123/')
+                    await self.job['progress']({'stage': 'searching_pubmed'})
+                self.job['answer'] = 'Synthetic image transport verified.' + (' [s1]' if self.job['research'] else '')
+                self.job['status'] = 'completed'
+                self.job['done'].set()
+                return {'turn': {'id': 'synthetic-turn'}}
+            return {}
+
+    ai_live_service.config.codex_enabled = True
+    ai_live_service.codex.factory = FixtureCodex
+
+    @app.get('/api/ai/_fixture/vision', include_in_schema=False)
+    async def fixture_vision_counters(): return _vision

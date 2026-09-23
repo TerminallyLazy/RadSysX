@@ -128,3 +128,5 @@
 ## Local subscription runtime
 
 - The normal launcher enables backend-only `RADSYSX_CODEX_ENABLED=true` by default. Bootstrap/doctor check the root-pinned `@openai/codex` dependency; no global CLI is required. The backend owns private per-actor stdio and keyring storage. Linux/macOS need a functioning OS keyring; failure never enables plaintext credential fallback. Existing external-link handling opens the strictly validated official login URL in the system browser. User authentication is a handoff, not automated credential entry. No Realtime subscription entitlement is implied.
+
+- A ready, attested owned HTTP text session may use the same active-viewport capture lease for one explicit Codex attachment; this does not require a Realtime connection. Capture stops after its one frame and never includes other windows. `node desktop/scripts/ui-import-smoke.mjs --local-start --vision` uses the guarded synthetic backend and an isolated app/profile to verify actual preview, JPEG transport, Chat/Research receipts, removal, zero voice connections and no image bytes in history. This fixture never performs subscription login or cloud inference.

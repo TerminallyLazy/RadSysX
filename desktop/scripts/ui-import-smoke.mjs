@@ -21,6 +21,7 @@ const manyDicomCount = 32;
 const smokeMode = resolveSmokeMode();
 const aiViewerSmoke = smokeMode === "local-start" && process.argv.includes("--ai-live");
 const audioPlaybackSmoke = process.argv.includes("--audio-playback");
+const visionSmoke = process.argv.includes("--vision");
 const evidenceReviewSmoke = process.argv.includes("--evidence-review");
 const credentialsSmoke = process.argv.includes("--credentials");
 const realOpenAiAcceptance = process.argv.includes("--real-openai");
@@ -66,6 +67,7 @@ function resolveSmokeMode() {
 
 async function main() {
   try {
+    if (visionSmoke && (smokeMode !== "local-start" || realOpenAiAcceptance || aiViewerSmoke)) throw new Error("--vision requires synthetic --local-start without voice.");
     if (evidenceReviewSmoke && (!aiViewerSmoke || realOpenAiAcceptance)) throw new Error("--evidence-review requires synthetic --local-start --ai-live.");
     if (audioPlaybackSmoke && (smokeMode !== "local-start" || realOpenAiAcceptance)) throw new Error("--audio-playback requires --local-start and is synthetic-only.");
     if (credentialsSmoke && (!aiViewerSmoke || realOpenAiAcceptance)) throw new Error("--credentials requires --local-start --ai-live and is synthetic-only.");
@@ -369,7 +371,7 @@ async function startDesktopRuntime() {
   );
 
   const env = {
-    ...(aiViewerSmoke || audioPlaybackSmoke || realOpenAiAcceptance ? publicChildEnvironment(process.env) : process.env),
+    ...(aiViewerSmoke || audioPlaybackSmoke || visionSmoke || realOpenAiAcceptance ? publicChildEnvironment(process.env) : process.env),
     RADSYSX_DESKTOP_PORT: String(appPort),
     RADSYSX_DESKTOP_FRONTEND_PORT: String(frontendPort),
     RADSYSX_DESKTOP_BACKEND_PORT: String(backendPort),
@@ -381,11 +383,12 @@ async function startDesktopRuntime() {
     RADSYSX_SESSION_COOKIE_SECURE: "false",
     RADSYSX_DESKTOP_ALLOW_TEST_SHUTDOWN: "1",
     RADSYSX_DESKTOP_REBUILD_FRONTEND: process.env.RADSYSX_DESKTOP_REBUILD_FRONTEND ?? "1",
-    ...(aiViewerSmoke || audioPlaybackSmoke ? {
+    ...(aiViewerSmoke || audioPlaybackSmoke || visionSmoke ? {
       RADSYSX_APP_MODE: "pilot", RADSYSX_AI_ENABLED: "true", RADSYSX_GEMINI_API_KEY: "synthetic-unused-key",
       RADSYSX_OPENAI_API_KEY: "synthetic-unused-key",
       RADSYSX_TYPESAFE_AI_API_KEY: "synthetic-unused-key", RADSYSX_NVIDIA_API_KEY: "synthetic-unused-key",
       RADSYSX_RESEARCH_PROVIDER: "gemini",
+      RADSYSX_DESKTOP_VISION_FIXTURE: visionSmoke ? "1" : "0",
       RADSYSX_DESKTOP_EVIDENCE_FIXTURE: evidenceReviewSmoke ? "1" : "0",
       RADSYSX_DESKTOP_BACKEND_APP: "backend.clinical.ai_fixture_server:app",
     } : {}),
@@ -399,7 +402,7 @@ async function startDesktopRuntime() {
     desktopProcess = spawn(
       electronCommand(),
       ["--no-sandbox", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${path.join(tmpRoot, "profile")}`,
-        ...(aiViewerSmoke || audioPlaybackSmoke || realOpenAiAcceptance ? ["--use-fake-device-for-media-stream"] : []), desktopRoot],
+        ...(aiViewerSmoke || audioPlaybackSmoke || visionSmoke || realOpenAiAcceptance ? ["--use-fake-device-for-media-stream"] : []), desktopRoot],
       {
         cwd: workspaceRoot,
         detached: process.platform !== "win32",
@@ -518,6 +521,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         fs.writeFileSync(credentialScreenshotPath, Buffer.from(screenshot.data, "base64"));
         await evaluateInRenderer(cdp, `document.querySelector('radsysx-ai-chat-panel [data-action="close-credentials"]').click()`);
       }
+      const visionState = visionSmoke ? await evaluateInRenderer(cdp, `(${exerciseVisionWithoutVoice.toString()})()`, 45000) : undefined;
       const textState = evidenceReviewSmoke ? await evaluateInRenderer(cdp, `(${exerciseTextWithoutVoice.toString()})()`, 45000) : undefined;
       const aiLiveState = aiViewerSmoke ? await evaluateInRenderer(cdp, `(${exerciseLiveViewer.toString()})(${JSON.stringify(aiProviderId)}, ${evidenceReviewSmoke})`, 45000) : undefined;
       let evidenceState;
@@ -561,6 +565,7 @@ async function runUiImportSmoke(publicBaseUrl, debugPort) {
         ...(credentialScreenshotPath ? { credentialScreenshotPath } : {}),
         ...(aiLiveState ? { aiLiveState } : {}),
         ...(evidenceState ? { evidenceState } : {}),
+        ...(visionState ? { visionState } : {}),
         ...(textState ? { textState } : {}),
         ...(credentialsState ? { credentialsState } : {}),
         ...(adapterState ? { adapterState } : {}),
@@ -2631,4 +2636,44 @@ async function exerciseTextWithoutVoice() {
   panel().querySelector('[data-action="view-chat"]').click();
   panel().querySelector('[data-role="voice-options"]').open=true;
   return {chat:true,research:true,jevEligible:true,voiceConnections:0,modelRecorded:completed.tools.every(t=>Boolean(t.research?.modelId))};
+}
+
+async function exerciseVisionWithoutVoice() {
+  const panel=document.querySelector('radsysx-ai-chat-panel');
+  const button=action=>panel.querySelector(`[data-action="${action}"]`);
+  const assert=(value,message)=>{if(!value)throw Error(message);};
+  const api=async(path,body)=>{const r=await fetch('/api/ai/'+path,{credentials:'include',cache:'no-store',method:body?'PUT':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!r.ok)throw Error('Synthetic vision API '+r.status);return r.json();};
+  const wait=async(fn)=>{const end=Date.now()+12000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw Error('Synthetic vision condition timed out: '+panel.innerText);};
+  if(panel.querySelector('[data-role="attachments"]').dataset.open==='true')button('toggle-mention').click();
+  await api('sidebar/codex/account');
+  await api('sidebar/research-settings',{providerId:'codex',modelId:'synthetic-vision'});
+  button('credentials').click();await wait(()=>!button('reload-credentials').disabled);button('reload-credentials').click();
+  await wait(()=>!button('attach-view').hidden);button('close-credentials').click();
+  const confirmation=panel.querySelector('#radsysx-live-attestation');confirmation.value='synthetic';confirmation.dispatchEvent(new Event('change',{bubbles:true}));
+  const fill=text=>{const input=panel.querySelector('textarea');input.value=text;input.dispatchEvent(new Event('input',{bubbles:true}));};
+  for(const action of ['chat','research']) {
+    button('attach-view').click();await wait(()=>!panel.querySelector('[data-role="view-attachment"]').hidden);
+    const preview=panel.querySelector('[data-role="view-attachment"] img');await wait(()=>preview.naturalWidth>0);
+    const imageData=preview.src.split(',')[1];
+    assert(preview.src.startsWith('data:image/jpeg;base64,'),'Missing local JPEG preview');
+    assert((await api('_fixture/vision')).turns===(action==='chat'?0:1),'Preview sent to provider');
+    const sid=panel.state.backendSessionId;
+    fill('Describe this synthetic active viewport'+(action==='research'?' and find public evidence.':'.'));
+    if(action==='research')button('research').click();else panel.querySelector('form[data-role="composer"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+    await wait(async()=>{const history=await api('sidebar/sessions/'+sid);return history.tools.some(t=>t.name===(action==='chat'?'text_chat':'research_run')&&t.status==='completed');});
+    const history=await api('sidebar/sessions/'+sid);
+    assert(history.tools.every(t=>t.result.imageReceipt?.status==='submitted'),'Missing persisted image receipt');
+    assert(!JSON.stringify(history).includes('data:image')&&!JSON.stringify(history).includes(imageData),'Image bytes persisted');
+    await wait(()=>panel.querySelector('[data-role="view-attachment"]').hidden);
+    assert((await api('_fixture/media')).activeProviders===0,'Vision opened voice');
+  }
+  assert((await api('_fixture/vision')).images===2,'Expected exactly two submitted images');
+  button('view-chat').click();assert(panel.innerText.includes('One viewport image submitted'),'Chat omitted receipt');
+  button('attach-view').click();await wait(()=>!panel.querySelector('[data-role="view-attachment"]').hidden);
+  button('remove-view').click();assert(panel.querySelector('[data-role="view-attachment"]').hidden,'Remove retained preview');
+  assert((await api('_fixture/vision')).images===2,'Remove sent image');
+  button('attach-view').click();await wait(()=>!panel.querySelector('[data-role="view-attachment"]').hidden);
+  panel.querySelector('[data-role="view-attachment"] details').open=true;
+  assert((await api('_fixture/vision')).images===2,'Inspection sent image');
+  return {chat:true,research:true,localPreview:true,imagesSubmitted:2,voiceConnections:0,historyContainsPixels:false,cloudCalls:false};
 }

@@ -737,3 +737,56 @@ test('uncertain typed sends retain one identity, preserve newer drafts, and disc
     assert.equal(c.transcript.items.some(x=>x.text==='late'),false);assert.equal(c.textBusy,false);
   } finally {c.session=undefined;c.dispose();globalThis.fetch=oldFetch;}
 });
+
+test('Codex view attachment previews locally and sends only with the confirmed question, without voice', async () => {
+  const oldFetch=globalThis.fetch, oldSocket=globalThis.WebSocket;
+  const requests=[], captures=[]; let tool;
+  globalThis.WebSocket=class { static OPEN=1; constructor(){throw Error('No voice');} };
+  globalThis.fetch=async(url,init)=>{
+    const body=init?.body&&JSON.parse(init.body);requests.push([String(url),body]);let value={};
+    if(String(url).endsWith('/research-settings'))value={providerId:'codex',modelId:'synthetic-vision',providers:[]};
+    if(String(url).endsWith('/text-sessions'))value={sessionId:'vision',mode:'text',status:'ready',providerId:'codex',modelId:'synthetic-vision',contextVersion:1};
+    if(String(url).endsWith('/text-turns'))value=tool={toolCallId:body.idempotencyKey,name:'text_chat',status:'completed',args:{query:body.text},result:{summary:'Synthetic',imageReceipt:{status:'submitted'}}};
+    if(String(url).endsWith('/vision'))value={events:[],tools:tool?[tool]:[]};
+    return new Response(JSON.stringify(value));
+  };
+  const {adapter,browser}=fixture();adapter.capture=()=>({viewportId:'test',rectangle:{x:0,y:0,width:100,height:100}});
+  const bridge={startViewerCapture:async request=>{captures.push(request);return {leaseId:'lease'};},captureViewerFrame:async request=>({data:'YWJj',mimeType:'image/jpeg',width:16,height:16,targetId:request.targetId,contextVersion:request.contextVersion}),stopViewerCapture:async()=>captures.push('stopped')};
+  const c=new LiveController(adapter,{...browser,addEventListener(){},radsysxDesktop:bridge});
+  try {
+    await tick();await c.attachCurrentView();assert.equal(captures.length,0);
+    await c.attachCurrentView('synthetic');assert.equal(c.viewAttachment.image.data,'YWJj');assert.equal(captures.at(-1),'stopped');
+    assert.equal(requests.some(([url])=>url.endsWith('/text-turns')),false);assert.equal(c.audio.context,undefined);assert.equal(c.ready,false);
+    c.draft='Describe the attached synthetic view';await c.sendText('synthetic');await tick();
+    const sent=requests.find(([url])=>url.endsWith('/text-turns'))[1];assert.equal(sent.image.data,'YWJj');assert.equal(sent.image.contextVersion,1);
+    assert.equal(c.viewAttachment,undefined);assert.match(c.message,/view was submitted/);
+    await c.attachCurrentView('synthetic');c.viewAttachment.signature='old';c.draft='Keep my draft';await c.sendText('synthetic');
+    assert.equal(c.draft,'Keep my draft');assert.equal(c.viewAttachment,undefined);assert.match(c.message,/view changed/);
+    assert.equal(requests.filter(([url])=>url.endsWith('/text-turns')).length,1);
+    let release;bridge.captureViewerFrame=()=>new Promise(resolve=>{release=resolve;});const pending=c.attachCurrentView('synthetic');await tick();
+    c.removeView();release({data:'YWJj',mimeType:'image/jpeg',width:16,height:16,targetId:c.targetId,contextVersion:1});await pending;
+    assert.equal(c.viewAttachment,undefined);assert.equal(c.viewCaptureBusy,false);assert.equal(captures.at(-1),'stopped');
+  } finally {c.session=undefined;c.dispose();globalThis.fetch=oldFetch;globalThis.WebSocket=oldSocket;}
+});
+
+test('vision failures keep uncertain image sends idempotent and make model incompatibility actionable', async () => {
+  const oldFetch=globalThis.fetch;const requests=[];let failure='network';
+  globalThis.fetch=async(url,init)=>{
+    if(String(url).endsWith('/text-turns')) {
+      requests.push(JSON.parse(init.body));
+      if(failure==='network')throw Error('offline');
+      return new Response(JSON.stringify({detail:'The selected subscription model does not advertise image input. Choose an image-capable model in Settings.'}),{status:409});
+    }
+    return new Response('{}');
+  };
+  const {adapter,browser}=fixture();const c=new LiveController(adapter,{...browser,addEventListener(){}});
+  try {
+    await tick();c.session={sessionId:'vision',mode:'text',contextVersion:1};c.contextVersion=1;c.closed=false;c.targetId=adapter.context().targetId;c.syncedState=JSON.stringify(adapter.context().state);
+    const image={data:'YWJj',mimeType:'image/jpeg',width:16,height:16,capturedAt:new Date().toISOString(),targetId:c.targetId,contextVersion:1};
+    c.viewAttachment={image,signature:c.syncedState,scope:'Test',revision:0};c.draft='Synthetic question';
+    await c.sendText('synthetic');c.removeView();assert.equal(c.viewAttachment.image,image);
+    await c.sendText('synthetic');assert.deepEqual(requests[0],requests[1]);
+    failure='unsupported';await c.sendText('synthetic');assert.equal(c.pendingText,undefined);assert.match(c.message,/image-capable model/);
+    c.removeView();assert.equal(c.viewAttachment,undefined);assert.equal(c.draft,'Synthetic question');
+  } finally {c.session=undefined;c.dispose();globalThis.fetch=oldFetch;}
+});

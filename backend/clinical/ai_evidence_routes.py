@@ -25,17 +25,17 @@ class PrivateReviewRoute(APIRoute):
         return private
 
 
-async def read_body(request, model=None):
+async def read_body(request, model=None, *, max_bytes=16384):
     try:
         size = request.headers.get('content-length')
-        if size is not None and (not size.isdecimal() or int(size)>16384): raise ValueError()
+        if size is not None and (not size.isdecimal() or int(size)>max_bytes): raise ValueError()
         body = bytearray()
         async for chunk in request.stream():
-            if len(body)+len(chunk)>16384: raise ValueError()
+            if len(body)+len(chunk)>max_bytes: raise ValueError()
             body.extend(chunk)
         if not body and model is None: return None
         if request.headers.get('content-type','').split(';',1)[0].strip().lower()!='application/json': raise ValueError()
-        payload = parse_json(bytes(body),max_bytes=16384)
+        payload = parse_json(bytes(body),max_bytes=max_bytes)
         if not isinstance(payload,dict): raise ValueError()
         if model is None:
             if payload: raise ValueError()

@@ -10,7 +10,7 @@ Implemented 2026-09-22. This is a local, synthetic/deidentified pilot integratio
 4. Confirm synthetic/deidentified data. **Send** discusses the question and neutral case/series metadata; **Research** uses public PubMed abstracts. Both work without a voice connection. Research results retain citations, progress and requested-model receipts and remain eligible for the separate Jev review workflow.
 5. **Sign out** ends this RadSysX account's jobs and clears its Codex login. It does not log out other Codex clients. **Cancel sign-in** stops a pending browser login. Refresh is a status read, never an inference request.
 
-The subscription uses the account's Codex allowance and workspace restrictions. API-key providers retain their separate billing. Models are never silently substituted. No image pixels are supplied in this lane.
+The subscription uses the account's Codex allowance and workspace restrictions. API-key providers retain their separate billing. Models are never silently substituted. Images are supplied only through explicit **Attach current view** preview and Send/Research, as described below.
 
 ## Runtime and authentication
 
@@ -23,7 +23,7 @@ The subscription uses the account's Codex allowance and workspace restrictions. 
 
 ## Execution boundary
 
-Each job starts an ephemeral Codex thread using an exact selected model, `allowProviderModelFallback=false`, read-only sandbox, `approvalPolicy=never`, and **`environments: []`** on both thread and turn. The pinned Codex tool registry omits shell, patch and local-image handlers when there is no execution environment. Shell, images, browser/computer use, plugins/apps, memory, hooks, subagents and skill discovery are also disabled. The internal Codex tool host remains enabled because it forwards dynamic PubMed calls; Code Mode itself stays disabled. Project instruction loading is disabled and returned instruction sources, model/provider and sandbox are verified before the question is sent.
+Each job starts an ephemeral Codex thread using an exact selected model, `allowProviderModelFallback=false`, read-only sandbox, `approvalPolicy=never`, and **`environments: []`** on both thread and turn. The pinned Codex tool registry omits shell, patch and local-image handlers when there is no execution environment. Shell, filesystem-image tools, browser/computer use, plugins/apps, memory, hooks, subagents and skill discovery are also disabled. The internal Codex tool host remains enabled because it forwards dynamic PubMed calls; Code Mode itself stays disabled. Project instruction loading is disabled and returned instruction sources, model/provider and sandbox are verified before the question is sent.
 
 Text chat has no dynamic tools. Research exposes only `search_pubmed`, implemented by the existing backend retrieval/ledger adapter, with an eight-call budget, bounded queries/results and fixed NCBI endpoints. Other server requests are refused. Public abstracts are treated as untrusted evidence. Only final assistant text and ledger-backed sources become results; private reasoning and raw provider errors are discarded.
 
@@ -48,3 +48,19 @@ Gemini/NVIDIA research retains its native DeepAgents/LangGraph graph. The subscr
 - [Pinned tool registration](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/core/src/tools/spec_plan.rs) and [keyring identity](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/login/src/auth/storage.rs).
 
 The integration opts into the pinned experimental environment/dynamic-tool fields. Changing the Codex version requires regenerating its protocol schemas and revalidating tool isolation and cancellation; do not float the dependency.
+
+## Explicit viewport vision — 2026-09-23
+
+OpenAI documents image input for [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra). The pinned [App Server protocol](https://learn.chatgpt.com/docs/app-server) supports `turn/start.input` image items. RadSysX now forwards a data-URL image item only when the user explicitly attaches a view, previews it and sends a Chat/Research question. Authenticated `model/list` must advertise image input for the exact selected model. This does not enable filesystem/image tools or autonomous screen control.
+
+The desktop main-process lease captures one active OHIF viewport, including visible overlays, at up to 768 px per edge. The renderer retains a removable expandable preview in memory. Context/state/revision changes and five-minute expiry require a new capture. The backend validates strict JPEG/base64 and a 512 KiB decoded limit inside a 720,000-byte request body, binding target and context to the owned attested text session. Other JSON endpoints keep their prior bounds. Image data is transient and excluded from application history, logs and files; receipts retain capture time, dimensions, scope, SHA-256 and submitted model. Existing Codex/workspace service data policies still apply. Previous chat images are marked historical without replaying their pixels.
+
+The image supports observations of the captured view and visible measurement labels; it does not establish whole-series review, diagnostic validity or verified numeric measurements. The prompt keeps those observations separate from abstract-supported literature. Jev still receives only explicitly confirmed claims and public abstracts, never this image.
+
+Verification on 2026-09-23:
+
+- The synthetic Electron `--local-start --vision` smoke captured an actual generated DICOM viewport, previewed locally before sending, completed Chat and Research with two inline JPEGs and saved receipts, and verified zero Realtime connections and no persisted pixels. No cloud calls occurred in that smoke.
+- A separate real `gpt-6-astra` subscription test through the production Codex service used only a generated colored-shape image. The authenticated catalog advertised image support; the model correctly described a red square, a blue circle and the label `SYNTHETIC 42 mm` in 3.8 seconds. A second image-plus-research turn completed in 9.9 seconds with one backend PubMed tool call and a ledger-backed citation, explicitly separating the synthetic pattern from literature. These are software/provider checks, not clinical validation.
+- Private synthetic acceptance receipts live under ignored `tmp/codex-acceptance/vision-receipts.json`; no user case image was sent for testing. The current user's open viewer was preserved during isolated acceptance.
+
+- Vision change local checks passed: 233 backend regressions, 52 viewer tests, 20 desktop protocol tests, root TypeScript checks and viewer build. Hosted PR checks and activation of the user's running window are separate.
