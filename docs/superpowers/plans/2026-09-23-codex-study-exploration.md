@@ -223,7 +223,7 @@ Define private `SeriesRenderer.setFrame`, `waitForRendered`, `encodeJpeg`, `geom
 
 **Interfaces:** `StudyCapture({ getWindow, getTask })` implements `start(event, binding)`, `capture(event, {leaseId, operationId, kind, viewportIds})`, `stop(event, {leaseId})`. Expose only these scoped methods through preload as `startStudyCapture`, `captureStudyObservation`, `stopStudyCapture`. Main resolves fixed reading-workspace and native viewport regions; model input contains no rectangles or selectors.
 
-- [ ] Add Electron-boundary tests using the existing `live-capture.test.mjs` event/window fixture pattern. Test foreign window/frame/origin, expired grant, mixed study panes, hidden pane and sensitive settings. A test passes `rect`, `selector`, `path` and `url` extra properties and expects rejection.
+- [x] Add Electron-boundary tests using the existing `live-capture.test.mjs` event/window fixture pattern. Test foreign window/frame/origin, expired grant, mixed study panes, hidden pane and sensitive settings. A test passes `rect`, `selector`, `path` and `url` extra properties and expects rejection.
 
 ```javascript
 await assert.rejects(capture.start(foreignSender, binding), /not allowed/);
@@ -237,11 +237,11 @@ await assert.rejects(capture.capture(ownerSender, {
 }), /settings|sensitive/i);
 ```
 
-- [ ] Run `node --test desktop/tests/study-capture.test.mjs` and confirm failure before adding the class.
-- [ ] Reuse `assertDesktopSender` and same-origin frame/route checks from `live-capture.mjs`. Fetch task authority with the Electron cookie jar; never accept a renderer-provided attestation as the authority. Check task, binding and sensitive surfaces before and after capture; stop/expiry invalidates in-flight results. Keep existing voice/single-image IPC unchanged.
-- [ ] Register a fixed app-owned reading workspace region containing image grid and reading controls while excluding conversation, credentials and unrelated panels. Capture overview and each visible pane separately, retaining overlays. More than seven panes plus overview requires multiple batches tied to one frozen view revision; any intervening layout change invalidates the group. Same-study membership is required for every included pane. At unsupported surfaces return a stable unavailable reason instead of capturing the entire window.
-- [ ] Test zoom/device-pixel-ratio/crop metadata, edge and byte bounds, overlapping captures, 15-second capture lease expiry and navigation during an awaited capture. Run `npm run desktop:test:live` including the new test file and preserve all existing capture tests.
-- [ ] Update desktop DOX and commit: `feat: capture the scoped reading workspace and visible panes`.
+- [x] Run `node --test desktop/tests/study-capture.test.mjs` and confirm failure before adding the class.
+- [x] Reuse `assertDesktopSender` and same-origin frame/route checks from `live-capture.mjs`. Fetch task authority with the Electron cookie jar; never accept a renderer-provided attestation as the authority. Check task, binding and sensitive surfaces before and after capture; stop/expiry invalidates in-flight results. Keep existing voice/single-image IPC unchanged.
+- [x] Register a fixed app-owned reading workspace region containing image grid and reading controls while excluding conversation, credentials and unrelated panels. Capture overview and each visible pane separately, retaining overlays. More than seven panes plus overview requires multiple batches tied to one frozen view revision; any intervening layout change invalidates the group. Same-study membership is required for every included pane. At unsupported surfaces return a stable unavailable reason instead of capturing the entire window.
+- [x] Test zoom/device-pixel-ratio/crop metadata, edge and byte bounds, overlapping captures, 15-second capture lease expiry and navigation during an awaited capture. Run `npm run desktop:test:live` including the new test file and preserve all existing capture tests.
+- [x] Update desktop DOX and commit: `feat: capture the scoped reading workspace and visible panes`.
 
 ## Task 6: Discover capabilities and implement navigation/presentation parity
 

@@ -201,7 +201,7 @@ test("only backend child receives provider and clinical secrets", () => {
 
 test("bootstrap and doctor require every direct AI and shared HTTPX/Pydantic pin", () => {
   const expected = expectedAiVersions(path.resolve(import.meta.dirname, "../.."));
-  assert.deepEqual(Object.keys(expected).sort(), ["google-genai", "deepagents", "langchain-nvidia-ai-endpoints", "langchain-google-genai", "langchain", "langchain-core", "langgraph", "python-dotenv", "websockets", "httpx", "pydantic", "cryptography"].sort());
+  assert.deepEqual(Object.keys(expected).sort(), ["google-genai", "deepagents", "langchain-nvidia-ai-endpoints", "langchain-google-genai", "langchain", "langchain-core", "langgraph", "pillow", "python-dotenv", "websockets", "httpx", "pydantic", "cryptography"].sort());
   assert.deepEqual(dependencyMismatches(expected, expected), []);
   for (const name of Object.keys(expected)) {
     for (const found of [null, "0.0.0-incompatible"]) {

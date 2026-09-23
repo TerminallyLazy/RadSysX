@@ -14,3 +14,11 @@ export type ActionRequest = { operationId: string; grantId: string; name: string
 export type RendererCommand = ActionRequest & { taskId: string; binding: RendererBinding; kind: 'observe' | 'action' | 'manifest'; claimId?: string };
 export type ActionResult = { operationId: string; claimId: string; status: 'completed' | 'failed' | 'outcome_unknown'; beforeRevision: number; revision: number; state: Record<string, unknown>; canUndo: boolean; error?: 'unavailable' | 'stale' | 'cancelled' | 'failed' | 'unknown' };
 export type TaskSnapshot = { grant: ExplorationGrant; status: 'prepared' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'paused'; activity?: string; coverage: CoverageReceipt[]; actions: Record<string, unknown>[]; canContinue: boolean };
+
+export type StudyCaptureBinding = { sessionId: string; taskId: string; binding: RendererBinding };
+export type DesktopStudyCapture = {
+  studyCaptureVersion: 1;
+  startStudyCapture(request: StudyCaptureBinding): Promise<{ leaseId: string; expiresAt: number }>;
+  captureStudyObservation(request: { leaseId: string; operationId: string; kind: 'workspace' | 'panes'; viewportIds: string[] }): Promise<Pick<ObservationResult, 'images' | 'failures'>>;
+  stopStudyCapture(request: { leaseId?: string }): Promise<unknown>;
+};

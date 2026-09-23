@@ -10,6 +10,10 @@ const captureArguments = (options = {}) => ({
 });
 
 contextBridge.exposeInMainWorld("radsysxDesktop", {
+  studyCaptureVersion: 1,
+  startStudyCapture: (options) => ipcRenderer.invoke("radsysx:start-study-capture", options),
+  captureStudyObservation: (options) => ipcRenderer.invoke("radsysx:capture-study-observation", options),
+  stopStudyCapture: (options) => ipcRenderer.invoke("radsysx:stop-study-capture", options),
   versions: {
     chrome: process.versions.chrome,
     electron: process.versions.electron,

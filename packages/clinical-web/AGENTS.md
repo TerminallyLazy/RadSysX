@@ -44,3 +44,5 @@
 - `AITextTurnRequest.image` is an optional strict JPEG attachment for Codex only, with data, MIME type, dimensions, target/context version and capture timestamp. Keep `AIViewImage` structurally aligned with the viewer `ViewImage` type. These transient request bytes never belong in history/result DTOs; results expose image receipt metadata only.
 
 - `src/exploration.ts` exports strict-shape study exploration records mirrored by `ai_exploration_contracts.py`: explicit sharing scope, renderer binding, observations, grants, task/action results and coverage. `ImageObservation.data` is transient request content; persisted/rendered history uses `ImageReceipt` only. These records do not themselves grant authority or imply runtime activation.
+
+- `DesktopStudyCapture` and `StudyCaptureBinding` declare the versioned desktop observation IPC. Only opaque owned task/binding/operation/pane handles cross its request boundary; capture rectangles and selectors are never caller arguments. Backend task authority remains mandatory.

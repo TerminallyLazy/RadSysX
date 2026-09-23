@@ -183,4 +183,4 @@ export type EvidenceReviewDetail = EvidenceReviewSummary & {
 };
 export type EvidenceReviewList = { reviews: EvidenceReviewSummary[]; truncated: boolean };
 
-export type { ShareSelection, RendererBinding, FrameDescriptor, SeriesManifest, Presentation, ObservationRequest, ImageObservation, ImageReceipt, ObservationResult, CoverageReceipt, ExplorationGrant, ActionRequest, RendererCommand, ActionResult, TaskSnapshot } from '@radsysx/clinical-web';
+export type { DesktopStudyCapture, StudyCaptureBinding, ShareSelection, RendererBinding, FrameDescriptor, SeriesManifest, Presentation, ObservationRequest, ImageObservation, ImageReceipt, ObservationResult, CoverageReceipt, ExplorationGrant, ActionRequest, RendererCommand, ActionResult, TaskSnapshot } from '@radsysx/clinical-web';

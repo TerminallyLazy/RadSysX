@@ -1,4 +1,4 @@
-import type { FrameDescriptor, ImageObservation, ObservationRequest, ObservationResult, RendererBinding } from './protocol.js';
+import type { DesktopStudyCapture, FrameDescriptor, ImageObservation, ObservationRequest, ObservationResult, RendererBinding } from './protocol.js';
 import { alive, digest, SeriesRegistry, type EncodedFrame, type RenderGeometry, type SeriesHost, type SeriesRenderer } from './series.js';
 
 export interface WorkspaceObserver {
@@ -63,4 +63,30 @@ export class ObservationService {
     } finally { this.busy = false; }
   }
   dispose(): void { this.disposed = true; this.renderer?.dispose(); this.renderer = undefined; this.registry.invalidate(); this.desktop?.dispose(); }
+}
+
+/** One capture lease per claimed operation; it never survives a revision change. */
+export class DesktopWorkspaceObserver implements WorkspaceObserver {
+  private lease?: string;
+  private disposed = false;
+  constructor(private desktop: DesktopStudyCapture, private task: { sessionId: string; taskId: string; operationId: string }, private prepareSurface: (binding: RendererBinding) => void) {}
+  async observe(request: ObservationRequest, binding: RendererBinding, signal: AbortSignal): Promise<Pick<ObservationResult, 'images' | 'failures'>> {
+    if (request.kind === 'series_frames') throw new Error('Use the native series renderer.');
+    alive(signal); if (this.disposed || this.lease) throw new Error('Capture is unavailable.');
+    this.prepareSurface(binding);
+    const stop = () => { if (this.lease) void this.desktop.stopStudyCapture({ leaseId: this.lease }).catch(() => {}); };
+    signal.addEventListener('abort', stop, { once: true });
+    try {
+      const lease = await this.desktop.startStudyCapture({ sessionId: this.task.sessionId, taskId: this.task.taskId, binding });
+      this.lease = lease.leaseId; alive(signal); if (this.disposed) throw new Error('Capture stopped.');
+      const result = await this.desktop.captureStudyObservation({ leaseId: lease.leaseId, operationId: this.task.operationId, kind: request.kind, viewportIds: request.viewportIds });
+      alive(signal); if (this.disposed) throw new Error('Capture stopped.');
+      return result;
+    } finally {
+      signal.removeEventListener('abort', stop);
+      if (this.lease) await this.desktop.stopStudyCapture({ leaseId: this.lease }).catch(() => {});
+      this.lease = undefined;
+    }
+  }
+  dispose(): void { this.disposed = true; if (this.lease) void this.desktop.stopStudyCapture({ leaseId: this.lease }).catch(() => {}); }
 }

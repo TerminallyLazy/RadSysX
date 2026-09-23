@@ -9,6 +9,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { serviceEnvironment } from "./environment.mjs";
+import { StudyCapture } from "./study-capture.mjs";
 import { assertDesktopSender, isViewerUrl, mayUseViewerPermission, ViewerCapture } from "./live-capture.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -82,6 +83,8 @@ const viewerCapture = new ViewerCapture({
   getOrigin: () => publicBaseUrl,
   getSession: readCaptureSession,
 });
+
+const studyCapture = new StudyCapture({ getWindow: () => mainWindow, getOrigin: () => publicBaseUrl, getTask: readStudyCaptureTask });
 
 function appendLog(scope, message) {
   const lines = String(message)
@@ -1097,10 +1100,10 @@ function createMainWindow() {
   contents.session.setPermissionRequestHandler((sender, permission, callback, details) =>
     callback(mayUseViewerPermission(sender, mainWindow?.webContents, publicBaseUrl, permission, details)));
   contents.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
-    if (isMainFrame) viewerCapture.revoke(contents);
+    if (isMainFrame) { viewerCapture.revoke(contents); studyCapture.revoke(contents); }
   });
-  contents.on("render-process-gone", () => viewerCapture.revoke(contents));
-  contents.on("destroyed", () => viewerCapture.revoke(contents));
+  contents.on("render-process-gone", () => { viewerCapture.revoke(contents); studyCapture.revoke(contents); });
+  contents.on("destroyed", () => { viewerCapture.revoke(contents); studyCapture.revoke(contents); });
   contents.on("will-navigate", (event, url) => {
     if (!publicBaseUrl) return;
     try {
@@ -1125,6 +1128,9 @@ function createMainWindow() {
 }
 
 function registerDesktopIpc() {
+  ipcMain.handle("radsysx:start-study-capture", (event, input) => studyCapture.start(event, input));
+  ipcMain.handle("radsysx:capture-study-observation", (event, input) => studyCapture.capture(event, input));
+  ipcMain.handle("radsysx:stop-study-capture", (event, input) => studyCapture.stop(event, input));
   ipcMain.handle("radsysx:start-viewer-capture", (event, input) => viewerCapture.start(event, input));
   ipcMain.handle("radsysx:capture-viewer-frame", (event, input) => viewerCapture.frame(event, input));
   ipcMain.handle("radsysx:stop-viewer-capture", (event, input) => viewerCapture.stop(event, input));
@@ -1164,6 +1170,17 @@ async function readCaptureSession(sender, sessionId) {
   if (!response.ok) return null;
   const history = await response.json();
   return history.session ?? null;
+}
+
+async function readStudyCaptureTask(sender, sessionId, taskId) {
+  if (!publicBaseUrl || !isViewerUrl(sender.getURL(), publicBaseUrl)) return null;
+  const cookies = await sender.session.cookies.get({ url: publicBaseUrl });
+  const response = await fetch(`${publicBaseUrl}/api/ai/sidebar/sessions/${encodeURIComponent(sessionId)}/explorations/${encodeURIComponent(taskId)}`, {
+    headers: { cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; ") },
+    signal: AbortSignal.timeout(2500), redirect: "error",
+  });
+  if (!response.ok) return null;
+  return { ...await response.json(), session: await readCaptureSession(sender, sessionId) };
 }
 
 async function selectLocalImagingPaths(sender, mode) {
@@ -1396,6 +1413,7 @@ async function shutdown() {
   shutdownStarted = true;
   shuttingDown = true;
   viewerCapture.revoke();
+  studyCapture.revoke();
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.destroy();

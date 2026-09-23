@@ -1,5 +1,5 @@
 import { CornerstoneSeriesRenderer, type SeriesSource, type PrivateFrame } from './series.js';
-import type { Presentation } from './protocol.js';
+import type { Presentation, RendererBinding } from './protocol.js';
 import { object, type CaptureRequest, type Json, type ViewerContext } from './protocol.js';
 
 // OHIF's runtime-loaded extension API is dynamic; contain its untyped boundary here.
@@ -153,6 +153,28 @@ export class OHIFAdapter {
     });
     const modality = ['CT','MR','US','PT','CR','DX','XA','RF','MG','NM','OT','SEG'].includes(display.Modality) ? display.Modality : 'OT';
     return { studyId: this.alias('study', display.StudyInstanceUID), seriesId, modality, frames, complete: expected === imageIds.length };
+  }
+  registerCaptureSurface(binding: RendererBinding): void {
+    const study = this.studyBinding();
+    if (study.studyId !== binding.studyId || binding.seriesIds.some(id => !study.seriesIds.includes(id))) throw new Error('The study changed.');
+    const grid = this.browser.document.querySelector('[data-cy="viewport-grid"]') as HTMLElement | null;
+    if (!grid) throw new Error('The reading workspace is unavailable.');
+    grid.dataset.radsysxStudy = study.studyId; grid.dataset.radsysxRenderer = binding.rendererId;
+    grid.dataset.radsysxEpoch = binding.epoch; grid.dataset.radsysxRevision = String(binding.revision);
+    const displays = list(this.services.displaySetService?.activeDisplaySets);
+    for (const element of Array.from(grid.querySelectorAll<HTMLElement>('[data-viewportid]'))) {
+      const id = element.getAttribute('data-viewportid')!;
+      const native = this.services.viewportGridService.getState().viewports.get(id);
+      const included = displays.filter(item => native?.displaySetInstanceUIDs.includes(item.displaySetInstanceUID));
+      if (!included.length || included.some(item => this.alias('study', item.StudyInstanceUID) !== study.studyId)) throw new Error('Visible panes must belong to the shared study.');
+      element.dataset.radsysxViewport = this.alias('viewport', id); element.dataset.radsysxStudy = study.studyId;
+      element.dataset.radsysxSeries = JSON.stringify(included.map(item => this.alias('series', item.displaySetInstanceUID)));
+      const properties = this.services.cornerstoneViewportService.getCornerstoneViewport(id)?.getProperties?.() ?? {};
+      element.dataset.radsysxPresentation = JSON.stringify({ invert: Boolean(properties.invert), ...(properties.voiRange ? {
+        windowWidth: Math.abs(properties.voiRange.upper - properties.voiRange.lower) + 1,
+        windowCenter: (properties.voiRange.upper + properties.voiRange.lower + 1) / 2,
+      } : {}) });
+    }
   }
   createSeriesRenderer(): CornerstoneSeriesRenderer {
     return new CornerstoneSeriesRenderer(this.libraries().cornerstone, this.browser.document);
