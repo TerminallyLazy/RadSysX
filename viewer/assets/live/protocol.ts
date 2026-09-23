@@ -182,3 +182,5 @@ export type EvidenceReviewDetail = EvidenceReviewSummary & {
   selectedUnitIds: string[] | null; assessments: EvidenceAssessment[]; attempts: EvidenceAttempt[]; earlierAttemptCount: number;
 };
 export type EvidenceReviewList = { reviews: EvidenceReviewSummary[]; truncated: boolean };
+
+export type { ShareSelection, RendererBinding, FrameDescriptor, SeriesManifest, Presentation, ObservationRequest, ImageObservation, ImageReceipt, ObservationResult, CoverageReceipt, ExplorationGrant, ActionRequest, RendererCommand, ActionResult, TaskSnapshot } from '@radsysx/clinical-web';

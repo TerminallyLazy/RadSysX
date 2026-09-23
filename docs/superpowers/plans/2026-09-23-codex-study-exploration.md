@@ -10,7 +10,7 @@
 
 **Spec:** [Approved study exploration design](../specs/2026-09-23-codex-study-exploration-design.md).
 
-**Status:** Written design approved 2026-09-23. This implementation plan awaits user review. No task below has been implemented or verified. Work branch: `codex/study-exploration-design`, based on merged `main` at `7a9cd84484fb5b5d6ffa621a8c2b5aa6852bf95c`.
+**Status:** Written design approved 2026-09-23. Implementation plan approved by the user on 2026-09-23 for native execution. Task progress and verification are recorded as work proceeds. Work branch: `codex/study-exploration-design`, based on merged `main` at `7a9cd84484fb5b5d6ffa621a8c2b5aa6852bf95c`.
 
 ## Global Constraints
 
@@ -86,7 +86,7 @@ Source-of-truth boundaries: renderer geometry/availability is input validated ag
 
 **Interfaces:** `CoverageLedger(manifest_id: str, frame_ids: tuple[str, ...])`; `requested(ids)`, `captured(ids)`, `submitted(operation_id, ids, kind)`, `acknowledge(operation_id)`, `failed(ids, reason)`, `receipt() -> CoverageReceipt`. `RunBudget.reserve(*, images: int, calls: int, encoded_bytes: int, now: float)` and `check(now)` raise `BudgetExceeded` before allocation/dispatch. Define constants `MAX_BATCH_IMAGES=8`, `MAX_BATCH_BYTES=8*1024*1024`, `MAX_RUN_IMAGES=128`, `MAX_RUN_CALLS=64`, `MAX_RUN_SECONDS=600`, `MAX_EDGE=2048` in this module.
 
-- [ ] Write the coverage tests first, including the late-frame and non-frame cases:
+- [x] Write the coverage tests first, including the late-frame and non-frame cases:
 
 ```python
 from backend.clinical.ai_exploration_coverage import CoverageLedger
@@ -110,8 +110,8 @@ def test_repeated_frames_and_thumbnail_do_not_finish_series():
     assert ledger.receipt().status == 'complete'
 ```
 
-- [ ] Run `.venv/bin/python -m pytest backend/tests/test_ai_exploration_coverage.py -q`; expect an import failure before implementation.
-- [ ] Implement the schemas and pure ledger/budget functions. Set membership must reject foreign frame IDs; acknowledge only a pending submission with the same immutable operation identity. A repeated delivery increases budget consumption but not distinct coverage. Pending delivery never becomes delivered on model answer completion alone.
+- [x] Run `.venv/bin/python -m pytest backend/tests/test_ai_exploration_coverage.py -q`; expect an import failure before implementation.
+- [x] Implement the schemas and pure ledger/budget functions. Set membership must reject foreign frame IDs; acknowledge only a pending submission with the same immutable operation identity. A repeated delivery increases budget consumption but not distinct coverage. Pending delivery never becomes delivered on model answer completion alone.
 
 ```python
 # Core invariant inside receipt(), after validating all frame IDs:
@@ -120,9 +120,9 @@ status = 'complete' if delivered == all_frames else ('partial' if attempted else
 # A thumbnail/overview may consume image budget, but never enters delivered.
 ```
 
-- [ ] Add parameterized schema tests for boolean-as-index, NaN/infinity, oversized lists, unknown fields, raw URLs/paths/UIDs, mixed-study scope and unknown handles. Define `synthetic_manifest(count=34)` in this test module using only opaque IDs and numeric geometry; test manifest digest changes when order or frame count changes.
-- [ ] Test exact budget boundaries and reservation rollback only before any bytes are sent; after a partial write count the attempt. Verify ten-minute wall time includes approvals and waiting. Run both new test files plus `npm run type-check --workspace viewer`.
-- [ ] Commit only these files and their owning DOX: `feat: define scoped exploration contracts and coverage`.
+- [x] Add parameterized schema tests for boolean-as-index, NaN/infinity, oversized lists, unknown fields, raw URLs/paths/UIDs, mixed-study scope and unknown handles. Define `synthetic_manifest(count=34)` in this test module using only opaque IDs and numeric geometry; test manifest digest changes when order or frame count changes.
+- [x] Test exact budget boundaries and reservation rollback only before any bytes are sent; after a partial write count the attempt. Verify ten-minute wall time includes approvals and waiting. Run both new test files plus `npm run type-check --workspace viewer`.
+- [x] Commit only these files and their owning DOX: `feat: define scoped exploration contracts and coverage`.
 
 ## Task 2: Extract shared action authorization without changing voice behavior
 
@@ -421,4 +421,4 @@ Also run `.venv/bin/python -m pytest backend/tests/test_ai_evidence_review.py ba
 
 Spec mapping: sharing and compact UI → Tasks 4/5/10; backend/tool/renderer contracts → Tasks 1/2/3/8/9; full-series budgets and continuation → Tasks 1/4/8/9; native parity → Tasks 6/7/11; lifecycle/failures → Tasks 2/3/8/10; privacy and literature boundaries → Tasks 1/5/8/9; native, real-provider and desktop acceptance → Tasks 11/12. The five Review Focus conditions each have named owning tests above.
 
-The plan preserves native execution already selected by the user. Review of this written plan is the remaining workflow gate before implementation; no per-task permission cycle is proposed. Scope confirmations and durable-action reviews described here are product behavior, not additional development approvals.
+The plan preserves native execution already selected by the user. The user approved this written plan on 2026-09-23; native implementation proceeds without a per-task permission cycle. Scope confirmations and durable-action reviews described here are product behavior, not additional development approvals.

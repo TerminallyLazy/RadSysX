@@ -1,0 +1,16 @@
+/** Scoped Codex viewer tasks. Backend owns grants; image payloads are transient. */
+export type ShareSelection = { kind: 'current_image' | 'entire_view' | 'series'; studyId: string; seriesIds: string[]; allowViewerTools: boolean };
+export type RendererBinding = { rendererId: string; epoch: string; contextVersion: number; revision: number; studyId: string; seriesIds: string[] };
+export type FrameDescriptor = { id: string; index: number; rows: number; columns: number; position?: number[]; orientation?: number[]; spacing?: number[]; timeIndex?: number; sliceIndex?: number };
+export type SeriesManifest = { manifestId: string; studyId: string; seriesId: string; modality: 'CT' | 'MR' | 'US' | 'PT' | 'CR' | 'DX' | 'XA' | 'RF' | 'MG' | 'NM' | 'OT' | 'SEG'; frameCount: number; ordering: 'display_set'; offset: number; frames: FrameDescriptor[] };
+export type Presentation = { windowWidth?: number; windowCenter?: number; invert?: boolean; orientation?: 'native' | 'axial' | 'coronal' | 'sagittal' };
+export type ObservationRequest = { kind: 'workspace' | 'panes' | 'series_frames'; manifestId?: string; frameIds: string[]; viewportIds: string[]; presentation: Presentation };
+export type ImageReceipt = { imageId: string; kind: 'overview' | 'pane' | 'frame' | 'thumbnail'; frameId?: string; viewportId?: string; manifestId?: string; index?: number; width: number; height: number; originalWidth: number; originalHeight: number; crop?: number[]; presentation: Presentation; capturedAt: string; sha256: string };
+export type ImageObservation = ImageReceipt & { data: string };
+export type ObservationResult = { operationId: string; claimId: string; revision: number; images: ImageObservation[]; failures: { id: string; reason: 'render_failed' | 'unsupported' | 'stale' | 'budget' | 'cancelled' }[] };
+export type CoverageReceipt = { manifestId: string; frameCount: number; frameIds: string[]; requested: number[]; captured: number[]; delivered: number[]; failed: number[]; unconfirmed: number[]; deliveryAttempts: number; status: 'pending' | 'partial' | 'complete' };
+export type ExplorationGrant = { grantId: string; sessionId: string; taskId: string; modelId: string; scope: ShareSelection; binding: RendererBinding; permissions: ('observe' | 'mutate' | 'propose_durable')[]; createdAt: string; expiresAt: string; status: 'prepared' | 'active' | 'paused' | 'revoked' | 'expired' };
+export type ActionRequest = { operationId: string; grantId: string; name: string; args: Record<string, unknown>; expectedRevision: number; deadline: string };
+export type RendererCommand = ActionRequest & { taskId: string; binding: RendererBinding; kind: 'observe' | 'action' | 'manifest'; claimId?: string };
+export type ActionResult = { operationId: string; claimId: string; status: 'completed' | 'failed' | 'outcome_unknown'; beforeRevision: number; revision: number; state: Record<string, unknown>; canUndo: boolean; error?: 'unavailable' | 'stale' | 'cancelled' | 'failed' | 'unknown' };
+export type TaskSnapshot = { grant: ExplorationGrant; status: 'prepared' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'paused'; activity?: string; coverage: CoverageReceipt[]; actions: Record<string, unknown>[]; canContinue: boolean };

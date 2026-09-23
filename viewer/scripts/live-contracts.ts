@@ -38,3 +38,9 @@ type EvidenceRetryRequestMatches = Assert<SharedEvidence.EvidenceRetryRequest ex
 type EvidenceRetryRequestComplete = Assert<ViewerEvidence.EvidenceRetryRequest extends SharedEvidence.EvidenceRetryRequest ? true : false>;
 type EvidenceReviewAvailabilityMatches = Assert<SharedEvidence.EvidenceReviewAvailability extends ViewerEvidence.EvidenceReviewAvailability ? true : false>;
 type EvidenceReviewAvailabilityComplete = Assert<ViewerEvidence.EvidenceReviewAvailability extends SharedEvidence.EvidenceReviewAvailability ? true : false>;
+
+import type { ObservationResult as SharedObservation, TaskSnapshot as SharedTask } from '@radsysx/clinical-web';
+import type { ObservationResult as ViewerObservation, TaskSnapshot as ViewerTask } from '../assets/live/protocol';
+type ObservationMatches = Assert<SharedObservation extends ViewerObservation ? true : false>;
+type ObservationComplete = Assert<ViewerObservation extends SharedObservation ? true : false>;
+type ExplorationTaskMatches = Assert<SharedTask extends ViewerTask ? true : false>;
