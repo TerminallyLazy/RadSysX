@@ -134,7 +134,7 @@ pandas==2.2.3
 pdfminer.six==20251230
 pgvector==0.2.5
 phonemizer-fork==3.3.1
-pillow==12.3.0
+pillow==13.0.0
 
 pooch==1.8.2
 propcache==0.3.0
