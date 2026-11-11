@@ -14,4 +14,4 @@ cryptography==50.0.1
 langchain-nvidia-ai-endpoints==1.4.3
 
 # Fully decode bounded transient study observations before forwarding.
-pillow==12.3.0
+pillow==13.0.0
