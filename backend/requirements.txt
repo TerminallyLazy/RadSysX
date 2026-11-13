@@ -40,7 +40,7 @@ decorator==5.2.1
 deepagents==0.3.0
 deepdiff==8.6.2
 dlinfo==2.0.0
-dnspython==2.7.0
+dnspython==2.9.2
 docstring_parser==0.16
 duckduckgo_search==4.5.0
 emoji==2.14.1
